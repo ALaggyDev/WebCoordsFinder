@@ -1,0 +1,38 @@
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg'],
+      manifest: {
+        name: 'WebCoordsFinder',
+        short_name: 'CoordsFinder',
+        description: 'Turn Minecraft block texture evidence into CoordsFinder configs.',
+        theme_color: '#0b1014',
+        background_color: '#0b1014',
+        display: 'standalone',
+        start_url: '/',
+        icons: [
+          {
+            src: '/favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,webp}'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
+    }),
+  ],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
+})

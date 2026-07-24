@@ -1,0 +1,130 @@
+import type { BlockProfile, FaceDirection } from './types'
+
+const rotationalFaces: Partial<Record<FaceDirection, 4>> = { up: 4, down: 4 }
+const mirroredCubeFaces: Partial<Record<FaceDirection, 2 | 4>> = {
+  up: 4,
+  down: 4,
+  north: 2,
+  south: 2,
+  east: 2,
+  west: 2,
+}
+
+export const blockProfiles: BlockProfile[] = [
+  {
+    id: 'stone',
+    label: 'Stone',
+    family: 'Cave',
+    accent: '#9aa3a7',
+    compatibleSince: '1.19.3',
+    faceStates: mirroredCubeFaces,
+    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    notes: 'Mirrored model variants; side faces fold to two visible states.',
+  },
+  {
+    id: 'deepslate',
+    label: 'Deepslate',
+    family: 'Cave',
+    accent: '#687176',
+    compatibleSince: '1.19.3',
+    faceStates: mirroredCubeFaces,
+    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    notes: 'Axis-aware mirrored model variants.',
+  },
+  {
+    id: 'bedrock',
+    label: 'Bedrock',
+    family: 'Cave',
+    accent: '#5a6265',
+    compatibleSince: '1.19.3',
+    faceStates: mirroredCubeFaces,
+    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    notes: 'Mirrored model variants; side faces fold to two states.',
+  },
+  {
+    id: 'dirt',
+    label: 'Dirt',
+    family: 'Terrain',
+    accent: '#896449',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Four top/bottom model rotations.',
+  },
+  {
+    id: 'grass_block',
+    label: 'Grass block',
+    family: 'Terrain',
+    accent: '#6da95b',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Non-snowy top and bottom faces only.',
+  },
+  {
+    id: 'dirt_path',
+    label: 'Dirt path',
+    family: 'Terrain',
+    accent: '#987653',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Top and bottom faces only.',
+  },
+  {
+    id: 'podzol',
+    label: 'Podzol',
+    family: 'Terrain',
+    accent: '#76604a',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Top and bottom faces only.',
+  },
+  {
+    id: 'mycelium',
+    label: 'Mycelium',
+    family: 'Terrain',
+    accent: '#8e788d',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Top and bottom faces only.',
+  },
+  {
+    id: 'sand',
+    label: 'Sand',
+    family: 'Sediment',
+    accent: '#d8cc91',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Top and bottom faces only.',
+  },
+  {
+    id: 'red_sand',
+    label: 'Red sand',
+    family: 'Sediment',
+    accent: '#b96f43',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Top and bottom faces only.',
+  },
+  {
+    id: 'concrete_powder',
+    label: 'Concrete powder',
+    family: 'Built',
+    accent: '#91a0a8',
+    compatibleSince: '1.19.3',
+    faceStates: rotationalFaces,
+    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    notes: 'Use the matching color reference texture.',
+  },
+]
+
+export const blockProfileMap = new Map(blockProfiles.map((profile) => [profile.id, profile]))
+
+export function statesForFace(blockId: string, face: FaceDirection): 2 | 4 | undefined {
+  return blockProfileMap.get(blockId)?.faceStates[face]
+}

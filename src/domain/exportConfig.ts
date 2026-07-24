@@ -1,0 +1,165 @@
+import type {
+  EditorDocument,
+  FaceEvidence,
+  TextureMode,
+  ValidationResult,
+} from './types'
+
+function parseVersion(version: string): [number, number, number] {
+  const parts = version
+    .trim()
+    .split('.')
+    .slice(0, 3)
+    .map((part) => Number.parseInt(part.replace(/\D.*$/, ''), 10) || 0)
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
+function compareVersion(a: string, b: string): number {
+  const left = parseVersion(a)
+  const right = parseVersion(b)
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index]
+  }
+  return 0
+}
+
+export function deriveTextureMode(document: EditorDocument): TextureMode {
+  const { minecraftVersion, renderer, sodiumVersion } = document.scanner
+  if (renderer === 'sodium') {
+    if (compareVersion(sodiumVersion, '4.2') < 0) return 'Sodium-1'
+    if (compareVersion(sodiumVersion, '4.9') < 0) return 'Sodium-2'
+  }
+  if (compareVersion(minecraftVersion, '1.13') < 0) return 'Vanilla-1'
+  if (compareVersion(minecraftVersion, '1.21.2') < 0) return 'Vanilla-2'
+  return 'Vanilla-3'
+}
+
+function coordinateKey(evidence: FaceEvidence): string {
+  const { x, y, z } = evidence.coordinate
+  return `${x}:${y}:${z}`
+}
+
+export function confirmedUniqueEvidence(document: EditorDocument): FaceEvidence[] {
+  const unique = new Map<string, FaceEvidence>()
+  document.evidence
+    .filter(
+      (entry) =>
+        entry.reviewStatus === 'confirmed' &&
+        entry.selectedVariant !== undefined,
+    )
+    .forEach((entry) => {
+      const key = coordinateKey(entry)
+      const existing = unique.get(key)
+      if (!existing || entry.stateCount > existing.stateCount) unique.set(key, entry)
+    })
+  return [...unique.values()].sort((a, b) => {
+    if (a.coordinate.y !== b.coordinate.y) return a.coordinate.y - b.coordinate.y
+    if (a.coordinate.z !== b.coordinate.z) return a.coordinate.z - b.coordinate.z
+    return a.coordinate.x - b.coordinate.x
+  })
+}
+
+export function validateForExport(document: EditorDocument): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const { bounds } = document.scanner
+  const rows = confirmedUniqueEvidence(document)
+
+  if (!document.scanner.compassResolved) {
+    errors.push('Resolve the screenshot compass direction before export.')
+  }
+  if (rows.length === 0) errors.push('Confirm at least one block face before export.')
+  if (rows.length > 256) errors.push('CoordsFinder supports at most 256 filter rows.')
+  if (
+    bounds.xStart > bounds.xEnd ||
+    bounds.yStart > bounds.yEnd ||
+    bounds.zStart > bounds.zEnd
+  ) {
+    errors.push('Every search start bound must be less than or equal to its end bound.')
+  }
+  if (document.scanner.chunkBlocksX <= 0 || document.scanner.chunkBlocksZ <= 0) {
+    errors.push('Chunk dimensions must be positive.')
+  }
+  if (document.scanner.maxBadBlocks < 0) {
+    errors.push('Allowed bad blocks cannot be negative.')
+  }
+
+  rows.forEach((entry) => {
+    const { x, y, z } = entry.coordinate
+    if ([x, y, z].some((value) => value < -128 || value > 127)) {
+      errors.push(`Offset (${x}, ${y}, ${z}) is outside the signed-byte range.`)
+    }
+    if (
+      entry.selectedVariant === undefined ||
+      entry.selectedVariant < 0 ||
+      entry.selectedVariant >= entry.stateCount
+    ) {
+      errors.push(`Block at (${x}, ${y}, ${z}) has an invalid variant.`)
+    }
+  })
+
+  if (rows.length < 24) {
+    warnings.push('Fewer than 24 unique constraints may leave many coordinate candidates.')
+  }
+  const proposals = document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length
+  if (proposals > 0) {
+    warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} excluded until reviewed.`)
+  }
+
+  return { errors: [...new Set(errors)], warnings, rowCount: rows.length }
+}
+
+export function generateCoordsFinderConfig(document: EditorDocument): string {
+  const { scanner } = document
+  const rows = confirmedUniqueEvidence(document)
+  const lines = [
+    '# Generated locally by WebCoordsFinder.',
+    `# Anchor block: ${document.projectName}`,
+    '',
+    `mode = ${deriveTextureMode(document)}`,
+    '',
+    `xStart = ${scanner.bounds.xStart}`,
+    `xEnd = ${scanner.bounds.xEnd}`,
+    `yStart = ${scanner.bounds.yStart}`,
+    `yEnd = ${scanner.bounds.yEnd}`,
+    `zStart = ${scanner.bounds.zStart}`,
+    `zEnd = ${scanner.bounds.zEnd}`,
+    '',
+    `chunkBlocksX = ${scanner.chunkBlocksX}`,
+    `chunkBlocksZ = ${scanner.chunkBlocksZ}`,
+    `maxBadBlocks = ${scanner.maxBadBlocks}`,
+    `printChunks = ${scanner.printChunks ? 'true' : 'false'}`,
+    '',
+    '[filter]',
+    '# x y z | variant [side]',
+    ...rows.map((entry) => {
+      const { x, y, z } = entry.coordinate
+      return `${x} ${y} ${z} | ${entry.selectedVariant}${entry.stateCount === 2 ? ' side' : ''}`
+    }),
+    '',
+  ]
+  return lines.join('\n')
+}
+
+export function constraintBits(document: EditorDocument): number {
+  return confirmedUniqueEvidence(document).reduce(
+    (sum, evidence) => sum + (evidence.stateCount === 4 ? 2 : 1),
+    0,
+  )
+}
+
+export function approximateCandidateCount(document: EditorDocument): string {
+  const { bounds } = document.scanner
+  const sizes = [
+    BigInt(Math.max(0, bounds.xEnd - bounds.xStart + 1)),
+    BigInt(Math.max(0, bounds.yEnd - bounds.yStart + 1)),
+    BigInt(Math.max(0, bounds.zEnd - bounds.zStart + 1)),
+  ]
+  let volume = sizes[0] * sizes[1] * sizes[2]
+  const rows = confirmedUniqueEvidence(document)
+  rows.forEach((entry) => {
+    volume /= BigInt(entry.stateCount)
+  })
+  if (volume < 1n && rows.length > 0) return '<1'
+  return new Intl.NumberFormat('en-US').format(volume)
+}

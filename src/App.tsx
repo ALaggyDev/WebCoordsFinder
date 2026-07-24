@@ -1,0 +1,352 @@
+import { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
+import './App.css'
+import { EditorCanvas } from './components/EditorCanvas'
+import { Inspector } from './components/Inspector'
+import { ToolRail } from './components/ToolRail'
+import { TopBar } from './components/TopBar'
+import { cellQuad } from './domain/geometry'
+import { imageToPixels, warpQuad } from './domain/imageAnalysis'
+import {
+  buildProjectBundle,
+  downloadBlob,
+  readProjectBundle,
+} from './domain/projectBundle'
+import { blockProfileMap } from './domain/references'
+import type { CandidateScore } from './domain/types'
+import {
+  clearLocalProject,
+  loadPersistedProject,
+  loadReferences,
+  persistImage,
+  persistProject,
+  persistReference,
+} from './storage/db'
+import { useEditorStore } from './store/editorStore'
+
+type ToastKind = 'success' | 'warning' | 'info'
+
+interface ToastState {
+  message: string
+  kind: ToastKind
+}
+
+interface WorkerResponse {
+  requestId: string
+  scores: CandidateScore[]
+  confidence: number
+}
+
+function App() {
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const projectInputRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+  const [toast, setToast] = useState<ToastState>()
+  const document = useEditorStore((state) => state.document)
+  const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
+  const referenceUrls = useEditorStore((state) => state.referenceUrls)
+  const replaceImage = useEditorStore((state) => state.replaceImage)
+  const loadDocument = useEditorStore((state) => state.loadDocument)
+  const setReferenceUrl = useEditorStore((state) => state.setReferenceUrl)
+  const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
+  const setStep = useEditorStore((state) => state.setStep)
+  const setTool = useEditorStore((state) => state.setTool)
+  const setVariant = useEditorStore((state) => state.setVariant)
+  const undo = useEditorStore((state) => state.undo)
+  const redo = useEditorStore((state) => state.redo)
+  const resetDemo = useEditorStore((state) => state.resetDemo)
+
+  const notify = (message: string, kind: ToastKind = 'info') => {
+    setToast({ message, kind })
+  }
+
+  useEffect(() => {
+    let active = true
+    Promise.all([loadPersistedProject(), loadReferences()])
+      .then(([saved, references]) => {
+        if (!active) return
+        if (saved) {
+          const restored = structuredClone(saved.document)
+          if (saved.imageBlob) {
+            restored.image.src = URL.createObjectURL(saved.imageBlob)
+          } else if (!restored.image.src) {
+            restored.image.src = '/demo/demo.png'
+          }
+          loadDocument(restored)
+        }
+        Object.entries(references).forEach(([blockId, blob]) => {
+          setReferenceUrl(blockId, URL.createObjectURL(blob))
+        })
+      })
+      .catch(() => {
+        notify('Local autosave could not be restored. The editor still works normally.', 'warning')
+      })
+      .finally(() => {
+        if (active) setHydrated(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [loadDocument, setReferenceUrl])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const timeout = window.setTimeout(() => {
+      persistProject(document).catch(() =>
+        notify('Autosave is temporarily unavailable.', 'warning'),
+      )
+    }, 500)
+    return () => window.clearTimeout(timeout)
+  }, [document, hydrated])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redo()
+        else undo()
+        return
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        redo()
+        return
+      }
+      const toolShortcut = {
+        v: 'select',
+        g: 'plane',
+        f: 'face',
+        h: 'pan',
+      } as const
+      const shortcut = toolShortcut[event.key.toLowerCase() as keyof typeof toolShortcut]
+      if (shortcut) setTool(shortcut)
+      if (/^[0-3]$/.test(event.key) && selectedEvidenceIds[0]) {
+        const evidence = useEditorStore
+          .getState()
+          .document.evidence.find((entry) => entry.id === selectedEvidenceIds[0])
+        const variant = Number(event.key)
+        if (evidence && variant < evidence.stateCount) setVariant(evidence.id, variant)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [redo, selectedEvidenceIds, setTool, setVariant, undo])
+
+  const importImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Choose a PNG, JPEG, or WebP image.', 'warning')
+      return
+    }
+    const source = URL.createObjectURL(file)
+    const image = new Image()
+    image.src = source
+    try {
+      await image.decode()
+      const key = crypto.randomUUID()
+      await persistImage(key, file)
+      replaceImage({
+        key,
+        name: file.name,
+        src: source,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        mime: file.type,
+      })
+      notify('Image loaded. Click four corners to create the first plane.', 'success')
+    } catch {
+      URL.revokeObjectURL(source)
+      notify('The selected image could not be decoded.', 'warning')
+    }
+  }
+
+  const exportProject = async () => {
+    try {
+      const imageBlob = await fetch(document.image.src).then((response) => response.blob())
+      const bundle = await buildProjectBundle(document, imageBlob)
+      downloadBlob(bundle, `${document.projectName.replace(/[^\w-]+/g, '-').toLowerCase() || 'webcoordsfinder'}.wcf`)
+      notify('Project bundle saved.', 'success')
+    } catch {
+      notify('The project bundle could not be created.', 'warning')
+    }
+  }
+
+  const importProject = async (file: File) => {
+    try {
+      const imported = await readProjectBundle(file)
+      const restored = imported.document
+      if (imported.imageBlob) {
+        const key = crypto.randomUUID()
+        await persistImage(key, imported.imageBlob)
+        restored.image.key = key
+        restored.image.src = URL.createObjectURL(imported.imageBlob)
+        restored.image.mime = imported.imageBlob.type
+      } else if (!restored.image.src) {
+        throw new Error('The project does not contain its source image.')
+      }
+      loadDocument(restored)
+      notify('Project opened.', 'success')
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : 'The project bundle is invalid.',
+        'warning',
+      )
+    }
+  }
+
+  const referenceUpload = async (blockId: string, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Reference textures must be an image file.', 'warning')
+      return
+    }
+    await persistReference(blockId, file)
+    setReferenceUrl(blockId, URL.createObjectURL(file))
+    notify(`${blockProfileMap.get(blockId)?.label ?? blockId} reference loaded locally.`, 'success')
+  }
+
+  const autoFill = async () => {
+    const state = useEditorStore.getState()
+    const targets = state.document.evidence.filter((entry) =>
+      state.selectedEvidenceIds.includes(entry.id),
+    )
+    if (targets.length === 0) {
+      notify('Select one or more grid faces first.', 'warning')
+      return
+    }
+    const analyzable = targets.filter((entry) => referenceUrls[entry.blockId])
+    if (analyzable.length === 0) {
+      notify('Add a canonical reference PNG for the selected block profile first.', 'warning')
+      return
+    }
+
+    setBusy(true)
+    try {
+      const worker = new Worker(new URL('./workers/analyze.worker.ts', import.meta.url), {
+        type: 'module',
+      })
+      const pending = new Map<
+        string,
+        (response: WorkerResponse) => void
+      >()
+      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+        pending.get(event.data.requestId)?.(event.data)
+        pending.delete(event.data.requestId)
+      }
+
+      const jobs = analyzable.map(async (entry) => {
+        const plane = state.document.planes.find((item) => item.id === entry.planeId)
+        const profile = blockProfileMap.get(entry.blockId)
+        const referenceUrl = referenceUrls[entry.blockId]
+        if (!plane || !profile || !referenceUrl) return null
+        const [sample, reference] = await Promise.all([
+          warpQuad(state.document.image.src, cellQuad(plane, entry.column, entry.row), 96),
+          imageToPixels(referenceUrl, 96),
+        ])
+        const requestId = crypto.randomUUID()
+        const result = new Promise<WorkerResponse>((resolve) => {
+          pending.set(requestId, resolve)
+        })
+        worker.postMessage({
+          requestId,
+          sample: sample.data,
+          reference: reference.data,
+          size: 96,
+          transforms: profile.transforms,
+          stateCount: entry.stateCount,
+        })
+        const response = await result
+        return {
+          evidenceId: entry.id,
+          scores: response.scores,
+          confidence: response.confidence,
+        }
+      })
+      const results = (await Promise.all(jobs)).filter(
+        (result): result is NonNullable<typeof result> => result !== null,
+      )
+      worker.terminate()
+      applyAnalysisResults(results)
+      setStep('review')
+      notify(
+        `${results.length} face${results.length === 1 ? '' : 's'} analyzed and queued for review.`,
+        'success',
+      )
+      if (analyzable.length < targets.length) {
+        notify(
+          `${targets.length - analyzable.length} selected face${targets.length - analyzable.length === 1 ? '' : 's'} lacked a reference texture.`,
+          'warning',
+        )
+      }
+    } catch {
+      notify('Automatic analysis failed; manual variant selection is still available.', 'warning')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const clearProject = async () => {
+    await clearLocalProject()
+    resetDemo()
+    notify('Local project data cleared. The example has been restored.', 'info')
+  }
+
+  return (
+    <div className="app">
+      <TopBar
+        onOpenImage={() => imageInputRef.current?.click()}
+        onImportProject={() => projectInputRef.current?.click()}
+        onExportProject={exportProject}
+      />
+      <main className="workspace">
+        <ToolRail />
+        <EditorCanvas />
+        <Inspector
+          busy={busy}
+          onOpenImage={() => imageInputRef.current?.click()}
+          onReferenceUpload={referenceUpload}
+          onAutoFill={autoFill}
+          onClearProject={clearProject}
+        />
+      </main>
+      <input
+        ref={imageInputRef}
+        className="visually-hidden"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void importImage(file)
+          event.currentTarget.value = ''
+        }}
+      />
+      <input
+        ref={projectInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".wcf,application/x-webcoordsfinder,application/zip"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void importProject(file)
+          event.currentTarget.value = ''
+        }}
+      />
+      {toast && (
+        <div className={`toast ${toast.kind}`} role="status">
+          {toast.kind === 'success' ? <CheckCircle2 size={17} /> : toast.kind === 'warning' ? <AlertTriangle size={17} /> : <Info size={17} />}
+          <span>{toast.message}</span>
+          <button type="button" onClick={() => setToast(undefined)} aria-label="Dismiss notification"><X size={14} /></button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default App
