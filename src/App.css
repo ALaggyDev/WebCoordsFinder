@@ -477,30 +477,11 @@ button:disabled {
   font-weight: 600;
 }
 
-.axis-readout {
-  margin-top: 8px;
-  display: flex;
-  gap: 8px;
-}
-
 .axis-hint {
   margin: 7px 0 0;
   color: var(--faint);
   font-size: 9px;
   line-height: 1.45;
-}
-
-.axis-readout span {
-  padding: 5px 7px;
-  color: var(--muted);
-  background: #0d1418;
-  border: 1px solid var(--border-soft);
-  border-radius: 5px;
-  font: 9px var(--mono);
-}
-
-.axis-readout b:first-child {
-  color: var(--accent);
 }
 
 .compass-card,

@@ -208,10 +208,6 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
           Match these directions to the screenshot. Changing them rotates the
           world-coordinate lattice without moving the drawn grid.
         </p>
-        <div className="axis-readout">
-          <span><b>U</b> {plane.uAxis.x}, {plane.uAxis.y}, {plane.uAxis.z}</span>
-          <span><b>V</b> {plane.vAxis.x}, {plane.vAxis.y}, {plane.vAxis.z}</span>
-        </div>
       </div>
       <div className="subsection">
         <h3>Relative coordinate at top-left cell</h3>
