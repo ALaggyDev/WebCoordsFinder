@@ -19,7 +19,6 @@ import {
 import {
   approximateCandidateCount,
   constraintBits,
-  deriveTextureMode,
   generateCoordsFinderConfig,
   validateForExport,
 } from '../domain/exportConfig'
@@ -38,10 +37,12 @@ import {
   referenceTextureForFace,
   statesForFace,
 } from '../domain/references'
-import type {
-  CandidateTransform,
-  FaceDirection,
-  PerspectivePlane,
+import {
+  textureAlgorithms,
+  type CandidateTransform,
+  type FaceDirection,
+  type PerspectivePlane,
+  type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { useEditorStore } from '../store/editorStore'
@@ -558,7 +559,6 @@ function ExportInspector() {
   const updateBounds = useEditorStore((state) => state.updateBounds)
   const validation = validateForExport(document)
   const config = generateCoordsFinderConfig(document)
-  const mode = deriveTextureMode(document)
   const bounds = document.scanner.bounds
 
   const downloadConfig = () => {
@@ -569,35 +569,50 @@ function ExportInspector() {
   return (
     <>
       <SectionTitle icon={Download} eyebrow="CoordsFinder handoff" title="Export configuration" />
-      <div className="mode-card">
-        <span>Derived texture mode</span>
-        <strong>{mode}</strong>
-      </div>
-      <div className="field-grid two">
-        <label className="field">
-          <span>Minecraft version</span>
-          <input
-            value={document.scanner.minecraftVersion}
-            onChange={(event) => updateScanner({ minecraftVersion: event.target.value })}
-          />
-        </label>
-        <label className="field">
-          <span>Renderer</span>
-          <select
-            value={document.scanner.renderer}
-            onChange={(event) => updateScanner({ renderer: event.target.value as 'vanilla' | 'sodium' })}
-          >
-            <option value="vanilla">Vanilla</option>
-            <option value="sodium">Sodium</option>
-          </select>
-        </label>
-      </div>
-      {document.scanner.renderer === 'sodium' && (
-        <label className="field">
-          <span>Sodium version</span>
-          <input value={document.scanner.sodiumVersion} onChange={(event) => updateScanner({ sodiumVersion: event.target.value })} />
-        </label>
-      )}
+      <label className="field">
+        <span>Texture algorithm</span>
+        <select
+          value={document.scanner.textureAlgorithm}
+          onChange={(event) =>
+            updateScanner({ textureAlgorithm: event.target.value as TextureAlgorithm })
+          }
+        >
+          {textureAlgorithms.map((algorithm) => (
+            <option key={algorithm} value={algorithm}>{algorithm}</option>
+          ))}
+        </select>
+      </label>
+      <details className="algorithm-reference">
+        <summary>Algorithm version reference</summary>
+        <div className="algorithm-reference-content">
+          <table>
+            <thead>
+              <tr>
+                <th>MC Version</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>&lt;=1.12.2</td><td>vanilla-1</td></tr>
+              <tr><td>1.13-1.21.1</td><td>vanilla-2</td></tr>
+              <tr><td>1.21.2+</td><td>vanilla-3</td></tr>
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr>
+                <th>MC Version</th>
+                <th>Sodium Version</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1.16-1.18.2</td><td>1.0-4.1</td><td>sodium-1</td></tr>
+              <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>sodium-2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
       <div className="subsection">
         <h3>Inclusive search bounds</h3>
         <div className="bounds-grid">

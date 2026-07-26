@@ -485,7 +485,7 @@ button:disabled {
 }
 
 .compass-card,
-.mode-card,
+.algorithm-reference,
 .hint-card,
 .todo-card,
 .privacy-panel {
@@ -1000,18 +1000,53 @@ button:disabled {
   font-size: 9px;
 }
 
-.mode-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--muted);
+.algorithm-reference {
+  color: var(--text);
   background: #0d1418;
   font-size: 9px;
 }
 
-.mode-card strong {
+.algorithm-reference summary {
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.algorithm-reference[open] summary {
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.algorithm-reference-content {
+  padding-top: 5px;
+}
+
+.algorithm-reference table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.algorithm-reference table + table {
+  margin-top: 10px;
+}
+
+.algorithm-reference th,
+.algorithm-reference td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.algorithm-reference th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.algorithm-reference td:last-child {
   color: var(--accent);
-  font: 600 12px var(--mono);
+  font-family: var(--mono);
 }
 
 .bounds-grid {

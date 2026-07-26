@@ -2,12 +2,14 @@ export type Point2 = { x: number; y: number }
 export type Point3 = { x: number; y: number; z: number }
 
 export type FaceDirection = 'up' | 'down' | 'north' | 'south' | 'east' | 'west'
-export type TextureMode =
-  | 'Vanilla-1'
-  | 'Vanilla-2'
-  | 'Vanilla-3'
-  | 'Sodium-1'
-  | 'Sodium-2'
+export const textureAlgorithms = [
+  'Vanilla-1',
+  'Vanilla-2',
+  'Vanilla-3',
+  'Sodium-1',
+  'Sodium-2',
+] as const
+export type TextureAlgorithm = (typeof textureAlgorithms)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed' | 'excluded'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'review' | 'export'
@@ -77,9 +79,7 @@ export interface SearchBounds {
 }
 
 export interface ScannerSettings {
-  minecraftVersion: string
-  renderer: 'vanilla' | 'sodium'
-  sodiumVersion: string
+  textureAlgorithm: TextureAlgorithm
   compassResolved: boolean
   bounds: SearchBounds
   chunkBlocksX: number

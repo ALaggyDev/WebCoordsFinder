@@ -64,7 +64,7 @@ The top navigation follows five stages:
    perspective-correct crop, and choose a visible state. A bundled, face-correct
    vanilla reference PNG enables automatic comparison.
 4. **Review** — inspect proposed, confirmed, excluded, and unlabeled evidence.
-5. **Export** — choose the Minecraft/renderer versions and search bounds,
+5. **Export** — choose the texture algorithm and search bounds,
    validate the evidence, preview the generated configuration, and download
    `coordsfinder.conf`.
 
@@ -116,14 +116,14 @@ Preserve these behaviors:
 - Fewer than 24 unique constraints is a warning, not an error.
 - Unreviewed automatic proposals never enter the exported filter.
 
-Texture modes are derived from the configured versions:
+Texture algorithms are selected directly by the user:
 
 - Minecraft through 1.12.2: `Vanilla-1`
 - Minecraft 1.13 through 1.21.1: `Vanilla-2`
 - Minecraft 1.21.2 and later: `Vanilla-3`
 - Sodium through 4.1: `Sodium-1`
 - Sodium 4.2 through 4.8: `Sodium-2`
-- Sodium 4.9 and later: use the matching Vanilla mode
+- Sodium 4.9 and later: use the matching Vanilla algorithm
 
 ## Current Implementation
 
@@ -142,7 +142,7 @@ The project is a normal React + TypeScript Vite application:
 - `src/workers/analyze.worker.ts` — off-main-thread candidate scoring.
 - `src/domain/references.ts` — curated block metadata and supported face/state
   definitions plus mappings to bundled Minecraft 1.21.11 reference textures.
-- `src/domain/exportConfig.ts` — texture-mode derivation, evidence
+- `src/domain/exportConfig.ts` — selected texture algorithm output, evidence
   deduplication, validation, strength estimates, and exact config generation.
 - `src/storage/db.ts` — local Dexie/IndexedDB persistence.
 - `src/domain/projectBundle.ts` — portable zipped `.wcf` project import/export

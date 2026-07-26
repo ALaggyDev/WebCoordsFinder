@@ -1,38 +1,8 @@
 import type {
   EditorDocument,
   FaceEvidence,
-  TextureMode,
   ValidationResult,
 } from './types'
-
-function parseVersion(version: string): [number, number, number] {
-  const parts = version
-    .trim()
-    .split('.')
-    .slice(0, 3)
-    .map((part) => Number.parseInt(part.replace(/\D.*$/, ''), 10) || 0)
-  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
-}
-
-function compareVersion(a: string, b: string): number {
-  const left = parseVersion(a)
-  const right = parseVersion(b)
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) return left[index] - right[index]
-  }
-  return 0
-}
-
-export function deriveTextureMode(document: EditorDocument): TextureMode {
-  const { minecraftVersion, renderer, sodiumVersion } = document.scanner
-  if (renderer === 'sodium') {
-    if (compareVersion(sodiumVersion, '4.2') < 0) return 'Sodium-1'
-    if (compareVersion(sodiumVersion, '4.9') < 0) return 'Sodium-2'
-  }
-  if (compareVersion(minecraftVersion, '1.13') < 0) return 'Vanilla-1'
-  if (compareVersion(minecraftVersion, '1.21.2') < 0) return 'Vanilla-2'
-  return 'Vanilla-3'
-}
 
 function coordinateKey(evidence: FaceEvidence): string {
   const { x, y, z } = evidence.coordinate
@@ -116,7 +86,7 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
     '# Generated locally by WebCoordsFinder.',
     `# Anchor block: ${document.projectName}`,
     '',
-    `mode = ${deriveTextureMode(document)}`,
+    `mode = ${scanner.textureAlgorithm}`,
     '',
     `xStart = ${scanner.bounds.xStart}`,
     `xEnd = ${scanner.bounds.xEnd}`,

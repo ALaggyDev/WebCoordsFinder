@@ -1,6 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { z } from 'zod'
-import type { EditorDocument } from './types'
+import { textureAlgorithms, type EditorDocument } from './types'
 
 const projectSchema = z
   .object({
@@ -16,7 +16,11 @@ const projectSchema = z
     }),
     planes: z.array(z.unknown()),
     evidence: z.array(z.unknown()),
-    scanner: z.record(z.string(), z.unknown()),
+    scanner: z
+      .object({
+        textureAlgorithm: z.enum(textureAlgorithms),
+      })
+      .passthrough(),
   })
   .passthrough()
 

@@ -4,7 +4,6 @@ import type { EditorDocument, FaceEvidence } from './types'
 import {
   confirmedUniqueEvidence,
   constraintBits,
-  deriveTextureMode,
   generateCoordsFinderConfig,
   validateForExport,
 } from './exportConfig'
@@ -37,25 +36,6 @@ const documentWith = (entries: FaceEvidence[]): EditorDocument => ({
 })
 
 describe('CoordsFinder export', () => {
-  it('derives the documented renderer modes at version boundaries', () => {
-    const document = documentWith([])
-
-    document.scanner.minecraftVersion = '1.12.2'
-    expect(deriveTextureMode(document)).toBe('Vanilla-1')
-    document.scanner.minecraftVersion = '1.13'
-    expect(deriveTextureMode(document)).toBe('Vanilla-2')
-    document.scanner.minecraftVersion = '1.21.2'
-    expect(deriveTextureMode(document)).toBe('Vanilla-3')
-
-    document.scanner.renderer = 'sodium'
-    document.scanner.sodiumVersion = '4.1'
-    expect(deriveTextureMode(document)).toBe('Sodium-1')
-    document.scanner.sodiumVersion = '4.8'
-    expect(deriveTextureMode(document)).toBe('Sodium-2')
-    document.scanner.sodiumVersion = '4.9'
-    expect(deriveTextureMode(document)).toBe('Vanilla-3')
-  })
-
   it('deduplicates coordinates and keeps the stronger four-state constraint', () => {
     const entries = [
       evidence('side', { x: 0, y: 0, z: 0 }, 2, 1),
@@ -88,6 +68,13 @@ describe('CoordsFinder export', () => {
     })
   })
 
+  it('writes the user-selected texture algorithm to the scanner mode setting', () => {
+    const document = documentWith([])
+    document.scanner.textureAlgorithm = 'Sodium-2'
+
+    expect(generateCoordsFinderConfig(document)).toContain('mode = Sodium-2')
+  })
+
   it('blocks export while compass orientation is unresolved', () => {
     const document = documentWith([
       evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),
@@ -99,4 +86,3 @@ describe('CoordsFinder export', () => {
     )
   })
 })
-

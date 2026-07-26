@@ -51,9 +51,7 @@ export const createInitialDocument = (): EditorDocument => ({
   planes: structuredClone(demoPlanes),
   evidence: [],
   scanner: {
-    minecraftVersion: '1.21.11',
-    renderer: 'vanilla',
-    sodiumVersion: '4.9',
+    textureAlgorithm: 'Vanilla-3',
     compassResolved: false,
     bounds: {
       xStart: -5000,
