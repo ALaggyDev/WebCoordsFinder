@@ -645,12 +645,12 @@ button:disabled {
 
 .candidate-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 7px;
 }
 
 .candidate-grid.count-2 {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
 }
 
 .candidate {
@@ -688,20 +688,6 @@ button:disabled {
   height: 100%;
   object-fit: cover;
   image-rendering: pixelated;
-}
-
-.candidate-image b {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 17px;
-  height: 17px;
-  display: grid;
-  place-items: center;
-  color: #07140e;
-  background: var(--accent);
-  border-radius: 4px;
-  font: 600 9px var(--mono);
 }
 
 .candidate > span {

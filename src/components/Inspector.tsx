@@ -353,9 +353,10 @@ function FaceInspector({
                   ) : (
                     <span className="candidate-unavailable">—</span>
                   )}
-                  <b>{variant}</b>
                 </div>
-                <span>{score === undefined ? 'Manual' : `${Math.round(score * 100)}% match`}</span>
+                <span>
+                  Variant {variant} · {score === undefined ? 'Manual' : `${Math.round(score * 100)}% match`}
+                </span>
               </button>
             )
           })}
