@@ -1,7 +1,6 @@
 import {
   Box,
   BoxSelect,
-  Hand,
   MousePointer2,
   Redo2,
   Undo2,
@@ -9,11 +8,10 @@ import {
 import type { EditorTool } from '../domain/types'
 import { useEditorStore } from '../store/editorStore'
 
-const tools: Array<{ id: EditorTool; label: string; icon: typeof Hand; shortcut: string }> = [
+const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; shortcut: string }> = [
   { id: 'select', label: 'Select faces', icon: MousePointer2, shortcut: 'V' },
   { id: 'plane', label: 'Create plane', icon: Box, shortcut: 'G' },
   { id: 'face', label: 'Standalone face', icon: BoxSelect, shortcut: 'F' },
-  { id: 'pan', label: 'Pan canvas', icon: Hand, shortcut: 'H' },
 ]
 
 export function ToolRail() {

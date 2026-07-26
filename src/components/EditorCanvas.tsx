@@ -45,7 +45,7 @@ export function EditorCanvas() {
   const [size, setSize] = useState<CanvasSize>({ width: 900, height: 640 })
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 })
   const [draft, setDraft] = useState<Point2[]>([])
-  const [spaceHeld, setSpaceHeld] = useState(false)
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
 
   const evidenceMap = useMemo(
     () => new Map(document.evidence.map((entry) => [entry.id, entry])),
@@ -79,22 +79,11 @@ export function EditorCanvas() {
   }, [document.image.key, image, size.height, size.width])
 
   useEffect(() => {
-    const down = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && !event.repeat) {
-        setSpaceHeld(true)
-        event.preventDefault()
-      }
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setDraft([])
     }
-    const up = (event: KeyboardEvent) => {
-      if (event.code === 'Space') setSpaceHeld(false)
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   const pointerInImage = (): Point2 | null => {
@@ -107,9 +96,9 @@ export function EditorCanvas() {
     }
   }
 
-  const onStagePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {
-    if (event.target !== event.target.getStage()) return
+  const onStageClick = (event: Konva.KonvaEventObject<MouseEvent>) => {
     if (tool !== 'plane' && tool !== 'face') return
+    if (event.target !== event.currentTarget && event.target.draggable()) return
     const point = pointerInImage()
     if (!point) return
     const next = [...draft, point]
@@ -148,7 +137,21 @@ export function EditorCanvas() {
     })
   }
 
-  const isPanning = tool === 'pan' || spaceHeld
+  const idleCursor = tool === 'plane' || tool === 'face' ? 'crosshair' : 'grab'
+
+  const onStageDragStart = (event: Konva.KonvaEventObject<DragEvent>) => {
+    if (event.target === event.currentTarget) setIsDraggingCanvas(true)
+  }
+
+  const onStageDragEnd = (event: Konva.KonvaEventObject<DragEvent>) => {
+    if (event.target !== event.currentTarget) return
+    setIsDraggingCanvas(false)
+    setView((current) => ({
+      ...current,
+      x: event.currentTarget.x(),
+      y: event.currentTarget.y(),
+    }))
+  }
 
   return (
     <div className="canvas-shell" ref={containerRef}>
@@ -160,17 +163,12 @@ export function EditorCanvas() {
         y={view.y}
         scaleX={view.scale}
         scaleY={view.scale}
-        draggable={isPanning}
-        onDragEnd={(event) =>
-          setView((current) => ({
-            ...current,
-            x: event.target.x(),
-            y: event.target.y(),
-          }))
-        }
+        draggable
+        onDragStart={onStageDragStart}
+        onDragEnd={onStageDragEnd}
         onWheel={onWheel}
-        onPointerDown={onStagePointerDown}
-        style={{ cursor: isPanning ? 'grab' : tool === 'plane' || tool === 'face' ? 'crosshair' : 'default' }}
+        onClick={onStageClick}
+        style={{ cursor: isDraggingCanvas ? 'grabbing' : idleCursor }}
       >
         <Layer>
           <Rect
@@ -216,7 +214,7 @@ export function EditorCanvas() {
                       dash={evidence?.reviewStatus === 'proposed' ? [4 / view.scale, 3 / view.scale] : undefined}
                       fill={selected ? 'rgba(112,167,255,.18)' : evidence?.reviewStatus === 'confirmed' ? 'rgba(83,230,165,.08)' : 'rgba(0,0,0,.001)'}
                       hitStrokeWidth={8 / view.scale}
-                      onPointerDown={(event) => {
+                      onClick={(event) => {
                         if (tool !== 'select') return
                         event.cancelBubble = true
                         selectCell(plane.id, column, row, event.evt.shiftKey)
@@ -233,7 +231,10 @@ export function EditorCanvas() {
                 fontSize={11 / view.scale}
                 fill={selectedPlaneId === plane.id ? '#e7fff5' : '#b7c2c8'}
                 padding={3 / view.scale}
-                onClick={() => setSelectedPlane(plane.id)}
+                onClick={(event) => {
+                  event.cancelBubble = true
+                  setSelectedPlane(plane.id)
+                }}
               />
               {selectedPlaneId === plane.id &&
                 plane.corners.map((corner, cornerIndex) => (
@@ -280,6 +281,7 @@ export function EditorCanvas() {
       <div className="canvas-status">
         <span>{Math.round(view.scale * 100)}%</span>
         <span>{document.image.width} × {document.image.height}</span>
+        <span>Drag to pan</span>
         {(tool === 'plane' || tool === 'face') && (
           <strong>
             {draft.length === 0 ? 'Click four corners clockwise' : `${4 - draft.length} corners remaining`}

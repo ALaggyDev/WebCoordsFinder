@@ -125,7 +125,6 @@ function App() {
         v: 'select',
         g: 'plane',
         f: 'face',
-        h: 'pan',
       } as const
       const shortcut = toolShortcut[event.key.toLowerCase() as keyof typeof toolShortcut]
       if (shortcut) setTool(shortcut)

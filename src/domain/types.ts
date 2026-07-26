@@ -11,7 +11,7 @@ export type TextureMode =
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed' | 'excluded'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'review' | 'export'
-export type EditorTool = 'select' | 'plane' | 'face' | 'pan'
+export type EditorTool = 'select' | 'plane' | 'face'
 
 export type CandidateTransform =
   | 'identity'
