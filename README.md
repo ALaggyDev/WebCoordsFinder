@@ -10,8 +10,9 @@ npm install
 npm run dev
 ```
 
-The application runs entirely in the browser. Screenshots, project state, and
-reference textures are stored on the current device and are never uploaded.
+The application runs entirely in the browser. Screenshots and project state stay
+on the current device and are never uploaded. Vanilla reference textures are
+bundled with the application.
 
 ## Validation
 
@@ -25,8 +26,8 @@ npm run build
 
 - Static screenshots and connected, axis-aligned block planes
 - Modern Java default visuals and all Vanilla/Sodium scanner modes
-- Manual variant review plus selected-face automatic proposals when a canonical
-  reference texture is available
+- Manual variant review plus selected-face automatic proposals using bundled
+  face-correct vanilla reference textures
 - Exact CoordsFinder `.conf` export
 - Unknown compass direction remains intentionally unsupported
 

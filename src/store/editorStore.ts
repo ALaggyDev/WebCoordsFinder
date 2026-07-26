@@ -83,7 +83,6 @@ interface EditorState {
   tool: EditorTool
   selectedPlaneId?: string
   selectedEvidenceIds: string[]
-  referenceUrls: Record<string, string>
   past: EditorDocument[]
   future: EditorDocument[]
   setStep: (step: EditorStep) => void
@@ -113,7 +112,6 @@ interface EditorState {
   updateScanner: (patch: Partial<ScannerSettings>) => void
   updateBounds: (patch: Partial<ScannerSettings['bounds']>) => void
   setProjectName: (name: string) => void
-  setReferenceUrl: (blockId: string, url: string) => void
   undo: () => void
   redo: () => void
   resetDemo: () => void
@@ -138,7 +136,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selectedPlaneId: 'wall-demo',
   selectedEvidenceIds: [],
-  referenceUrls: {},
   past: [],
   future: [],
   setStep: (step) => set({ step }),
@@ -355,10 +352,6 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.projectName = projectName
       }),
     ),
-  setReferenceUrl: (blockId, url) =>
-    set((state) => ({
-      referenceUrls: { ...state.referenceUrls, [blockId]: url },
-    })),
   undo: () =>
     set((state) => {
       const previous = state.past.at(-1)

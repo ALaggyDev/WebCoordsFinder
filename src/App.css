@@ -413,8 +413,7 @@ button:disabled {
 }
 
 .inspector-actions,
-.review-actions,
-.section-row {
+.review-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -427,8 +426,7 @@ button:disabled {
 .primary-button,
 .secondary-button,
 .danger-button,
-.small-button,
-.file-chip {
+.small-button {
   min-height: 34px;
   padding: 0 11px;
   display: inline-flex;
@@ -452,16 +450,14 @@ button:disabled {
 }
 
 .secondary-button,
-.small-button,
-.file-chip {
+.small-button {
   color: #c9d3d8;
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
 
 .secondary-button:hover,
-.small-button:hover,
-.file-chip:hover {
+.small-button:hover {
   color: var(--text);
   border-color: #46545c;
 }
@@ -612,8 +608,11 @@ button:disabled {
   font-size: 8px;
 }
 
-.reference-missing {
+.reference-unavailable,
+.candidate-unavailable {
   color: var(--faint);
+  font-size: 9px;
+  text-align: center;
 }
 
 .profile-note {
@@ -634,22 +633,6 @@ button:disabled {
   border-radius: 2px;
 }
 
-.section-row {
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.section-row h3 {
-  margin: 0;
-}
-
-.file-chip {
-  min-height: 26px;
-  padding: 0 7px;
-  font-size: 8px;
-}
-
-.file-chip input,
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;
@@ -731,19 +714,6 @@ button:disabled {
   white-space: nowrap;
   font-size: 8px;
 }
-
-.candidate-pattern {
-  width: 100%;
-  height: 100%;
-  background:
-    radial-gradient(circle at 30% 35%, #829096 0 6%, transparent 7%),
-    radial-gradient(circle at 68% 62%, #5d686d 0 8%, transparent 9%),
-    linear-gradient(135deg, #747f84, #465157);
-}
-
-.variant-1 { transform: scaleX(-1); }
-.variant-2 { transform: rotate(180deg); }
-.variant-3 { transform: scaleY(-1); }
 
 .review-metrics,
 .strength-card {

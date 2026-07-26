@@ -12,15 +12,9 @@ interface AssetRecord {
   blob: Blob
 }
 
-interface ReferenceRecord {
-  blockId: string
-  blob: Blob
-}
-
 class WebCoordsDatabase extends Dexie {
   projects!: EntityTable<ProjectRecord, 'id'>
   assets!: EntityTable<AssetRecord, 'key'>
-  references!: EntityTable<ReferenceRecord, 'blockId'>
 
   constructor() {
     super('webcoordsfinder')
@@ -28,6 +22,11 @@ class WebCoordsDatabase extends Dexie {
       projects: 'id, updatedAt',
       assets: 'key',
       references: 'blockId',
+    })
+    this.version(2).stores({
+      projects: 'id, updatedAt',
+      assets: 'key',
+      references: null,
     })
   }
 }
@@ -58,19 +57,9 @@ export async function loadPersistedProject(): Promise<{
   return { document: record.document, imageBlob: asset?.blob }
 }
 
-export async function persistReference(blockId: string, blob: Blob): Promise<void> {
-  await db.references.put({ blockId, blob })
-}
-
-export async function loadReferences(): Promise<Record<string, Blob>> {
-  const records = await db.references.toArray()
-  return Object.fromEntries(records.map((record) => [record.blockId, record.blob]))
-}
-
 export async function clearLocalProject(): Promise<void> {
-  await db.transaction('rw', db.projects, db.assets, db.references, async () => {
+  await db.transaction('rw', db.projects, db.assets, async () => {
     await db.projects.clear()
     await db.assets.clear()
-    await db.references.clear()
   })
 }

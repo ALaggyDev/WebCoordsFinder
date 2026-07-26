@@ -105,6 +105,7 @@ export interface BlockProfile {
   accent: string
   compatibleSince: string
   faceStates: Partial<Record<FaceDirection, 2 | 4>>
+  referenceTextures: Partial<Record<FaceDirection, string>>
   transforms: CandidateTransform[]
   notes: string
 }

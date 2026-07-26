@@ -12,15 +12,13 @@ import {
   downloadBlob,
   readProjectBundle,
 } from './domain/projectBundle'
-import { blockProfileMap } from './domain/references'
+import { blockProfileMap, referenceTextureForFace } from './domain/references'
 import type { CandidateScore } from './domain/types'
 import {
   clearLocalProject,
   loadPersistedProject,
-  loadReferences,
   persistImage,
   persistProject,
-  persistReference,
 } from './storage/db'
 import { useEditorStore } from './store/editorStore'
 
@@ -45,10 +43,8 @@ function App() {
   const [toast, setToast] = useState<ToastState>()
   const document = useEditorStore((state) => state.document)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
-  const referenceUrls = useEditorStore((state) => state.referenceUrls)
   const replaceImage = useEditorStore((state) => state.replaceImage)
   const loadDocument = useEditorStore((state) => state.loadDocument)
-  const setReferenceUrl = useEditorStore((state) => state.setReferenceUrl)
   const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
   const setStep = useEditorStore((state) => state.setStep)
   const setTool = useEditorStore((state) => state.setTool)
@@ -63,8 +59,8 @@ function App() {
 
   useEffect(() => {
     let active = true
-    Promise.all([loadPersistedProject(), loadReferences()])
-      .then(([saved, references]) => {
+    loadPersistedProject()
+      .then((saved) => {
         if (!active) return
         if (saved) {
           const restored = structuredClone(saved.document)
@@ -75,9 +71,6 @@ function App() {
           }
           loadDocument(restored)
         }
-        Object.entries(references).forEach(([blockId, blob]) => {
-          setReferenceUrl(blockId, URL.createObjectURL(blob))
-        })
       })
       .catch(() => {
         notify('Local autosave could not be restored. The editor still works normally.', 'warning')
@@ -88,7 +81,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [loadDocument, setReferenceUrl])
+  }, [loadDocument])
 
   useEffect(() => {
     if (!hydrated) return
@@ -201,16 +194,6 @@ function App() {
     }
   }
 
-  const referenceUpload = async (blockId: string, file: File) => {
-    if (!file.type.startsWith('image/')) {
-      notify('Reference textures must be an image file.', 'warning')
-      return
-    }
-    await persistReference(blockId, file)
-    setReferenceUrl(blockId, URL.createObjectURL(file))
-    notify(`${blockProfileMap.get(blockId)?.label ?? blockId} reference loaded locally.`, 'success')
-  }
-
   const autoFill = async () => {
     const state = useEditorStore.getState()
     const targets = state.document.evidence.filter((entry) =>
@@ -220,9 +203,11 @@ function App() {
       notify('Select one or more grid faces first.', 'warning')
       return
     }
-    const analyzable = targets.filter((entry) => referenceUrls[entry.blockId])
+    const analyzable = targets.filter((entry) =>
+      referenceTextureForFace(entry.blockId, entry.face),
+    )
     if (analyzable.length === 0) {
-      notify('Add a canonical reference PNG for the selected block profile first.', 'warning')
+      notify('The selected block profile does not support this face.', 'warning')
       return
     }
 
@@ -243,7 +228,7 @@ function App() {
       const jobs = analyzable.map(async (entry) => {
         const plane = state.document.planes.find((item) => item.id === entry.planeId)
         const profile = blockProfileMap.get(entry.blockId)
-        const referenceUrl = referenceUrls[entry.blockId]
+        const referenceUrl = referenceTextureForFace(entry.blockId, entry.face)
         if (!plane || !profile || !referenceUrl) return null
         const [sample, reference] = await Promise.all([
           warpQuad(state.document.image.src, cellQuad(plane, entry.column, entry.row), 96),
@@ -280,7 +265,7 @@ function App() {
       )
       if (analyzable.length < targets.length) {
         notify(
-          `${targets.length - analyzable.length} selected face${targets.length - analyzable.length === 1 ? '' : 's'} lacked a reference texture.`,
+          `${targets.length - analyzable.length} selected face${targets.length - analyzable.length === 1 ? '' : 's'} used an unsupported block profile.`,
           'warning',
         )
       }
@@ -310,7 +295,6 @@ function App() {
         <Inspector
           busy={busy}
           onOpenImage={() => imageInputRef.current?.click()}
-          onReferenceUpload={referenceUpload}
           onAutoFill={autoFill}
           onClearProject={clearProject}
         />

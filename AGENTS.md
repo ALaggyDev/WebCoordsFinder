@@ -34,8 +34,9 @@ local web application:
 5. Review the evidence and export an exact CoordsFinder configuration file for
    the user to run with their local CUDA executable.
 
-Screenshots, projects, and reference textures must remain on the user's device.
-There is no server-side image processing.
+Screenshots and projects must remain on the user's device. Vanilla reference
+textures are bundled with the application, and there is no server-side image
+processing.
 
 ## Scope Boundary
 
@@ -47,7 +48,6 @@ include:
 - A fully automatic block classifier.
 - Automatic compass/world-direction inference.
 - CUDA cracking or any other world-coordinate brute force.
-- Bundled Mojang texture assets.
 
 Automatic matching is deliberately a proposal, not ground truth. A user must
 review proposed variants before they can be exported.
@@ -61,8 +61,8 @@ The top navigation follows five stages:
    counts, assign its face direction and relative origin, or hinge a connected
    plane from an existing edge.
 3. **Faces** — select cells, assign a supported block profile, inspect the
-   perspective-correct crop, and choose a visible state. A locally supplied
-   canonical reference PNG enables automatic comparison.
+   perspective-correct crop, and choose a visible state. A bundled, face-correct
+   vanilla reference PNG enables automatic comparison.
 4. **Review** — inspect proposed, confirmed, excluded, and unlabeled evidence.
 5. **Export** — choose the Minecraft/renderer versions and search bounds,
    validate the evidence, preview the generated configuration, and download
@@ -141,7 +141,7 @@ The project is a normal React + TypeScript Vite application:
   normalized-gradient comparison.
 - `src/workers/analyze.worker.ts` — off-main-thread candidate scoring.
 - `src/domain/references.ts` — curated block metadata and supported face/state
-  definitions. Canonical texture images are supplied by the user.
+  definitions plus mappings to bundled Minecraft 1.21.11 reference textures.
 - `src/domain/exportConfig.ts` — texture-mode derivation, evidence
   deduplication, validation, strength estimates, and exact config generation.
 - `src/storage/db.ts` — local Dexie/IndexedDB persistence.
@@ -155,7 +155,7 @@ The PWA service worker provides local offline support. The current demo is
 ## Product and Privacy Constraints
 
 - Do not deploy the application unless the user explicitly asks.
-- Keep image processing local. Do not upload screenshots or reference textures.
+- Keep image processing local. Do not upload screenshots.
 - Do not add analytics or telemetry without explicit approval.
 - The dark, desktop-first interface is intended to feel like a precise forensic
   workbench rather than a generic dashboard.
@@ -178,4 +178,3 @@ npm run build
 The production build currently reports a non-blocking large-chunk warning
 because the canvas/editor dependencies are bundled together. The demo PNG also
 requires the configured 4 MiB Workbox precache limit.
-

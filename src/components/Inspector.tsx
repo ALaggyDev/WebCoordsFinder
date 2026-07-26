@@ -25,7 +25,12 @@ import {
 } from '../domain/exportConfig'
 import { cellQuad, faceDisplayName } from '../domain/geometry'
 import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
-import { blockProfiles, blockProfileMap, statesForFace } from '../domain/references'
+import {
+  blockProfiles,
+  blockProfileMap,
+  referenceTextureForFace,
+  statesForFace,
+} from '../domain/references'
 import type {
   CandidateTransform,
   FaceDirection,
@@ -37,7 +42,6 @@ import { useEditorStore } from '../store/editorStore'
 interface InspectorProps {
   busy: boolean
   onOpenImage: () => void
-  onReferenceUpload: (blockId: string, file: File) => void
   onAutoFill: () => void
   onClearProject: () => void
 }
@@ -220,12 +224,10 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
 
 function FaceInspector({
   busy,
-  onReferenceUpload,
   onAutoFill,
-}: Pick<InspectorProps, 'busy' | 'onReferenceUpload' | 'onAutoFill'>) {
+}: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   const document = useEditorStore((state) => state.document)
   const selectedIds = useEditorStore((state) => state.selectedEvidenceIds)
-  const referenceUrls = useEditorStore((state) => state.referenceUrls)
   const setBlockForSelection = useEditorStore((state) => state.setBlockForSelection)
   const setVariant = useEditorStore((state) => state.setVariant)
   const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
@@ -266,7 +268,7 @@ function FaceInspector({
   }
 
   const profile = blockProfileMap.get(evidence.blockId)!
-  const referenceUrl = referenceUrls[evidence.blockId]
+  const referenceUrl = referenceTextureForFace(evidence.blockId, evidence.face)
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
 
   return (
@@ -288,11 +290,11 @@ function FaceInspector({
         </div>
         <div className="face-preview reference">
           {referenceUrl ? (
-            <img src={referenceUrl} alt={`Canonical ${profile.label} reference`} />
+            <img src={referenceUrl} alt={`Bundled ${profile.label} reference`} />
           ) : (
-            <div className="reference-missing"><Upload size={20} /></div>
+            <div className="reference-unavailable">Unsupported face</div>
           )}
-          <span>Canonical reference</span>
+          <span>Bundled 1.21.11 reference</span>
         </div>
       </div>
       <label className="field">
@@ -317,22 +319,7 @@ function FaceInspector({
         {profile.notes}
       </div>
       <div className="candidate-section">
-        <div className="section-row">
-          <h3>Visible variant</h3>
-          <label className="file-chip">
-            <Upload size={13} />
-            {referenceUrl ? 'Replace reference' : 'Add reference PNG'}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) onReferenceUpload(evidence.blockId, file)
-                event.currentTarget.value = ''
-              }}
-            />
-          </label>
-        </div>
+        <h3>Visible variant</h3>
         <div className={`candidate-grid count-${evidence.stateCount}`}>
           {candidates.map((variant) => {
             const transform = profile.transforms[variant]
@@ -352,7 +339,7 @@ function FaceInspector({
                       style={{ transform: transformStyle(transform) }}
                     />
                   ) : (
-                    <div className={`candidate-pattern variant-${variant}`} />
+                    <span className="candidate-unavailable">—</span>
                   )}
                   <b>{variant}</b>
                 </div>
@@ -367,7 +354,7 @@ function FaceInspector({
         className="primary-button full"
         onClick={onAutoFill}
         disabled={busy || !referenceUrl}
-        title={!referenceUrl ? 'Add a canonical reference texture first' : undefined}
+        title={!referenceUrl ? 'This block profile does not support the selected face' : undefined}
       >
         {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
         Auto-fill selected faces
@@ -642,7 +629,7 @@ export function Inspector(props: InspectorProps) {
       <div className="inspector-scroll">
         {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} onClearProject={props.onClearProject} />}
         {step === 'grid' && <PlaneInspector plane={selectedPlane} />}
-        {step === 'faces' && <FaceInspector busy={props.busy} onReferenceUpload={props.onReferenceUpload} onAutoFill={props.onAutoFill} />}
+        {step === 'faces' && <FaceInspector busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'review' && <ReviewInspector busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
       </div>
