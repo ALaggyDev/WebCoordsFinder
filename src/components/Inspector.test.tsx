@@ -53,8 +53,8 @@ describe('face inspector batch selection', () => {
         .getAllByRole('button')
         .map((button) => button.textContent?.trim()),
     ).toEqual([
-      'Clear variants',
       'Exclude',
+      'Clear variants',
       'Auto analyze selected faces',
       'Confirm',
     ])

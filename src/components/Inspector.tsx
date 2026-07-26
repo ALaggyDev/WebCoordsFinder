@@ -500,14 +500,6 @@ function FaceSelectionActions({
         <button
           type="button"
           className="secondary-button"
-          onClick={() => setEvidenceStatus(selectedIds, 'unlabeled')}
-          disabled={!anySelectedHaveVariant}
-        >
-          <RotateCcw size={15} /> Clear {multiple ? 'variants' : 'variant'}
-        </button>
-        <button
-          type="button"
-          className="secondary-button"
           onClick={() =>
             setEvidenceStatus(
               includesExcludedFaces ? excludedIds : selectedIds,
@@ -517,6 +509,14 @@ function FaceSelectionActions({
         >
           {includesExcludedFaces ? <Eye size={15} /> : <X size={15} />}
           {includesExcludedFaces ? 'Include' : 'Exclude'}
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setEvidenceStatus(selectedIds, 'unlabeled')}
+          disabled={!anySelectedHaveVariant}
+        >
+          <RotateCcw size={15} /> Clear {multiple ? 'variants' : 'variant'}
         </button>
       </div>
       <div className="face-selection-action-row primary-row">
