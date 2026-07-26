@@ -355,6 +355,13 @@ button:disabled {
   gap: 8px;
 }
 
+.axis-hint {
+  margin: 7px 0 0;
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 .axis-readout span {
   padding: 5px 7px;
   color: var(--muted);
@@ -365,7 +372,7 @@ button:disabled {
 }
 
 .axis-readout b:first-child {
-  color: var(--red);
+  color: var(--accent);
 }
 
 .compass-card,

@@ -1,4 +1,10 @@
-import type { FaceDirection, PerspectivePlane, Point2, Point3 } from './types'
+import type {
+  CandidateTransform,
+  FaceDirection,
+  PerspectivePlane,
+  Point2,
+  Point3,
+} from './types'
 
 export type Homography = [
   number,
@@ -24,6 +30,18 @@ const scale3 = (value: Point3, scalar: number): Point3 => ({
   z: value.z * scalar,
 })
 
+const dot3 = (a: Point3, b: Point3): number =>
+  a.x * b.x + a.y * b.y + a.z * b.z
+
+const negate3 = (value: Point3): Point3 => ({
+  x: value.x === 0 ? 0 : -value.x,
+  y: value.y === 0 ? 0 : -value.y,
+  z: value.z === 0 ? 0 : -value.z,
+})
+
+const same3 = (a: Point3, b: Point3): boolean =>
+  a.x === b.x && a.y === b.y && a.z === b.z
+
 export function defaultAxesForFace(face: FaceDirection): {
   uAxis: Point3
   vAxis: Point3
@@ -41,6 +59,110 @@ export function defaultAxesForFace(face: FaceDirection): {
       return { uAxis: { x: 0, y: 0, z: -1 }, vAxis: { x: 0, y: -1, z: 0 } }
     case 'west':
       return { uAxis: { x: 0, y: 0, z: 1 }, vAxis: { x: 0, y: -1, z: 0 } }
+  }
+}
+
+export function axesForFaceRotation(
+  face: FaceDirection,
+  quarterTurns: number,
+): { uAxis: Point3; vAxis: Point3 } {
+  let axes = defaultAxesForFace(face)
+  const turns = ((quarterTurns % 4) + 4) % 4
+  for (let turn = 0; turn < turns; turn += 1) {
+    axes = {
+      uAxis: negate3(axes.vAxis),
+      vAxis: axes.uAxis,
+    }
+  }
+  return axes
+}
+
+export function planeAxisRotation(plane: PerspectivePlane): number | undefined {
+  for (let quarterTurns = 0; quarterTurns < 4; quarterTurns += 1) {
+    const axes = axesForFaceRotation(plane.face, quarterTurns)
+    if (same3(plane.uAxis, axes.uAxis) && same3(plane.vAxis, axes.vAxis)) {
+      return quarterTurns
+    }
+  }
+  return undefined
+}
+
+export function canonicalCropTransform(
+  plane: PerspectivePlane,
+): CandidateTransform {
+  const currentRotation = planeAxisRotation(plane) ?? 0
+  const targetRotation = plane.face === 'down' ? 2 : 0
+  const requiredRotation = (targetRotation - currentRotation + 4) % 4
+  return (
+    ['identity', 'rotate90', 'rotate180', 'rotate270'] as const
+  )[requiredRotation]
+}
+
+export function axisVectorLabel(axis: Point3): string {
+  if (axis.x === 1) return '+X'
+  if (axis.x === -1) return '−X'
+  if (axis.y === 1) return '+Y'
+  if (axis.y === -1) return '−Y'
+  if (axis.z === 1) return '+Z'
+  if (axis.z === -1) return '−Z'
+  return `${axis.x}, ${axis.y}, ${axis.z}`
+}
+
+function faceNormal(face: FaceDirection): Point3 {
+  return {
+    up: { x: 0, y: 1, z: 0 },
+    down: { x: 0, y: -1, z: 0 },
+    north: { x: 0, y: 0, z: -1 },
+    south: { x: 0, y: 0, z: 1 },
+    east: { x: 1, y: 0, z: 0 },
+    west: { x: -1, y: 0, z: 0 },
+  }[face]
+}
+
+function normalize2(value: Point2): Point2 {
+  const length = Math.hypot(value.x, value.y)
+  return length > 1e-8 ? { x: value.x / length, y: value.y / length } : { x: 0, y: -1 }
+}
+
+export function projectedWorldAxes(
+  plane: PerspectivePlane,
+): Record<'x' | 'y' | 'z', Point2> {
+  const homography = planeHomography(plane)
+  const origin = projectPoint(homography, { x: 0, y: 0 })
+  const uPoint = projectPoint(homography, { x: 1, y: 0 })
+  const vPoint = projectPoint(homography, { x: 0, y: 1 })
+  const uDirection = normalize2({ x: uPoint.x - origin.x, y: uPoint.y - origin.y })
+  const vDirection = normalize2({ x: vPoint.x - origin.x, y: vPoint.y - origin.y })
+  const outwardCandidate = {
+    x: -uDirection.x - vDirection.x,
+    y: -uDirection.y - vDirection.y,
+  }
+  let outward: Point2
+  if (Math.hypot(outwardCandidate.x, outwardCandidate.y) < 1e-8) {
+    outward = normalize2({ x: -uDirection.y, y: uDirection.x })
+    if (outward.y > 0) outward = { x: -outward.x, y: -outward.y }
+  } else {
+    outward = normalize2(outwardCandidate)
+  }
+  const normal = faceNormal(plane.face)
+
+  const projectAxis = (axis: Point3): Point2 => {
+    const alongU = dot3(axis, plane.uAxis)
+    if (Math.abs(alongU) > 0.5) {
+      return { x: uDirection.x * alongU, y: uDirection.y * alongU }
+    }
+    const alongV = dot3(axis, plane.vAxis)
+    if (Math.abs(alongV) > 0.5) {
+      return { x: vDirection.x * alongV, y: vDirection.y * alongV }
+    }
+    const alongNormal = dot3(axis, normal)
+    return { x: outward.x * alongNormal, y: outward.y * alongNormal }
+  }
+
+  return {
+    x: projectAxis({ x: 1, y: 0, z: 0 }),
+    y: projectAxis({ x: 0, y: 1, z: 0 }),
+    z: projectAxis({ x: 0, y: 0, z: 1 }),
   }
 }
 

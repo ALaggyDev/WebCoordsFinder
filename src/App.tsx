@@ -6,7 +6,11 @@ import { Inspector } from './components/Inspector'
 import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
 import { cellQuad } from './domain/geometry'
-import { imageToPixels, warpQuad } from './domain/imageAnalysis'
+import {
+  imageToPixels,
+  orientCropToWorld,
+  warpQuad,
+} from './domain/imageAnalysis'
 import {
   buildProjectBundle,
   downloadBlob,
@@ -230,10 +234,11 @@ function App() {
         const profile = blockProfileMap.get(entry.blockId)
         const referenceUrl = referenceTextureForFace(entry.blockId, entry.face)
         if (!plane || !profile || !referenceUrl) return null
-        const [sample, reference] = await Promise.all([
+        const [rawSample, reference] = await Promise.all([
           warpQuad(state.document.image.src, cellQuad(plane, entry.column, entry.row), 96),
           imageToPixels(referenceUrl, 96),
         ])
+        const sample = orientCropToWorld(rawSample, plane)
         const requestId = crypto.randomUUID()
         const result = new Promise<WorkerResponse>((resolve) => {
           pending.set(requestId, resolve)

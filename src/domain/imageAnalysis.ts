@@ -1,5 +1,9 @@
-import type { CandidateTransform, Point2 } from './types'
-import { computeHomography, projectPoint } from './geometry'
+import type { CandidateTransform, PerspectivePlane, Point2 } from './types'
+import {
+  canonicalCropTransform,
+  computeHomography,
+  projectPoint,
+} from './geometry'
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 
@@ -159,6 +163,17 @@ export function transformPixels(
     }
   }
   return output
+}
+
+export function orientCropToWorld(
+  crop: ImageData,
+  plane: PerspectivePlane,
+): ImageData {
+  const transform = canonicalCropTransform(plane)
+  if (transform === 'identity') return crop
+  const result = new ImageData(crop.width, crop.height)
+  result.data.set(transformPixels(crop.data, crop.width, transform))
+  return result
 }
 
 export function normalizedGradientScore(

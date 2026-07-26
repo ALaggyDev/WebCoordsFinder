@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  axesForFaceRotation,
+  canonicalCropTransform,
   cellCoordinate,
   cellQuad,
   computeHomography,
+  planeAxisRotation,
   projectPoint,
+  projectedWorldAxes,
 } from './geometry'
 import type { PerspectivePlane, Point2 } from './types'
 
@@ -58,5 +62,75 @@ describe('perspective geometry', () => {
     expectPointClose(left[2], right[3])
     expect(cellCoordinate(plane, 1, 1)).toEqual({ x: -2, y: 5, z: 2 })
   })
-})
 
+  it('offers four valid image-to-world rotations for a top face', () => {
+    expect(axesForFaceRotation('up', 0)).toEqual({
+      uAxis: { x: 1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 0, z: 1 },
+    })
+    expect(axesForFaceRotation('up', 1)).toEqual({
+      uAxis: { x: 0, y: 0, z: -1 },
+      vAxis: { x: 1, y: 0, z: 0 },
+    })
+    expect(axesForFaceRotation('up', 2)).toEqual({
+      uAxis: { x: -1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 0, z: -1 },
+    })
+    expect(axesForFaceRotation('up', 3)).toEqual({
+      uAxis: { x: 0, y: 0, z: 1 },
+      vAxis: { x: -1, y: 0, z: 0 },
+    })
+  })
+
+  it('selects the inverse crop rotation needed for canonical north-up output', () => {
+    const plane: PerspectivePlane = {
+      id: 'rotated',
+      name: 'Rotated floor',
+      corners: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      columns: 1,
+      rows: 1,
+      face: 'up',
+      origin: { x: 0, y: 0, z: 0 },
+      ...axesForFaceRotation('up', 1),
+      inactiveCells: [],
+    }
+
+    expect(planeAxisRotation(plane)).toBe(1)
+    expect(canonicalCropTransform(plane)).toBe('rotate270')
+
+    plane.face = 'down'
+    Object.assign(plane, axesForFaceRotation('down', 0))
+    expect(canonicalCropTransform(plane)).toBe('rotate180')
+  })
+
+  it('projects positive world axes into a selected plane gizmo', () => {
+    const plane: PerspectivePlane = {
+      id: 'gizmo',
+      name: 'Gizmo floor',
+      corners: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      columns: 1,
+      rows: 1,
+      face: 'up',
+      origin: { x: 0, y: 0, z: 0 },
+      ...axesForFaceRotation('up', 0),
+      inactiveCells: [],
+    }
+    const axes = projectedWorldAxes(plane)
+
+    expect(axes.x.x).toBeCloseTo(1)
+    expect(axes.x.y).toBeCloseTo(0)
+    expect(axes.z.x).toBeCloseTo(0)
+    expect(axes.z.y).toBeCloseTo(1)
+    expect(axes.y.y).toBeLessThan(0)
+  })
+})

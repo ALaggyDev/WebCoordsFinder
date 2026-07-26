@@ -203,7 +203,25 @@ export const useEditorStore = create<EditorState>((set) => ({
       mutateDocument(state, (document) => {
         const plane = document.planes.find((entry) => entry.id === id)
         if (!plane) return
-        Object.assign(plane, patch)
+        const nextPatch = { ...patch }
+        if (
+          patch.face !== undefined &&
+          patch.face !== plane.face &&
+          patch.uAxis === undefined &&
+          patch.vAxis === undefined
+        ) {
+          Object.assign(nextPatch, defaultAxesForFace(patch.face))
+        }
+        const sameAxis = (
+          left: PerspectivePlane['uAxis'],
+          right: PerspectivePlane['uAxis'],
+        ) => left.x === right.x && left.y === right.y && left.z === right.z
+        const orientationChanged =
+          (nextPatch.face !== undefined && nextPatch.face !== plane.face) ||
+          (nextPatch.uAxis !== undefined && !sameAxis(nextPatch.uAxis, plane.uAxis)) ||
+          (nextPatch.vAxis !== undefined && !sameAxis(nextPatch.vAxis, plane.vAxis))
+        Object.assign(plane, nextPatch)
+        if (orientationChanged) document.scanner.compassResolved = false
         document.evidence
           .filter((entry) => entry.planeId === id)
           .forEach((entry) => {
@@ -211,6 +229,12 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.face = plane.face
             const stateCount = statesForFace(entry.blockId, plane.face)
             if (stateCount) entry.stateCount = stateCount
+            if (orientationChanged) {
+              entry.selectedVariant = undefined
+              entry.reviewStatus = 'unlabeled'
+              entry.scores = undefined
+              entry.confidence = undefined
+            }
           })
       }),
     ),

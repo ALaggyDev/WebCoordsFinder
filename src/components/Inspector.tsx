@@ -23,8 +23,15 @@ import {
   generateCoordsFinderConfig,
   validateForExport,
 } from '../domain/exportConfig'
-import { cellQuad, faceDisplayName } from '../domain/geometry'
-import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
+import {
+  axesForFaceRotation,
+  axisVectorLabel,
+  cellQuad,
+  defaultAxesForFace,
+  faceDisplayName,
+  planeAxisRotation,
+} from '../domain/geometry'
+import { imageDataUrl, orientCropToWorld, warpQuad } from '../domain/imageAnalysis'
 import {
   blockProfiles,
   blockProfileMap,
@@ -130,6 +137,8 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
     )
   }
 
+  const selectedAxisRotation = planeAxisRotation(plane) ?? 0
+
   return (
     <>
       <SectionTitle icon={Grid3X3} eyebrow="Perspective geometry" title={plane.name} />
@@ -145,9 +154,10 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
           <span>Visible face</span>
           <select
             value={plane.face}
-            onChange={(event) =>
-              updatePlane(plane.id, { face: event.target.value as FaceDirection })
-            }
+            onChange={(event) => {
+              const face = event.target.value as FaceDirection
+              updatePlane(plane.id, { face, ...defaultAxesForFace(face) })
+            }}
           >
             {faceOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -172,6 +182,38 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
         </div>
       </div>
       <div className="subsection">
+        <h3>Image-to-world direction</h3>
+        <label className="field">
+          <span>Image right (U) and image down (V)</span>
+          <select
+            value={selectedAxisRotation}
+            onChange={(event) =>
+              updatePlane(
+                plane.id,
+                axesForFaceRotation(plane.face, Number(event.target.value)),
+              )
+            }
+          >
+            {Array.from({ length: 4 }, (_, quarterTurns) => {
+              const axes = axesForFaceRotation(plane.face, quarterTurns)
+              return (
+                <option key={quarterTurns} value={quarterTurns}>
+                  Right {axisVectorLabel(axes.uAxis)} · Down {axisVectorLabel(axes.vAxis)}
+                </option>
+              )
+            })}
+          </select>
+        </label>
+        <p className="axis-hint">
+          Match these directions to the screenshot. Changing them rotates the
+          world-coordinate lattice without moving the drawn grid.
+        </p>
+        <div className="axis-readout">
+          <span><b>U</b> {plane.uAxis.x}, {plane.uAxis.y}, {plane.uAxis.z}</span>
+          <span><b>V</b> {plane.vAxis.x}, {plane.vAxis.y}, {plane.vAxis.z}</span>
+        </div>
+      </div>
+      <div className="subsection">
         <h3>Relative coordinate at top-left cell</h3>
         <div className="coordinate-fields">
           {(['x', 'y', 'z'] as const).map((axis) => (
@@ -187,16 +229,12 @@ function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
             />
           ))}
         </div>
-        <div className="axis-readout">
-          <span><b>U</b> {plane.uAxis.x}, {plane.uAxis.y}, {plane.uAxis.z}</span>
-          <span><b>V</b> {plane.vAxis.x}, {plane.vAxis.y}, {plane.vAxis.z}</span>
-        </div>
       </div>
       <div className={scanner.compassResolved ? 'compass-card resolved' : 'compass-card'}>
         <Compass size={19} />
         <div>
           <strong>{scanner.compassResolved ? 'World direction resolved' : 'Compass direction required'}</strong>
-          <span>Confirm that this project’s X/Z axes match the screenshot.</span>
+          <span>Set the image-to-world direction above, then confirm the X/Z axes.</span>
         </div>
         <button
           type="button"
@@ -232,19 +270,22 @@ function FaceInspector({
   const setVariant = useEditorStore((state) => state.setVariant)
   const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
   const evidence = document.evidence.find((entry) => entry.id === selectedIds[0])
+  const evidencePlane = document.planes.find((entry) => entry.id === evidence?.planeId)
   const [cropUrl, setCropUrl] = useState('')
 
   useEffect(() => {
     let active = true
-    if (!evidence) {
+    if (!evidence || !evidencePlane) {
       setCropUrl('')
       return
     }
-    const plane = document.planes.find((entry) => entry.id === evidence.planeId)
-    if (!plane) return
-    warpQuad(document.image.src, cellQuad(plane, evidence.column, evidence.row), 112)
+    warpQuad(
+      document.image.src,
+      cellQuad(evidencePlane, evidence.column, evidence.row),
+      112,
+    )
       .then((crop) => {
-        if (active) setCropUrl(imageDataUrl(crop))
+        if (active) setCropUrl(imageDataUrl(orientCropToWorld(crop, evidencePlane)))
       })
       .catch(() => {
         if (active) setCropUrl('')
@@ -252,7 +293,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [document.image.src, document.planes, evidence])
+  }, [document.image.src, evidence, evidencePlane])
 
   if (!evidence) {
     return (
@@ -292,7 +333,7 @@ function FaceInspector({
           <div className="face-preview">
             {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
           </div>
-          <span className="face-preview-label">Unwarped face</span>
+          <span className="face-preview-label">Unwarped · world-aligned</span>
         </div>
         <div className="face-preview-item">
           <div className="face-preview reference">
@@ -623,7 +664,7 @@ function ExportInspector() {
       </button>
       <div className="todo-card">
         <AlertTriangle size={15} />
-        <span><b>Roadmap:</b> unknown compass direction is not yet supported because model variants can rotate or mirror.</span>
+        <span><b>Note:</b> world directions are user-confirmed; the app does not infer a compass bearing from the screenshot.</span>
       </div>
     </>
   )
