@@ -48,6 +48,16 @@ describe('face inspector batch selection', () => {
     expect(
       screen.getByRole('button', { name: 'Auto analyze selected faces' }),
     ).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Face selection actions'))
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([
+      'Clear variants',
+      'Exclude',
+      'Auto analyze selected faces',
+      'Confirm',
+    ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear variants' }))
     expect(
@@ -65,6 +75,86 @@ describe('face inspector batch selection', () => {
         (entry) => entry.blockId === 'deepslate',
       ),
     ).toBe(true)
+  })
+
+  it('only auto analyzes unlabeled faces and only confirms proposed faces', () => {
+    const plane = useEditorStore.getState().document.planes[0]
+    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
+    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const [unlabeledId, proposedId] = useEditorStore.getState().selectedEvidenceIds
+    const document = structuredClone(useEditorStore.getState().document)
+    const proposed = document.evidence.find((entry) => entry.id === proposedId)!
+    proposed.selectedVariant = 1
+    proposed.reviewStatus = 'proposed'
+    proposed.scores = [{ variant: 1, score: 0.9 }]
+    proposed.confidence = 0.2
+    useEditorStore.setState({ document, step: 'faces', faceTab: 'selection' })
+    const onAutoFill = vi.fn()
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={onAutoFill}
+        onClearProject={vi.fn()}
+      />,
+    )
+
+    const autoAnalyze = screen.getByRole('button', {
+      name: 'Auto analyze selected faces',
+    })
+    const confirm = screen.getByRole('button', { name: 'Confirm' })
+    expect(autoAnalyze).toBeEnabled()
+    expect(confirm).toBeEnabled()
+
+    fireEvent.click(autoAnalyze)
+    expect(onAutoFill).toHaveBeenCalledWith([unlabeledId])
+
+    fireEvent.click(confirm)
+    expect(
+      useEditorStore.getState().document.evidence.find(
+        (entry) => entry.id === unlabeledId,
+      )?.reviewStatus,
+    ).toBe('unlabeled')
+    expect(
+      useEditorStore.getState().document.evidence.find(
+        (entry) => entry.id === proposedId,
+      )?.reviewStatus,
+    ).toBe('confirmed')
+    expect(confirm).toBeDisabled()
+  })
+
+  it('turns Exclude into Include for excluded faces', () => {
+    const plane = useEditorStore.getState().document.planes[0]
+    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
+    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+        onClearProject={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude' }))
+    expect(
+      useEditorStore.getState().document.evidence.every(
+        (entry) => entry.reviewStatus === 'excluded',
+      ),
+    ).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Include' }))
+    expect(
+      useEditorStore.getState().document.evidence.every(
+        (entry) =>
+          entry.reviewStatus === 'unlabeled' &&
+          entry.selectedVariant === undefined,
+      ),
+    ).toBe(true)
+    expect(screen.getByRole('button', { name: 'Exclude' })).toBeInTheDocument()
   })
 })
 
@@ -107,11 +197,21 @@ describe('Auto Analyze queue', () => {
     expect(
       screen.getByRole('button', { name: 'Accept proposed (1)' }),
     ).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Auto Analyze actions'))
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([
+      'Re-analyze selection',
+      'Clear queue',
+      'Accept proposed (1)',
+    ])
 
     const queueRows = screen.getAllByTitle('Inspect this face')
     expect(within(queueRows[0]).getByText('2, 0, 0')).toBeInTheDocument()
     expect(within(queueRows[1]).getByText('0, 0, 0')).toBeInTheDocument()
-    expect(within(queueRows[1]).getByText('—')).toBeInTheDocument()
+    expect(within(queueRows[0]).getByText('Δ 0.25')).toBeInTheDocument()
+    expect(within(queueRows[1]).getByText('Variant —')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear queue' }))
 

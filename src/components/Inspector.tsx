@@ -51,7 +51,7 @@ import { useEditorStore } from '../store/editorStore'
 interface InspectorProps {
   busy: boolean
   onOpenImage: () => void
-  onAutoFill: () => void
+  onAutoFill: (evidenceIds?: string[]) => void
   onClearProject: () => void
 }
 
@@ -266,7 +266,6 @@ function FaceInspector({
   const selectedIds = useEditorStore((state) => state.selectedEvidenceIds)
   const setBlockForSelection = useEditorStore((state) => state.setBlockForSelection)
   const setVariant = useEditorStore((state) => state.setVariant)
-  const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
   const selectedEvidence = document.evidence.filter((entry) =>
     selectedIds.includes(entry.id),
   )
@@ -306,6 +305,16 @@ function FaceInspector({
           <h3>Nothing selected</h3>
           <p>Use Select and click a grid cell. Shift-click to build a batch.</p>
         </div>
+        <FaceSelectionActions
+          busy={busy}
+          selectedIds={selectedIds}
+          multiple={false}
+          autoAnalyzeIds={[]}
+          proposedIds={[]}
+          excludedIds={[]}
+          anySelectedHaveVariant={false}
+          onAutoFill={onAutoFill}
+        />
       </>
     )
   }
@@ -323,15 +332,22 @@ function FaceInspector({
       : profile.transforms[evidence.selectedVariant]
   const statuses = new Set(selectedEvidence.map((entry) => entry.reviewStatus))
   const directions = new Set(selectedEvidence.map((entry) => entry.face))
-  const allSelectedHaveVariants = selectedEvidence.every(
-    (entry) => entry.selectedVariant !== undefined,
-  )
   const anySelectedHaveVariant = selectedEvidence.some(
     (entry) => entry.selectedVariant !== undefined,
   )
-  const canAnalyze = selectedEvidence.some((entry) =>
-    referenceTextureForFace(entry.blockId, entry.face),
-  )
+  const autoAnalyzeIds = selectedEvidence
+    .filter(
+      (entry) =>
+        entry.reviewStatus === 'unlabeled' &&
+        referenceTextureForFace(entry.blockId, entry.face),
+    )
+    .map((entry) => entry.id)
+  const proposedIds = selectedEvidence
+    .filter((entry) => entry.reviewStatus === 'proposed')
+    .map((entry) => entry.id)
+  const excludedIds = selectedEvidence
+    .filter((entry) => entry.reviewStatus === 'excluded')
+    .map((entry) => entry.id)
 
   return (
     <>
@@ -441,25 +457,46 @@ function FaceInspector({
           </div>
         </div>
       )}
-      <button
-        type="button"
-        className="primary-button full"
-        onClick={onAutoFill}
-        disabled={busy || !canAnalyze}
-        title={!canAnalyze ? 'The selected block profiles do not support these faces' : undefined}
-      >
-        {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-        Auto analyze selected faces
-      </button>
-      <div className="inspector-actions">
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => setEvidenceStatus(selectedIds, 'confirmed')}
-          disabled={!allSelectedHaveVariants}
-        >
-          <Check size={15} /> Confirm
-        </button>
+      <FaceSelectionActions
+        busy={busy}
+        selectedIds={selectedIds}
+        multiple={multiple}
+        autoAnalyzeIds={autoAnalyzeIds}
+        proposedIds={proposedIds}
+        excludedIds={excludedIds}
+        anySelectedHaveVariant={anySelectedHaveVariant}
+        onAutoFill={onAutoFill}
+      />
+    </>
+  )
+}
+
+function FaceSelectionActions({
+  busy,
+  selectedIds,
+  multiple,
+  autoAnalyzeIds,
+  proposedIds,
+  excludedIds,
+  anySelectedHaveVariant,
+  onAutoFill,
+}: {
+  busy: boolean
+  selectedIds: string[]
+  multiple: boolean
+  autoAnalyzeIds: string[]
+  proposedIds: string[]
+  excludedIds: string[]
+  anySelectedHaveVariant: boolean
+  onAutoFill: (evidenceIds?: string[]) => void
+}) {
+  const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
+  const hasSelection = selectedIds.length > 0
+  const includesExcludedFaces = excludedIds.length > 0
+
+  return (
+    <div className="face-selection-actions" aria-label="Face selection actions">
+      <div className="face-selection-action-row">
         <button
           type="button"
           className="secondary-button"
@@ -468,11 +505,45 @@ function FaceInspector({
         >
           <RotateCcw size={15} /> Clear {multiple ? 'variants' : 'variant'}
         </button>
-        <button type="button" className="secondary-button" onClick={() => setEvidenceStatus(selectedIds, 'excluded')}>
-          <X size={15} /> Exclude
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() =>
+            setEvidenceStatus(
+              includesExcludedFaces ? excludedIds : selectedIds,
+              includesExcludedFaces ? 'unlabeled' : 'excluded',
+            )}
+          disabled={!hasSelection}
+        >
+          {includesExcludedFaces ? <Eye size={15} /> : <X size={15} />}
+          {includesExcludedFaces ? 'Include' : 'Exclude'}
         </button>
       </div>
-    </>
+      <div className="face-selection-action-row primary-row">
+        <button
+          type="button"
+          className="primary-button"
+          onClick={() => onAutoFill(autoAnalyzeIds)}
+          disabled={busy || autoAnalyzeIds.length === 0}
+          title={!hasSelection
+            ? 'Select one or more faces first'
+            : autoAnalyzeIds.length === 0
+              ? 'Select at least one unlabeled face with a supported block profile'
+              : undefined}
+        >
+          {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+          Auto analyze selected faces
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setEvidenceStatus(proposedIds, 'confirmed')}
+          disabled={proposedIds.length === 0}
+        >
+          <Check size={15} /> Confirm
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -546,15 +617,15 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
       <p className="review-help">
         Accept proposed variants in bulk, or select a row to inspect and correct that face.
       </p>
-      <div className="review-actions">
-        <button className="primary-button" type="button" onClick={acceptProposed} disabled={proposedCount === 0}>
-          <Check size={15} /> Accept proposed ({proposedCount})
-        </button>
-        <button className="secondary-button" type="button" onClick={onAutoFill} disabled={busy || selectedIds.length === 0}>
+      <div className="review-actions" aria-label="Auto Analyze actions">
+        <button className="secondary-button" type="button" onClick={() => onAutoFill(selectedIds)} disabled={busy || selectedIds.length === 0}>
           <Sparkles size={15} /> Re-analyze selection
         </button>
         <button className="secondary-button" type="button" onClick={clearReviewQueue} disabled={reviewItems.length === 0}>
           <Trash2 size={15} /> Clear queue
+        </button>
+        <button className="primary-button" type="button" onClick={acceptProposed} disabled={proposedCount === 0}>
+          <Check size={15} /> Accept proposed ({proposedCount})
         </button>
       </div>
       <div className="review-list">
@@ -577,8 +648,12 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
                 <span>{blockProfileMap.get(entry.blockId)?.label} · {entry.stateCount}-state</span>
               </div>
               <div className="review-result">
-                {entry.selectedVariant === undefined ? '—' : entry.selectedVariant}
-                {entry.confidence !== undefined && <small>Δ {entry.confidence.toFixed(2)}</small>}
+                <strong>
+                  {entry.confidence === undefined ? 'Δ —' : `Δ ${entry.confidence.toFixed(2)}`}
+                </strong>
+                <small>
+                  Variant {entry.selectedVariant === undefined ? '—' : entry.selectedVariant}
+                </small>
               </div>
               <ChevronRight size={14} />
             </button>
@@ -604,7 +679,7 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   )
 
   return (
-    <>
+    <div className="faces-workspace">
       <div className="face-tabs" role="tablist" aria-label="Face evidence">
         <button
           type="button"
@@ -628,7 +703,7 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
       {faceTab === 'selection'
         ? <FaceInspector {...props} />
         : <ReviewInspector {...props} />}
-    </>
+    </div>
   )
 }
 

@@ -198,10 +198,11 @@ function App() {
     }
   }
 
-  const autoFill = async () => {
+  const autoFill = async (requestedEvidenceIds?: string[]) => {
     const state = useEditorStore.getState()
+    const targetIds = requestedEvidenceIds ?? state.selectedEvidenceIds
     const targets = state.document.evidence.filter((entry) =>
-      state.selectedEvidenceIds.includes(entry.id),
+      targetIds.includes(entry.id),
     )
     if (targets.length === 0) {
       notify('Select one or more grid faces first.', 'warning')
