@@ -47,3 +47,24 @@ describe('plane world orientation', () => {
     })
   })
 })
+
+describe('plane corner history', () => {
+  it('undoes and redoes a committed corner drag in one step', () => {
+    const plane = useEditorStore.getState().document.planes[0]
+    const original = { ...plane.corners[0] }
+    const moved = { x: original.x + 75, y: original.y - 40 }
+
+    useEditorStore.getState().movePlaneCorner(plane.id, 0, moved)
+
+    expect(useEditorStore.getState().past).toHaveLength(1)
+    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(moved)
+
+    useEditorStore.getState().undo()
+
+    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(original)
+
+    useEditorStore.getState().redo()
+
+    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(moved)
+  })
+})

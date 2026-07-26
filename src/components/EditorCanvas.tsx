@@ -39,6 +39,12 @@ interface VisualizationSettings {
   axisGizmos: boolean
 }
 
+interface DraggedCorner {
+  planeId: string
+  cornerIndex: number
+  point: Point2
+}
+
 const visualizationOptions: Array<{
   key: keyof VisualizationSettings
   label: string
@@ -147,9 +153,20 @@ export function EditorCanvas() {
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 })
   const [draft, setDraft] = useState<Point2[]>([])
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
+  const [draggedCorner, setDraggedCorner] = useState<DraggedCorner>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmos: true,
   })
+
+  const renderedPlanes = useMemo(() => {
+    if (!draggedCorner) return document.planes
+    return document.planes.map((plane) => {
+      if (plane.id !== draggedCorner.planeId) return plane
+      const corners = [...plane.corners] as PerspectivePlane['corners']
+      corners[draggedCorner.cornerIndex] = draggedCorner.point
+      return { ...plane, corners }
+    })
+  }, [document.planes, draggedCorner])
 
   const evidenceMap = useMemo(
     () => new Map(document.evidence.map((entry) => [entry.id, entry])),
@@ -355,7 +372,7 @@ export function EditorCanvas() {
           )}
         </Layer>
         <Layer>
-          {document.planes.map((plane, planeIndex) => (
+          {renderedPlanes.map((plane, planeIndex) => (
             <Group key={plane.id}>
               {Array.from({ length: plane.rows }).flatMap((_, row) =>
                 Array.from({ length: plane.columns }).map((__, column) => {
@@ -417,12 +434,42 @@ export function EditorCanvas() {
                       stroke={GRID}
                       strokeWidth={2 / view.scale}
                       draggable
-                      onDragMove={(event) =>
-                        movePlaneCorner(plane.id, cornerIndex, {
-                          x: event.target.x(),
-                          y: event.target.y(),
+                      onDragStart={(event) =>
+                        setDraggedCorner({
+                          planeId: plane.id,
+                          cornerIndex,
+                          point: {
+                            x: event.target.x(),
+                            y: event.target.y(),
+                          },
                         })
                       }
+                      onDragMove={(event) =>
+                        setDraggedCorner({
+                          planeId: plane.id,
+                          cornerIndex,
+                          point: {
+                            x: event.target.x(),
+                            y: event.target.y(),
+                          },
+                        })
+                      }
+                      onDragEnd={(event) => {
+                        const point = {
+                          x: event.target.x(),
+                          y: event.target.y(),
+                        }
+                        const original = document.planes
+                          .find((entry) => entry.id === plane.id)
+                          ?.corners[cornerIndex]
+                        setDraggedCorner(undefined)
+                        if (
+                          original &&
+                          (original.x !== point.x || original.y !== point.y)
+                        ) {
+                          movePlaneCorner(plane.id, cornerIndex, point)
+                        }
+                      }}
                     />
                   ))}
                 </>}
