@@ -231,6 +231,7 @@ export function EditorCanvas() {
                 fontSize={11 / view.scale}
                 fill={selectedPlaneId === plane.id ? '#e7fff5' : '#b7c2c8'}
                 padding={3 / view.scale}
+                listening={tool !== 'select'}
                 onClick={(event) => {
                   event.cancelBubble = true
                   setSelectedPlane(plane.id)
