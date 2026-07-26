@@ -10,6 +10,7 @@ import {
   Grid3X3,
   Link2,
   LoaderCircle,
+  RotateCcw,
   ScanSearch,
   Sparkles,
   Trash2,
@@ -266,13 +267,17 @@ function FaceInspector({
   const setBlockForSelection = useEditorStore((state) => state.setBlockForSelection)
   const setVariant = useEditorStore((state) => state.setVariant)
   const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
-  const evidence = document.evidence.find((entry) => entry.id === selectedIds[0])
+  const selectedEvidence = document.evidence.filter((entry) =>
+    selectedIds.includes(entry.id),
+  )
+  const evidence = selectedEvidence[0]
+  const multiple = selectedEvidence.length > 1
   const evidencePlane = document.planes.find((entry) => entry.id === evidence?.planeId)
   const [cropUrl, setCropUrl] = useState('')
 
   useEffect(() => {
     let active = true
-    if (!evidence || !evidencePlane) {
+    if (!evidence || !evidencePlane || multiple) {
       setCropUrl('')
       return
     }
@@ -290,7 +295,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [document.image.src, evidence, evidencePlane])
+  }, [document.image.src, evidence, evidencePlane, multiple])
 
   if (!evidence) {
     return (
@@ -305,119 +310,163 @@ function FaceInspector({
     )
   }
 
-  const profile = blockProfileMap.get(evidence.blockId)!
-  const referenceUrl = referenceTextureForFace(evidence.blockId, evidence.face)
+  const blockIds = new Set(selectedEvidence.map((entry) => entry.blockId))
+  const selectedBlockId = blockIds.size === 1 ? evidence.blockId : ''
+  const profile = selectedBlockId ? blockProfileMap.get(selectedBlockId) : undefined
+  const referenceUrl = multiple
+    ? undefined
+    : referenceTextureForFace(evidence.blockId, evidence.face)
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const selectedTransform =
-    evidence.selectedVariant === undefined
+    evidence.selectedVariant === undefined || !profile
       ? undefined
       : profile.transforms[evidence.selectedVariant]
+  const statuses = new Set(selectedEvidence.map((entry) => entry.reviewStatus))
+  const directions = new Set(selectedEvidence.map((entry) => entry.face))
+  const allSelectedHaveVariants = selectedEvidence.every(
+    (entry) => entry.selectedVariant !== undefined,
+  )
+  const anySelectedHaveVariant = selectedEvidence.some(
+    (entry) => entry.selectedVariant !== undefined,
+  )
+  const canAnalyze = selectedEvidence.some((entry) =>
+    referenceTextureForFace(entry.blockId, entry.face),
+  )
 
   return (
     <>
       <SectionTitle
         icon={Eye}
-        eyebrow={`${selectedIds.length} face${selectedIds.length === 1 ? '' : 's'} selected`}
-        title={`${evidence.coordinate.x}, ${evidence.coordinate.y}, ${evidence.coordinate.z}`}
+        eyebrow={`${selectedEvidence.length} face${selectedEvidence.length === 1 ? '' : 's'} selected`}
+        title={multiple
+          ? 'Batch selection'
+          : `${evidence.coordinate.x}, ${evidence.coordinate.y}, ${evidence.coordinate.z}`}
       />
       <div className="evidence-meta">
-        <span>{faceDisplayName(evidence.face)}</span>
-        <span>{evidence.stateCount}-state</span>
-        <span className={`status-dot ${evidence.reviewStatus}`}>{evidence.reviewStatus}</span>
+        <span>{directions.size === 1 ? faceDisplayName(evidence.face) : 'Mixed directions'}</span>
+        <span>{multiple ? 'Batch edit' : `${evidence.stateCount}-state`}</span>
+        <span className={statuses.size === 1 ? `status-dot ${evidence.reviewStatus}` : 'status-dot'}>
+          {statuses.size === 1 ? evidence.reviewStatus : 'mixed status'}
+        </span>
       </div>
-      <div className="face-preview-row">
-        <div className="face-preview-item">
-          <div className="face-preview">
-            {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
+      {!multiple && profile && (
+        <div className="face-preview-row">
+          <div className="face-preview-item">
+            <div className="face-preview">
+              {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
+            </div>
+            <span className="face-preview-label">Unwarped · world-aligned</span>
           </div>
-          <span className="face-preview-label">Unwarped · world-aligned</span>
-        </div>
-        <div className="face-preview-item">
-          <div className="face-preview reference">
-            {referenceUrl ? (
-              <img
-                src={referenceUrl}
-                alt={`${profile.label} reference${evidence.selectedVariant === undefined ? '' : `, variant ${evidence.selectedVariant}`}`}
-                style={selectedTransform ? { transform: transformStyle(selectedTransform) } : undefined}
-              />
-            ) : (
-              <div className="reference-unavailable">Unsupported face</div>
-            )}
+          <div className="face-preview-item">
+            <div className="face-preview reference">
+              {referenceUrl ? (
+                <img
+                  src={referenceUrl}
+                  alt={`${profile.label} reference${evidence.selectedVariant === undefined ? '' : `, variant ${evidence.selectedVariant}`}`}
+                  style={selectedTransform ? { transform: transformStyle(selectedTransform) } : undefined}
+                />
+              ) : (
+                <div className="reference-unavailable">Unsupported face</div>
+              )}
+            </div>
+            <span className="face-preview-label">Reference</span>
           </div>
-          <span className="face-preview-label">Reference</span>
         </div>
-      </div>
+      )}
       <label className="field">
         <span>Block profile</span>
         <select
-          value={evidence.blockId}
+          value={selectedBlockId}
           onChange={(event) => setBlockForSelection(event.target.value)}
         >
+          {!selectedBlockId && <option value="" disabled>Mixed</option>}
           {blockProfiles.map((candidate) => (
             <option
               key={candidate.id}
               value={candidate.id}
-              disabled={!statesForFace(candidate.id, evidence.face)}
+              disabled={selectedEvidence.some(
+                (entry) => !statesForFace(candidate.id, entry.face),
+              )}
             >
-              {candidate.label}{!statesForFace(candidate.id, evidence.face) ? ' — unsupported face' : ''}
+              {candidate.label}
+              {selectedEvidence.some((entry) => !statesForFace(candidate.id, entry.face))
+                ? ' — unsupported selection'
+                : ''}
             </option>
           ))}
         </select>
       </label>
-      <div className="profile-note">
-        <span style={{ background: profile.accent }} />
-        {profile.notes}
-      </div>
-      <div className="candidate-section">
-        <h3>Visible variant</h3>
-        <div className={`candidate-grid count-${evidence.stateCount}`}>
-          {candidates.map((variant) => {
-            const transform = profile.transforms[variant]
-            const score = evidence.scores?.find((entry) => entry.variant === variant)?.score
-            return (
-              <button
-                type="button"
-                key={variant}
-                className={evidence.selectedVariant === variant ? 'candidate active' : 'candidate'}
-                onClick={() => setVariant(evidence.id, variant)}
-              >
-                <div className="candidate-image">
-                  {referenceUrl ? (
-                    <img
-                      src={referenceUrl}
-                      alt=""
-                      style={{ transform: transformStyle(transform) }}
-                    />
-                  ) : (
-                    <span className="candidate-unavailable">—</span>
-                  )}
-                </div>
-                <span>
-                  Variant {variant} · {score === undefined ? 'Manual' : `${Math.round(score * 100)}% match`}
-                </span>
-              </button>
-            )
-          })}
+      {profile ? (
+        <div className="profile-note">
+          <span style={{ background: profile.accent }} />
+          {profile.notes}
         </div>
-      </div>
+      ) : (
+        <div className="profile-note">
+          Choose a profile to apply it to all {selectedEvidence.length} selected faces.
+        </div>
+      )}
+      {!multiple && profile && (
+        <div className="candidate-section">
+          <h3>Visible variant</h3>
+          <div className={`candidate-grid count-${evidence.stateCount}`}>
+            {candidates.map((variant) => {
+              const transform = profile.transforms[variant]
+              const score = evidence.scores?.find((entry) => entry.variant === variant)?.score
+              return (
+                <button
+                  type="button"
+                  key={variant}
+                  aria-pressed={evidence.selectedVariant === variant}
+                  className={evidence.selectedVariant === variant ? 'candidate active' : 'candidate'}
+                  onClick={() => setVariant(evidence.id, variant)}
+                >
+                  <div className="candidate-image">
+                    {referenceUrl ? (
+                      <img
+                        src={referenceUrl}
+                        alt=""
+                        style={{ transform: transformStyle(transform) }}
+                      />
+                    ) : (
+                      <span className="candidate-unavailable">—</span>
+                    )}
+                  </div>
+                  <span>
+                    Variant {variant} · {score === undefined ? 'Manual' : `${Math.round(score * 100)}% match`}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       <button
         type="button"
         className="primary-button full"
         onClick={onAutoFill}
-        disabled={busy || !referenceUrl}
-        title={!referenceUrl ? 'This block profile does not support the selected face' : undefined}
+        disabled={busy || !canAnalyze}
+        title={!canAnalyze ? 'The selected block profiles do not support these faces' : undefined}
       >
         {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-        Auto-fill selected faces
+        Auto analyze selected faces
       </button>
       <div className="inspector-actions">
         <button
           type="button"
           className="secondary-button"
           onClick={() => setEvidenceStatus(selectedIds, 'confirmed')}
-          disabled={evidence.selectedVariant === undefined}
+          disabled={!allSelectedHaveVariants}
         >
           <Check size={15} /> Confirm
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setEvidenceStatus(selectedIds, 'unlabeled')}
+          disabled={!anySelectedHaveVariant}
+        >
+          <RotateCcw size={15} /> Clear {multiple ? 'variants' : 'variant'}
         </button>
         <button type="button" className="secondary-button" onClick={() => setEvidenceStatus(selectedIds, 'excluded')}>
           <X size={15} /> Exclude
@@ -435,24 +484,45 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
   const document = useEditorStore((state) => state.document)
   const selectedIds = useEditorStore((state) => state.selectedEvidenceIds)
   const updateScanner = useEditorStore((state) => state.updateScanner)
-  const acceptQualified = useEditorStore((state) => state.acceptQualifiedProposals)
-  const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
+  const acceptProposed = useEditorStore((state) => state.acceptProposed)
+  const clearReviewQueue = useEditorStore((state) => state.clearReviewQueue)
+  const inspectEvidence = useEditorStore((state) => state.inspectEvidence)
+  const reviewItems = useMemo(
+    () =>
+      document.evidence
+        .filter(
+          (entry) =>
+            entry.reviewStatus !== 'excluded' &&
+            entry.scores !== undefined &&
+            entry.scores.length > 0,
+        )
+        .sort(
+          (a, b) =>
+            (b.confidence ?? -1) - (a.confidence ?? -1) ||
+            a.coordinate.y - b.coordinate.y ||
+            a.coordinate.z - b.coordinate.z ||
+            a.coordinate.x - b.coordinate.x,
+        ),
+    [document.evidence],
+  )
   const counts = useMemo(
     () =>
-      document.evidence.reduce(
+      reviewItems.reduce(
         (result, entry) => {
           result[entry.reviewStatus] += 1
           return result
         },
         { unlabeled: 0, proposed: 0, confirmed: 0, excluded: 0 },
       ),
-    [document.evidence],
+    [reviewItems],
   )
-  const reviewItems = document.evidence.filter((entry) => entry.reviewStatus !== 'excluded')
+  const proposedCount = reviewItems.filter(
+    (entry) => entry.reviewStatus === 'proposed',
+  ).length
 
   return (
     <>
-      <SectionTitle icon={ScanSearch} eyebrow="Quality control" title="Review queue" />
+      <SectionTitle icon={ScanSearch} eyebrow="Automatic proposals" title="Analyzed faces" />
       <div className="review-metrics">
         <div><strong>{counts.confirmed}</strong><span>Confirmed</span></div>
         <div><strong>{counts.proposed}</strong><span>Proposed</span></div>
@@ -460,11 +530,12 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
       </div>
       <label className="range-field">
         <span>
-          Proposal margin
+          Proposal threshold
           <b>{document.scanner.confidenceThreshold.toFixed(2)}</b>
         </span>
         <input
           type="range"
+          aria-label="Proposal threshold"
           min="0.02"
           max="0.35"
           step="0.01"
@@ -472,24 +543,33 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
           onChange={(event) => updateScanner({ confidenceThreshold: Number(event.target.value) })}
         />
       </label>
+      <p className="review-help">
+        Accept proposed variants in bulk, or select a row to inspect and correct that face.
+      </p>
       <div className="review-actions">
-        <button className="primary-button" type="button" onClick={acceptQualified}>
-          <Check size={15} /> Accept qualified
+        <button className="primary-button" type="button" onClick={acceptProposed} disabled={proposedCount === 0}>
+          <Check size={15} /> Accept proposed ({proposedCount})
         </button>
         <button className="secondary-button" type="button" onClick={onAutoFill} disabled={busy || selectedIds.length === 0}>
-          <Sparkles size={15} /> Analyze selection
+          <Sparkles size={15} /> Re-analyze selection
+        </button>
+        <button className="secondary-button" type="button" onClick={clearReviewQueue} disabled={reviewItems.length === 0}>
+          <Trash2 size={15} /> Clear queue
         </button>
       </div>
       <div className="review-list">
         {reviewItems.length === 0 ? (
-          <div className="list-empty">Select grid cells to create evidence.</div>
+          <div className="list-empty">
+            No analyzed faces yet. Select faces and use Auto analyze selected faces.
+          </div>
         ) : (
           reviewItems.map((entry) => (
             <button
               key={entry.id}
               type="button"
               className={`review-item ${entry.reviewStatus}`}
-              onClick={() => setEvidenceStatus([entry.id], entry.reviewStatus === 'confirmed' ? 'unlabeled' : 'confirmed')}
+              onClick={() => inspectEvidence(entry.id)}
+              title="Inspect this face"
             >
               <span className="review-state" />
               <div>
@@ -505,6 +585,49 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
           ))
         )}
       </div>
+    </>
+  )
+}
+
+function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
+  const faceTab = useEditorStore((state) => state.faceTab)
+  const setFaceTab = useEditorStore((state) => state.setFaceTab)
+  const selectedCount = useEditorStore((state) => state.selectedEvidenceIds.length)
+  const analyzedCount = useEditorStore(
+    (state) =>
+      state.document.evidence.filter(
+        (entry) =>
+          entry.reviewStatus !== 'excluded' &&
+          entry.scores !== undefined &&
+          entry.scores.length > 0,
+      ).length,
+  )
+
+  return (
+    <>
+      <div className="face-tabs" role="tablist" aria-label="Face evidence">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={faceTab === 'selection'}
+          className={faceTab === 'selection' ? 'active' : ''}
+          onClick={() => setFaceTab('selection')}
+        >
+          Selection <span>{selectedCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={faceTab === 'review'}
+          className={faceTab === 'review' ? 'active' : ''}
+          onClick={() => setFaceTab('review')}
+        >
+          Auto Analyze <span>{analyzedCount}</span>
+        </button>
+      </div>
+      {faceTab === 'selection'
+        ? <FaceInspector {...props} />
+        : <ReviewInspector {...props} />}
     </>
   )
 }
@@ -694,8 +817,7 @@ export function Inspector(props: InspectorProps) {
       <div className="inspector-scroll">
         {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} onClearProject={props.onClearProject} />}
         {step === 'grid' && <PlaneInspector plane={selectedPlane} />}
-        {step === 'faces' && <FaceInspector busy={props.busy} onAutoFill={props.onAutoFill} />}
-        {step === 'review' && <ReviewInspector busy={props.busy} onAutoFill={props.onAutoFill} />}
+        {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
       </div>
     </aside>

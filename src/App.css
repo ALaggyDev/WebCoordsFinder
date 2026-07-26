@@ -537,6 +537,7 @@ button:disabled {
 
 .inspector-actions {
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .primary-button,
@@ -656,6 +657,57 @@ button:disabled {
 .selection-placeholder span:nth-child(2) { right: -3px; top: -3px; }
 .selection-placeholder span:nth-child(3) { right: -3px; bottom: -3px; }
 .selection-placeholder span:nth-child(4) { left: -3px; bottom: -3px; }
+
+.face-tabs {
+  margin: -4px 0 18px;
+  padding: 3px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  background: #0b1115;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.face-tabs button {
+  min-width: 0;
+  min-height: 31px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.face-tabs button:hover {
+  color: var(--text);
+}
+
+.face-tabs button.active {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.face-tabs button span {
+  min-width: 18px;
+  padding: 2px 5px;
+  color: var(--faint);
+  background: #0a1013;
+  border-radius: 999px;
+  font: 8px var(--mono);
+}
+
+.face-tabs button.active span {
+  color: var(--accent);
+}
 
 .evidence-meta {
   margin-top: -9px;
@@ -865,8 +917,16 @@ button:disabled {
   accent-color: var(--accent);
 }
 
+.review-help {
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 .review-actions {
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .review-list {

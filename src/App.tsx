@@ -50,7 +50,7 @@ function App() {
   const replaceImage = useEditorStore((state) => state.replaceImage)
   const loadDocument = useEditorStore((state) => state.loadDocument)
   const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
-  const setStep = useEditorStore((state) => state.setStep)
+  const setFaceTab = useEditorStore((state) => state.setFaceTab)
   const setTool = useEditorStore((state) => state.setTool)
   const setVariant = useEditorStore((state) => state.setVariant)
   const undo = useEditorStore((state) => state.undo)
@@ -263,9 +263,9 @@ function App() {
       )
       worker.terminate()
       applyAnalysisResults(results)
-      setStep('review')
+      setFaceTab('review')
       notify(
-        `${results.length} face${results.length === 1 ? '' : 's'} analyzed and queued for review.`,
+        `${results.length} face${results.length === 1 ? '' : 's'} added to Auto Analyze.`,
         'success',
       )
       if (analyzable.length < targets.length) {

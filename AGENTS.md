@@ -30,9 +30,8 @@ local web application:
 2. Sketch perspective-aware block planes or individual block faces.
 3. Assign relative block coordinates and visible world-facing directions.
 4. Label blocks and determine their visible texture/model variant manually or
-   with a reviewable image-matching proposal.
-5. Review the evidence and export an exact CoordsFinder configuration file for
-   the user to run with their local CUDA executable.
+   with a reviewable image-matching proposal, then export an exact CoordsFinder
+   configuration file for the user to run with their local CUDA executable.
 
 Screenshots and projects must remain on the user's device. Vanilla reference
 textures are bundled with the application, and there is no server-side image
@@ -54,17 +53,22 @@ review proposed variants before they can be exported.
 
 ## User Workflow
 
-The top navigation follows five stages:
+The top navigation follows four stages:
 
 1. **Image** — open a screenshot and name the anchor/result.
 2. **Grid** — create a four-corner perspective plane, set its row and column
    counts, assign its face direction and relative origin, or hinge a connected
    plane from an existing edge.
-3. **Faces** — select cells, assign a supported block profile, inspect the
-   perspective-correct crop, and choose a visible state. A bundled, face-correct
-   vanilla reference PNG enables automatic comparison.
-4. **Review** — inspect proposed, confirmed, excluded, and unlabeled evidence.
-5. **Export** — choose the texture algorithm and search bounds,
+3. **Faces** — use the Selection tab to assign block profiles, inspect
+   perspective-correct crops, choose visible states, and request automatic
+   proposals. Use the nested Auto Analyze tab to set the proposal threshold,
+   accept proposals, or open individual faces for correction. Only analyzed
+   results meeting the current threshold are marked as proposed. Bundled,
+   face-correct vanilla reference PNGs enable automatic comparison. The tab
+   contains only analyzed faces, ordered from highest to lowest confidence.
+   Clearing it discards analysis metadata and unaccepted results while
+   preserving confirmed evidence.
+4. **Export** — choose the texture algorithm and search bounds,
    validate the evidence, preview the generated configuration, and download
    `coordsfinder.conf`.
 

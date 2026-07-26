@@ -12,7 +12,7 @@ export const textureAlgorithms = [
 export type TextureAlgorithm = (typeof textureAlgorithms)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed' | 'excluded'
-export type EditorStep = 'image' | 'grid' | 'faces' | 'review' | 'export'
+export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
 export type EditorTool = 'select' | 'plane' | 'face'
 
 export type CandidateTransform =

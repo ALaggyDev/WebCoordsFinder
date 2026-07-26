@@ -12,6 +12,7 @@ import type {
   EditorStep,
   EditorTool,
   FaceDirection,
+  FaceEvidence,
   PerspectivePlane,
   Point2,
   ScannerSettings,
@@ -75,17 +76,41 @@ interface AnalysisResult {
   confidence: number
 }
 
+function syncProposalToThreshold(entry: FaceEvidence, threshold: number): void {
+  if (!entry.scores?.length) return
+  const qualifies = (entry.confidence ?? 0) >= threshold
+  entry.selectedVariant = qualifies ? entry.scores[0].variant : undefined
+  entry.reviewStatus = qualifies ? 'proposed' : 'unlabeled'
+}
+
+function syncUnconfirmedProposals(document: EditorDocument): void {
+  document.evidence
+    .filter(
+      (entry) =>
+        entry.reviewStatus !== 'confirmed' &&
+        entry.reviewStatus !== 'excluded',
+    )
+    .forEach((entry) =>
+      syncProposalToThreshold(entry, document.scanner.confidenceThreshold),
+    )
+}
+
+type FaceTab = 'selection' | 'review'
+
 interface EditorState {
   document: EditorDocument
   step: EditorStep
+  faceTab: FaceTab
   tool: EditorTool
   selectedPlaneId?: string
   selectedEvidenceIds: string[]
   past: EditorDocument[]
   future: EditorDocument[]
   setStep: (step: EditorStep) => void
+  setFaceTab: (tab: FaceTab) => void
   setTool: (tool: EditorTool) => void
   setSelectedPlane: (planeId?: string) => void
+  inspectEvidence: (evidenceId: string) => void
   loadDocument: (document: EditorDocument) => void
   replaceImage: (image: EditorDocument['image']) => void
   addPlane: (
@@ -106,7 +131,8 @@ interface EditorState {
     status: 'confirmed' | 'excluded' | 'unlabeled',
   ) => void
   applyAnalysisResults: (results: AnalysisResult[]) => void
-  acceptQualifiedProposals: () => void
+  acceptProposed: () => void
+  clearReviewQueue: () => void
   updateScanner: (patch: Partial<ScannerSettings>) => void
   updateBounds: (patch: Partial<ScannerSettings['bounds']>) => void
   setProjectName: (name: string) => void
@@ -131,22 +157,39 @@ function mutateDocument(
 export const useEditorStore = create<EditorState>((set) => ({
   document: createInitialDocument(),
   step: 'grid',
+  faceTab: 'selection',
   tool: 'select',
   selectedPlaneId: 'wall-demo',
   selectedEvidenceIds: [],
   past: [],
   future: [],
   setStep: (step) => set({ step }),
+  setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) => set({ tool }),
   setSelectedPlane: (selectedPlaneId) => set({ selectedPlaneId }),
-  loadDocument: (document) =>
+  inspectEvidence: (evidenceId) =>
+    set((state) => {
+      const evidence = state.document.evidence.find((entry) => entry.id === evidenceId)
+      if (!evidence) return state
+      return {
+        selectedEvidenceIds: [evidenceId],
+        selectedPlaneId: evidence.planeId,
+        step: 'faces' as EditorStep,
+        faceTab: 'selection' as FaceTab,
+      }
+    }),
+  loadDocument: (document) => {
+    const normalizedDocument = structuredClone(document)
+    syncUnconfirmedProposals(normalizedDocument)
     set({
-      document,
+      document: normalizedDocument,
       past: [],
       future: [],
+      faceTab: 'selection',
       selectedEvidenceIds: [],
-      selectedPlaneId: document.planes[0]?.id,
-    }),
+      selectedPlaneId: normalizedDocument.planes[0]?.id,
+    })
+  },
   replaceImage: (image) =>
     set((state) => ({
       ...mutateDocument(state, (document) => {
@@ -157,6 +200,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedPlaneId: undefined,
       selectedEvidenceIds: [],
       step: 'grid',
+      faceTab: 'selection',
       tool: 'plane',
     })),
   addPlane: (corners, face = 'north', singleFace = false) =>
@@ -285,24 +329,26 @@ export const useEditorStore = create<EditorState>((set) => ({
         selectedPlaneId: planeId,
         selectedEvidenceIds,
         step: 'faces' as EditorStep,
+        faceTab: 'selection' as FaceTab,
       }
     }),
   clearSelection: () => set({ selectedEvidenceIds: [] }),
   setBlockForSelection: (blockId) =>
     set((state) =>
       mutateDocument(state, (document) => {
-        document.evidence
-          .filter((entry) => state.selectedEvidenceIds.includes(entry.id))
-          .forEach((entry) => {
-            const stateCount = statesForFace(blockId, entry.face)
-            if (!stateCount) return
-            entry.blockId = blockId
-            entry.stateCount = stateCount
-            entry.selectedVariant = undefined
-            entry.reviewStatus = 'unlabeled'
-            entry.scores = undefined
-            entry.confidence = undefined
-          })
+        const selected = document.evidence.filter((entry) =>
+          state.selectedEvidenceIds.includes(entry.id),
+        )
+        if (selected.some((entry) => !statesForFace(blockId, entry.face))) return
+        selected.forEach((entry) => {
+          const stateCount = statesForFace(blockId, entry.face)!
+          entry.blockId = blockId
+          entry.stateCount = stateCount
+          entry.selectedVariant = undefined
+          entry.reviewStatus = 'unlabeled'
+          entry.scores = undefined
+          entry.confidence = undefined
+        })
       }),
     ),
   setVariant: (id, variant) =>
@@ -310,6 +356,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       mutateDocument(state, (document) => {
         const entry = document.evidence.find((item) => item.id === id)
         if (!entry) return
+        if (entry.selectedVariant === variant) {
+          entry.selectedVariant = undefined
+          entry.reviewStatus = 'unlabeled'
+          return
+        }
         entry.selectedVariant = variant
         entry.reviewStatus = 'confirmed'
       }),
@@ -320,6 +371,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.evidence
           .filter((entry) => ids.includes(entry.id))
           .forEach((entry) => {
+            if (reviewStatus === 'confirmed' && entry.selectedVariant === undefined) return
             entry.reviewStatus = reviewStatus
             if (reviewStatus === 'unlabeled') entry.selectedVariant = undefined
           })
@@ -335,31 +387,43 @@ export const useEditorStore = create<EditorState>((set) => ({
           if (!entry || result.scores.length === 0) return
           entry.scores = result.scores
           entry.confidence = result.confidence
-          entry.selectedVariant = result.scores[0].variant
-          entry.reviewStatus = 'proposed'
+          entry.selectedVariant = undefined
+          entry.reviewStatus = 'unlabeled'
+          syncProposalToThreshold(entry, document.scanner.confidenceThreshold)
         })
       }),
     ),
-  acceptQualifiedProposals: () =>
+  acceptProposed: () =>
     set((state) =>
       mutateDocument(state, (document) => {
         document.evidence
-          .filter(
-            (entry) =>
-              entry.reviewStatus === 'proposed' &&
-              (entry.confidence ?? 0) >= document.scanner.confidenceThreshold &&
-              (state.selectedEvidenceIds.length === 0 ||
-                state.selectedEvidenceIds.includes(entry.id)),
-          )
+          .filter((entry) => entry.reviewStatus === 'proposed')
           .forEach((entry) => {
             entry.reviewStatus = 'confirmed'
           })
+      }),
+    ),
+  clearReviewQueue: () =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        document.evidence.forEach((entry) => {
+          if (entry.scores === undefined && entry.confidence === undefined) return
+          entry.scores = undefined
+          entry.confidence = undefined
+          if (entry.reviewStatus === 'proposed') {
+            entry.selectedVariant = undefined
+            entry.reviewStatus = 'unlabeled'
+          }
+        })
       }),
     ),
   updateScanner: (patch) =>
     set((state) =>
       mutateDocument(state, (document) => {
         document.scanner = { ...document.scanner, ...patch }
+        if (patch.confidenceThreshold !== undefined) {
+          syncUnconfirmedProposals(document)
+        }
       }),
     ),
   updateBounds: (patch) =>
@@ -399,6 +463,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       document: createInitialDocument(),
       past: [],
       future: [],
+      faceTab: 'selection',
       selectedPlaneId: 'wall-demo',
       selectedEvidenceIds: [],
       step: 'grid',

@@ -5,7 +5,6 @@ import {
   FileImage,
   FolderOpen,
   Grid3X3,
-  ScanSearch,
   ShieldCheck,
 } from 'lucide-react'
 import type { EditorStep } from '../domain/types'
@@ -19,7 +18,6 @@ const steps: Array<{
   { id: 'image', label: 'Image', icon: FileImage },
   { id: 'grid', label: 'Grid', icon: Grid3X3 },
   { id: 'faces', label: 'Faces', icon: BoxSelect },
-  { id: 'review', label: 'Review', icon: ScanSearch },
   { id: 'export', label: 'Export', icon: Download },
 ]
 
