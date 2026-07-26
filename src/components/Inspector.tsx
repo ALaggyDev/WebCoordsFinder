@@ -385,7 +385,11 @@ function FaceInspector({
                 <div className="reference-unavailable">Unsupported face</div>
               )}
             </div>
-            <span className="face-preview-label">Reference</span>
+            <span className="face-preview-label">
+              {evidence.selectedVariant === undefined
+                ? 'No variant selected'
+                : `Variant ${evidence.selectedVariant}`}
+            </span>
           </div>
         </div>
       )}
