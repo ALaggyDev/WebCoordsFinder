@@ -569,10 +569,15 @@ button:disabled {
   gap: 9px;
 }
 
+.face-preview-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
 .face-preview {
   min-width: 0;
   aspect-ratio: 1;
-  position: relative;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -585,7 +590,7 @@ button:disabled {
   background-size: 14px 14px;
   background-position: 0 0, 0 7px, 7px -7px, -7px 0;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 0;
 }
 
 .face-preview img {
@@ -595,17 +600,10 @@ button:disabled {
   image-rendering: pixelated;
 }
 
-.face-preview > span {
-  position: absolute;
-  left: 5px;
-  right: 5px;
-  bottom: 5px;
-  padding: 4px;
-  color: #d4dde1;
-  background: rgba(7, 11, 14, 0.82);
-  border-radius: 4px;
+.face-preview-label {
+  color: var(--muted);
   text-align: center;
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .reference-unavailable,
@@ -682,7 +680,7 @@ button:disabled {
   place-items: center;
   overflow: hidden;
   background: var(--surface-2);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .candidate-image img {

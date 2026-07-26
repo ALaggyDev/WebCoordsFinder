@@ -270,6 +270,10 @@ function FaceInspector({
   const profile = blockProfileMap.get(evidence.blockId)!
   const referenceUrl = referenceTextureForFace(evidence.blockId, evidence.face)
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
+  const selectedTransform =
+    evidence.selectedVariant === undefined
+      ? undefined
+      : profile.transforms[evidence.selectedVariant]
 
   return (
     <>
@@ -284,17 +288,25 @@ function FaceInspector({
         <span className={`status-dot ${evidence.reviewStatus}`}>{evidence.reviewStatus}</span>
       </div>
       <div className="face-preview-row">
-        <div className="face-preview">
-          {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
-          <span>Unwarped face</span>
+        <div className="face-preview-item">
+          <div className="face-preview">
+            {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
+          </div>
+          <span className="face-preview-label">Unwarped face</span>
         </div>
-        <div className="face-preview reference">
-          {referenceUrl ? (
-            <img src={referenceUrl} alt={`Bundled ${profile.label} reference`} />
-          ) : (
-            <div className="reference-unavailable">Unsupported face</div>
-          )}
-          <span>Bundled 1.21.11 reference</span>
+        <div className="face-preview-item">
+          <div className="face-preview reference">
+            {referenceUrl ? (
+              <img
+                src={referenceUrl}
+                alt={`${profile.label} reference${evidence.selectedVariant === undefined ? '' : `, variant ${evidence.selectedVariant}`}`}
+                style={selectedTransform ? { transform: transformStyle(selectedTransform) } : undefined}
+              />
+            ) : (
+              <div className="reference-unavailable">Unsupported face</div>
+            )}
+          </div>
+          <span className="face-preview-label">Reference</span>
         </div>
       </div>
       <label className="field">
