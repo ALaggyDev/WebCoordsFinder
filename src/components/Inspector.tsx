@@ -24,12 +24,13 @@ import {
   validateForExport,
 } from '../domain/exportConfig'
 import {
-  axesForFaceRotation,
-  axisVectorLabel,
-  cellQuad,
-  defaultAxesForFace,
+  axisDisplayLabel,
+  faceForLocalNormal,
   faceDisplayName,
-  planeAxisRotation,
+  isAxisMappingComplete,
+  mappedVector,
+  patchCellQuad,
+  patchHasWorldOrientation,
 } from '../domain/geometry'
 import { imageDataUrl, orientCropToWorld, warpQuad } from '../domain/imageAnalysis'
 import {
@@ -40,10 +41,11 @@ import {
 } from '../domain/references'
 import {
   textureAlgorithms,
+  type AbstractAxis,
   type CandidateTransform,
-  type FaceDirection,
-  type PerspectivePlane,
+  type SurfacePatch,
   type TextureAlgorithm,
+  type WorldAxisLabel,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { useEditorStore } from '../store/editorStore'
@@ -55,13 +57,17 @@ interface InspectorProps {
   onClearProject: () => void
 }
 
-const faceOptions: Array<{ value: FaceDirection; label: string }> = [
-  { value: 'up', label: 'Top (+Y)' },
-  { value: 'down', label: 'Bottom (−Y)' },
-  { value: 'north', label: 'North wall (−Z)' },
-  { value: 'south', label: 'South wall (+Z)' },
-  { value: 'east', label: 'East wall (+X)' },
-  { value: 'west', label: 'West wall (−X)' },
+const axisOptions: Array<{ value: WorldAxisLabel; label: string }> = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'x', label: 'X axis · sign unknown' },
+  { value: 'x+', label: '+X' },
+  { value: 'x-', label: '−X' },
+  { value: 'y', label: 'Y axis · sign unknown' },
+  { value: 'y+', label: '+Y' },
+  { value: 'y-', label: '−Y' },
+  { value: 'z', label: 'Z axis · sign unknown' },
+  { value: 'z+', label: '+Z' },
+  { value: 'z-', label: '−Z' },
 ]
 
 function transformStyle(transform: CandidateTransform): string {
@@ -122,137 +128,127 @@ function SectionTitle({
   )
 }
 
-function PlaneInspector({ plane }: { plane?: PerspectivePlane }) {
-  const updatePlane = useEditorStore((state) => state.updatePlane)
-  const addHingedPlane = useEditorStore((state) => state.addHingedPlane)
-  const removePlane = useEditorStore((state) => state.removePlane)
-  const scanner = useEditorStore((state) => state.document.scanner)
-  const updateScanner = useEditorStore((state) => state.updateScanner)
+function PatchInspector({ patch }: { patch?: SurfacePatch }) {
+  const scene = useEditorStore((state) => state.document.scene)
+  const selectedEdges = useEditorStore((state) => state.selectedEdges)
+  const extrusionBlocks = useEditorStore((state) => state.extrusionBlocks)
+  const updatePatch = useEditorStore((state) => state.updatePatch)
+  const removePatch = useEditorStore((state) => state.removePatch)
+  const updateAxisMapping = useEditorStore((state) => state.updateAxisMapping)
+  const setExtrusionBlocks = useEditorStore((state) => state.setExtrusionBlocks)
+  const setTool = useEditorStore((state) => state.setTool)
 
-  if (!plane) {
+  if (!patch) {
     return (
       <div className="empty-inspector">
         <Grid3X3 size={28} />
-        <h3>No plane selected</h3>
-        <p>Choose a grid or use the Plane tool to click four corners clockwise.</p>
+        <h3>No surface selected</h3>
+        <p>Create the base faces, or choose a projected face in the image.</p>
       </div>
     )
   }
-
-  const selectedAxisRotation = planeAxisRotation(plane) ?? 0
+  const calibrated = scene.projection.kind === 'camera'
+  const cameraProjection =
+    scene.projection.kind === 'camera' ? scene.projection : undefined
+  const mappingComplete = isAxisMappingComplete(scene.axisMapping)
 
   return (
     <>
-      <SectionTitle icon={Grid3X3} eyebrow="Perspective geometry" title={plane.name} />
+      <SectionTitle icon={Grid3X3} eyebrow="Mesh geometry" title={patch.name} />
       <div className="field-stack">
         <label className="field">
-          <span>Plane name</span>
+          <span>Surface name</span>
           <input
-            value={plane.name}
-            onChange={(event) => updatePlane(plane.id, { name: event.target.value })}
+            value={patch.name}
+            onChange={(event) => updatePatch(patch.id, { name: event.target.value })}
           />
-        </label>
-        <label className="field">
-          <span>Visible face</span>
-          <select
-            value={plane.face}
-            onChange={(event) => {
-              const face = event.target.value as FaceDirection
-              updatePlane(plane.id, { face, ...defaultAxesForFace(face) })
-            }}
-          >
-            {faceOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
         </label>
         <div className="field-grid two">
+          <label className="field">
+            <span>Active faces</span>
+            <input
+              value={patch.columns * patch.rows - patch.inactiveCells.length}
+              readOnly
+            />
+          </label>
           <NumberField
-            label="Columns"
-            value={plane.columns}
+            label="Extrusion blocks"
+            value={extrusionBlocks}
             min={1}
             max={64}
-            onChange={(columns) => updatePlane(plane.id, { columns: Math.max(1, Math.min(64, columns)) })}
-          />
-          <NumberField
-            label="Rows"
-            value={plane.rows}
-            min={1}
-            max={64}
-            onChange={(rows) => updatePlane(plane.id, { rows: Math.max(1, Math.min(64, rows)) })}
+            onChange={setExtrusionBlocks}
           />
         </div>
       </div>
       <div className="subsection">
-        <h3>Image-to-world direction</h3>
-        <label className="field">
-          <span>Image right (U) and image down (V)</span>
-          <select
-            value={selectedAxisRotation}
-            onChange={(event) =>
-              updatePlane(
-                plane.id,
-                axesForFaceRotation(plane.face, Number(event.target.value)),
-              )
-            }
-          >
-            {Array.from({ length: 4 }, (_, quarterTurns) => {
-              const axes = axesForFaceRotation(plane.face, quarterTurns)
-              return (
-                <option key={quarterTurns} value={quarterTurns}>
-                  Right {axisVectorLabel(axes.uAxis)} · Down {axisVectorLabel(axes.vAxis)}
-                </option>
-              )
-            })}
-          </select>
-        </label>
-        <p className="axis-hint">
-          Match these directions to the screenshot. Changing them rotates the
-          world-coordinate lattice without moving the drawn grid.
-        </p>
-      </div>
-      <div className="subsection">
-        <h3>Relative coordinate at top-left cell</h3>
-        <div className="coordinate-fields">
-          {(['x', 'y', 'z'] as const).map((axis) => (
-            <NumberField
-              key={axis}
-              label={axis.toUpperCase()}
-              value={plane.origin[axis]}
-              min={-128}
-              max={127}
-              onChange={(value) =>
-                updatePlane(plane.id, { origin: { ...plane.origin, [axis]: value } })
-              }
-            />
+        <h3>Global axis directions</h3>
+        <div className="field-stack">
+          {(['a', 'b', 'c'] as AbstractAxis[]).map((axis) => (
+            <label className="field" key={axis}>
+              <span>Abstract {axis.toUpperCase()} · currently {axisDisplayLabel(axis, scene.axisMapping)}</span>
+              <select
+                value={scene.axisMapping[axis]}
+                onChange={(event) =>
+                  updateAxisMapping(axis, event.target.value as WorldAxisLabel)
+                }
+              >
+                {axisOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           ))}
         </div>
+        <p className="axis-hint">
+          Geometry uses A/B/C even while compass directions are unknown.
+          Assigning a world axis colors the global gizmo; export requires all
+          three signed directions.
+        </p>
       </div>
-      <div className={scanner.compassResolved ? 'compass-card resolved' : 'compass-card'}>
+      <div className={calibrated ? 'compass-card resolved' : 'compass-card'}>
         <Compass size={19} />
         <div>
-          <strong>{scanner.compassResolved ? 'World direction resolved' : 'Compass direction required'}</strong>
-          <span>Set the image-to-world direction above, then confirm the X/Z axes.</span>
+          <strong>
+            {cameraProjection ? 'Global camera fitted' : 'Planar calibration'}
+          </strong>
+          <span>
+            {cameraProjection
+              ? `${scene.observations.length} anchors · ${cameraProjection.rmsError.toFixed(1)} px RMS`
+              : 'Select a boundary edge, then align both endpoints of its extrusion.'}
+          </span>
         </div>
-        <button
-          type="button"
-          className={scanner.compassResolved ? 'small-button success' : 'small-button'}
-          onClick={() => updateScanner({ compassResolved: !scanner.compassResolved })}
-        >
-          {scanner.compassResolved ? <Check size={14} /> : 'Confirm'}
-        </button>
+        {mappingComplete && <Check size={15} />}
       </div>
       <div className="inspector-actions">
-        <button type="button" className="secondary-button" onClick={addHingedPlane}>
-          <Link2 size={15} /> Hinge connected plane
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={selectedEdges.length === 0}
+          onClick={() => setTool('extrude')}
+        >
+          <Link2 size={15} /> Extrude selected edges (E)
         </button>
-        <button type="button" className="danger-button" onClick={() => removePlane(plane.id)}>
-          <Trash2 size={15} /> Delete
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => updatePatch(patch.id, { normal: {
+            x: -patch.normal.x,
+            y: -patch.normal.y,
+            z: -patch.normal.z,
+          } })}
+        >
+          Flip visible side
+        </button>
+        <button type="button" className="danger-button" onClick={() => removePatch(patch.id)}>
+          <Trash2 size={15} /> Delete surface
         </button>
       </div>
       <div className="hint-card">
-        Drag any white corner handle on the image to refine perspective. Increase rows or
-        columns to extend the lattice beyond the initial patch.
+        Click individual connected edges to toggle their selection, then press
+        E. Move toward the intended axis and click to extrude. The first 3D
+        extrusion asks for both outer endpoints so the camera has six anchors.
       </div>
     </>
   )
@@ -271,22 +267,47 @@ function FaceInspector({
   )
   const evidence = selectedEvidence[0]
   const multiple = selectedEvidence.length > 1
-  const evidencePlane = document.planes.find((entry) => entry.id === evidence?.planeId)
+  const evidencePatch = document.scene.patches.find(
+    (entry) => entry.id === evidence?.patchId,
+  )
+  const evidenceFace = evidence
+    ? faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
+    : undefined
+  const evidenceCoordinate = evidence
+    ? mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
+    : undefined
+  const worldOrientationKnown = evidencePatch
+    ? patchHasWorldOrientation(document.scene, evidencePatch)
+    : false
   const [cropUrl, setCropUrl] = useState('')
 
   useEffect(() => {
     let active = true
-    if (!evidence || !evidencePlane || multiple) {
+    if (!evidence || !evidencePatch || !evidenceFace || multiple) {
+      setCropUrl('')
+      return
+    }
+    const quad = patchCellQuad(
+      document.scene,
+      evidencePatch,
+      evidence.column,
+      evidence.row,
+    )
+    if (!quad) {
       setCropUrl('')
       return
     }
     warpQuad(
       document.image.src,
-      cellQuad(evidencePlane, evidence.column, evidence.row),
+      quad,
       112,
     )
       .then((crop) => {
-        if (active) setCropUrl(imageDataUrl(orientCropToWorld(crop, evidencePlane)))
+        if (active) {
+          setCropUrl(
+            imageDataUrl(orientCropToWorld(crop, document.scene, evidencePatch)),
+          )
+        }
       })
       .catch(() => {
         if (active) setCropUrl('')
@@ -294,7 +315,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [document.image.src, evidence, evidencePlane, multiple])
+  }, [document.image.src, document.scene, evidence, evidenceFace, evidencePatch, multiple])
 
   if (!evidence) {
     return (
@@ -303,7 +324,7 @@ function FaceInspector({
         <div className="empty-inspector">
           <BoxSelectPlaceholder />
           <h3>Nothing selected</h3>
-          <p>Use Select and click a grid cell. Shift-click to build a batch.</p>
+          <p>Use Select and click a face. Shift-click to build a batch.</p>
         </div>
         <FaceSelectionActions
           busy={busy}
@@ -324,14 +345,19 @@ function FaceInspector({
   const profile = selectedBlockId ? blockProfileMap.get(selectedBlockId) : undefined
   const referenceUrl = multiple
     ? undefined
-    : referenceTextureForFace(evidence.blockId, evidence.face)
+    : evidenceFace && worldOrientationKnown
+      ? referenceTextureForFace(evidence.blockId, evidenceFace)
+      : undefined
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const selectedTransform =
     evidence.selectedVariant === undefined || !profile
       ? undefined
       : profile.transforms[evidence.selectedVariant]
   const statuses = new Set(selectedEvidence.map((entry) => entry.reviewStatus))
-  const directions = new Set(selectedEvidence.map((entry) => entry.face))
+  const selectedFaces = selectedEvidence.map((entry) =>
+    faceForLocalNormal(document.scene.axisMapping, entry.localNormal),
+  )
+  const directions = new Set(selectedFaces)
   const anySelectedHaveVariant = selectedEvidence.some(
     (entry) => entry.selectedVariant !== undefined,
   )
@@ -339,7 +365,21 @@ function FaceInspector({
     .filter(
       (entry) =>
         entry.reviewStatus === 'unlabeled' &&
-        referenceTextureForFace(entry.blockId, entry.face),
+        (() => {
+          const face = faceForLocalNormal(
+            document.scene.axisMapping,
+            entry.localNormal,
+          )
+          const patch = document.scene.patches.find(
+            (candidate) => candidate.id === entry.patchId,
+          )
+          return (
+            face &&
+            patch &&
+            patchHasWorldOrientation(document.scene, patch) &&
+            referenceTextureForFace(entry.blockId, face)
+          )
+        })(),
     )
     .map((entry) => entry.id)
   const proposedIds = selectedEvidence
@@ -356,10 +396,18 @@ function FaceInspector({
         eyebrow={`${selectedEvidence.length} face${selectedEvidence.length === 1 ? '' : 's'} selected`}
         title={multiple
           ? 'Batch selection'
-          : `${evidence.coordinate.x}, ${evidence.coordinate.y}, ${evidence.coordinate.z}`}
+          : evidenceCoordinate
+            ? `${evidenceCoordinate.x}, ${evidenceCoordinate.y}, ${evidenceCoordinate.z}`
+            : `A${evidence.latticeCoordinate.x}, B${evidence.latticeCoordinate.y}, C${evidence.latticeCoordinate.z}`}
       />
       <div className="evidence-meta">
-        <span>{directions.size === 1 ? faceDisplayName(evidence.face) : 'Mixed directions'}</span>
+        <span>
+          {directions.size === 1 && evidenceFace
+            ? faceDisplayName(evidenceFace)
+            : directions.has(undefined)
+              ? 'World direction unresolved'
+              : 'Mixed directions'}
+        </span>
         <span>{multiple ? 'Batch edit' : `${evidence.stateCount}-state`}</span>
         <span className={statuses.size === 1 ? `status-dot ${evidence.reviewStatus}` : 'status-dot'}>
           {statuses.size === 1 ? evidence.reviewStatus : 'mixed status'}
@@ -382,7 +430,11 @@ function FaceInspector({
                   style={selectedTransform ? { transform: transformStyle(selectedTransform) } : undefined}
                 />
               ) : (
-                <div className="reference-unavailable">Unsupported face</div>
+                <div className="reference-unavailable">
+                  {worldOrientationKnown
+                    ? 'Unsupported face'
+                    : 'Resolve global axes'}
+                </div>
               )}
             </div>
             <span className="face-preview-label">
@@ -405,11 +457,23 @@ function FaceInspector({
               key={candidate.id}
               value={candidate.id}
               disabled={selectedEvidence.some(
-                (entry) => !statesForFace(candidate.id, entry.face),
+                (entry) => {
+                  const face = faceForLocalNormal(
+                    document.scene.axisMapping,
+                    entry.localNormal,
+                  )
+                  return !face || !statesForFace(candidate.id, face)
+                },
               )}
             >
               {candidate.label}
-              {selectedEvidence.some((entry) => !statesForFace(candidate.id, entry.face))
+              {selectedEvidence.some((entry) => {
+                const face = faceForLocalNormal(
+                  document.scene.axisMapping,
+                  entry.localNormal,
+                )
+                return !face || !statesForFace(candidate.id, face)
+              })
                 ? ' — unsupported selection'
                 : ''}
             </option>
@@ -572,13 +636,22 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
             entry.scores.length > 0,
         )
         .sort(
-          (a, b) =>
-            (b.confidence ?? -1) - (a.confidence ?? -1) ||
-            a.coordinate.y - b.coordinate.y ||
-            a.coordinate.z - b.coordinate.z ||
-            a.coordinate.x - b.coordinate.x,
+          (a, b) => {
+            const aCoordinate =
+              mappedVector(document.scene.axisMapping, a.latticeCoordinate) ??
+              a.latticeCoordinate
+            const bCoordinate =
+              mappedVector(document.scene.axisMapping, b.latticeCoordinate) ??
+              b.latticeCoordinate
+            return (
+              (b.confidence ?? -1) - (a.confidence ?? -1) ||
+              aCoordinate.y - bCoordinate.y ||
+              aCoordinate.z - bCoordinate.z ||
+              aCoordinate.x - bCoordinate.x
+            )
+          },
         ),
-    [document.evidence],
+    [document.evidence, document.scene.axisMapping],
   )
   const counts = useMemo(
     () =>
@@ -638,17 +711,23 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
             No analyzed faces yet. Select faces and use Auto analyze selected faces.
           </div>
         ) : (
-          reviewItems.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={`review-item ${entry.reviewStatus}`}
-              onClick={() => inspectEvidence(entry.id)}
-              title="Inspect this face"
-            >
-              <span className="review-state" />
-              <div>
-                <strong>{entry.coordinate.x}, {entry.coordinate.y}, {entry.coordinate.z}</strong>
+          reviewItems.map((entry) => {
+            const coordinate =
+              mappedVector(
+                document.scene.axisMapping,
+                entry.latticeCoordinate,
+              ) ?? entry.latticeCoordinate
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                className={`review-item ${entry.reviewStatus}`}
+                onClick={() => inspectEvidence(entry.id)}
+                title="Inspect this face"
+              >
+                <span className="review-state" />
+                <div>
+                <strong>{coordinate.x}, {coordinate.y}, {coordinate.z}</strong>
                 <span>{blockProfileMap.get(entry.blockId)?.label} · {entry.stateCount}-state</span>
               </div>
               <div className="review-result">
@@ -661,7 +740,8 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
               </div>
               <ChevronRight size={14} />
             </button>
-          ))
+            )
+          })
         )}
       </div>
     </>
@@ -886,16 +966,16 @@ function ExportInspector() {
 export function Inspector(props: InspectorProps) {
   const step = useEditorStore((state) => state.step)
   const document = useEditorStore((state) => state.document)
-  const selectedPlaneId = useEditorStore((state) => state.selectedPlaneId)
-  const selectedPlane = document.planes.find(
-    (plane) => plane.id === selectedPlaneId,
+  const selectedPatchId = useEditorStore((state) => state.selectedPatchId)
+  const selectedPatch = document.scene.patches.find(
+    (patch) => patch.id === selectedPatchId,
   )
 
   return (
     <aside className="inspector">
       <div className="inspector-scroll">
         {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} onClearProject={props.onClearProject} />}
-        {step === 'grid' && <PlaneInspector plane={selectedPlane} />}
+        {step === 'grid' && <PatchInspector patch={selectedPatch} />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
       </div>

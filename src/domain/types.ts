@@ -1,7 +1,33 @@
 export type Point2 = { x: number; y: number }
 export type Point3 = { x: number; y: number; z: number }
+export type Matrix3x4 = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+]
 
 export type FaceDirection = 'up' | 'down' | 'north' | 'south' | 'east' | 'west'
+export type AbstractAxis = 'a' | 'b' | 'c'
+export type WorldAxisLabel =
+  | 'unknown'
+  | 'x'
+  | 'x+'
+  | 'x-'
+  | 'y'
+  | 'y+'
+  | 'y-'
+  | 'z'
+  | 'z+'
+  | 'z-'
 export const textureAlgorithms = [
   'Vanilla-1',
   'Vanilla-2',
@@ -13,7 +39,7 @@ export type TextureAlgorithm = (typeof textureAlgorithms)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed' | 'excluded'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
-export type EditorTool = 'select' | 'plane' | 'face'
+export type EditorTool = 'select' | 'plane' | 'extrude' | 'delete'
 
 export type CandidateTransform =
   | 'identity'
@@ -32,21 +58,70 @@ export interface ImageAsset {
   mime: string
 }
 
-export interface PerspectivePlane {
+export interface SurfacePatch {
   id: string
   name: string
-  corners: [Point2, Point2, Point2, Point2]
   columns: number
   rows: number
-  face: FaceDirection
   origin: Point3
   uAxis: Point3
   vAxis: Point3
+  normal: Point3
   inactiveCells: string[]
-  connectedTo?: {
-    planeId: string
-    edge: 'top' | 'right' | 'bottom' | 'left'
-  }
+}
+
+export type PatchEdge = 'top' | 'right' | 'bottom' | 'left'
+
+export interface SelectedEdge {
+  patchId: string
+  column: number
+  row: number
+  edge: PatchEdge
+}
+
+export interface CalibrationObservation {
+  id: string
+  lattice: Point3
+  image: Point2
+  weight: number
+}
+
+export interface PlanarProjection {
+  kind: 'planar'
+  patchId: string
+  homography: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]
+}
+
+export interface CameraProjection {
+  kind: 'camera'
+  matrix: Matrix3x4
+  rmsError: number
+  maxError: number
+}
+
+export type SceneProjection = PlanarProjection | CameraProjection
+
+export interface AxisMapping {
+  a: WorldAxisLabel
+  b: WorldAxisLabel
+  c: WorldAxisLabel
+}
+
+export interface SceneGeometry {
+  patches: SurfacePatch[]
+  observations: CalibrationObservation[]
+  projection: SceneProjection
+  axisMapping: AxisMapping
 }
 
 export interface CandidateScore {
@@ -56,11 +131,11 @@ export interface CandidateScore {
 
 export interface FaceEvidence {
   id: string
-  planeId: string
+  patchId: string
   column: number
   row: number
-  coordinate: Point3
-  face: FaceDirection
+  latticeCoordinate: Point3
+  localNormal: Point3
   blockId: string
   stateCount: 2 | 4
   selectedVariant?: number
@@ -93,7 +168,7 @@ export interface EditorDocument {
   schemaVersion: 1
   projectName: string
   image: ImageAsset
-  planes: PerspectivePlane[]
+  scene: SceneGeometry
   evidence: FaceEvidence[]
   scanner: ScannerSettings
 }

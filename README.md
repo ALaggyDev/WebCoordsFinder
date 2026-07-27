@@ -24,7 +24,9 @@ npm run build
 
 ## Current scope
 
-- Static screenshots and connected, axis-aligned block planes
+- Static screenshots with one global integer lattice, edge extrusion, and
+  shared six-point camera calibration
+- Partial abstract-to-world axis labeling with a two/three-axis global gizmo
 - Modern Java default visuals and all Vanilla/Sodium scanner modes
 - Manual variant review plus selected-face automatic proposals using bundled
   face-correct vanilla reference textures

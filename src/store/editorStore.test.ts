@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { axesForFaceRotation } from '../domain/geometry'
 import { createInitialDocument, useEditorStore } from './editorStore'
 
 afterEach(() => {
@@ -10,85 +9,131 @@ afterEach(() => {
     tool: 'select',
     past: [],
     future: [],
+    selectedPatchId: 'floor-demo',
+    selectedEdges: [],
     selectedEvidenceIds: [],
   })
 })
 
-describe('plane world orientation', () => {
-  it('recomputes coordinates and invalidates stale evidence after an axis change', () => {
-    const document = createInitialDocument()
-    const plane = document.planes[0]
-    document.scanner.compassResolved = true
-    document.evidence.push({
-      id: `${plane.id}:1:1`,
-      planeId: plane.id,
-      column: 1,
-      row: 1,
-      coordinate: { x: 1, y: 0, z: 1 },
-      face: 'up',
-      blockId: 'dirt',
-      stateCount: 4,
-      selectedVariant: 2,
-      reviewStatus: 'confirmed',
-      scores: [{ variant: 2, score: 0.9 }],
-      confidence: 0.2,
+describe('global scene calibration', () => {
+  it('starts with every abstract axis unlabeled', () => {
+    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+      a: 'unknown',
+      b: 'unknown',
+      c: 'unknown',
     })
-    useEditorStore.setState({ document, past: [], future: [] })
+  })
 
+  it('toggles connected unit edges without entering extrusion mode', () => {
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().toggleSelectedEdge({
+      patchId: patch.id,
+      column: 0,
+      row: 0,
+      edge: 'top',
+    })
+    useEditorStore.getState().toggleSelectedEdge({
+      patchId: patch.id,
+      column: 1,
+      row: 0,
+      edge: 'top',
+    })
+
+    expect(useEditorStore.getState()).toMatchObject({
+      tool: 'select',
+      selectedEdges: [{ column: 0 }, { column: 1 }],
+    })
+
+    useEditorStore.getState().toggleSelectedEdge({
+      patchId: patch.id,
+      column: 5,
+      row: 3,
+      edge: 'bottom',
+    })
+    expect(useEditorStore.getState().selectedEdges).toHaveLength(1)
+  })
+
+  it('uses two out-of-plane anchors to create a six-point camera', () => {
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().toggleSelectedEdge({
+      patchId: patch.id,
+      column: 0,
+      row: 0,
+      edge: 'top',
+    })
     useEditorStore
       .getState()
-      .updatePlane(plane.id, axesForFaceRotation('up', 1))
+      .extrudeSelectedEdges({ x: 360, y: 360 }, { x: 700, y: 340 })
 
     const state = useEditorStore.getState()
-    expect(state.document.scanner.compassResolved).toBe(false)
-    expect(state.document.evidence[0]).toMatchObject({
-      coordinate: { x: 1, y: 0, z: -1 },
+    expect(state.document.scene.patches).toHaveLength(5)
+    expect(state.document.scene.observations).toHaveLength(6)
+    expect(state.document.scene.projection).toMatchObject({
+      kind: 'camera',
+    })
+  })
+
+  it('invalidates variants when the global world-axis mapping changes', () => {
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    const id = useEditorStore.getState().selectedEvidenceIds[0]
+    useEditorStore.getState().setVariant(id, 2)
+
+    useEditorStore.getState().updateAxisMapping('a', 'x+')
+
+    expect(useEditorStore.getState().document.evidence[0]).toMatchObject({
       reviewStatus: 'unlabeled',
       selectedVariant: undefined,
       scores: undefined,
       confidence: undefined,
     })
   })
-})
 
-describe('plane corner history', () => {
-  it('undoes and redoes a committed corner drag in one step', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    const original = { ...plane.corners[0] }
-    const moved = { x: original.x + 75, y: original.y - 40 }
+  it('undoes and redoes a committed calibration drag in one step', () => {
+    const observation =
+      useEditorStore.getState().document.scene.observations[0]
+    const moved = {
+      x: observation.image.x + 75,
+      y: observation.image.y - 40,
+    }
 
-    useEditorStore.getState().movePlaneCorner(plane.id, 0, moved)
-
+    useEditorStore.getState().moveObservation(observation.id, moved)
     expect(useEditorStore.getState().past).toHaveLength(1)
-    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(moved)
+    expect(
+      useEditorStore.getState().document.scene.observations[0].image,
+    ).toEqual(moved)
 
     useEditorStore.getState().undo()
-
-    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(original)
+    expect(
+      useEditorStore.getState().document.scene.observations[0].image,
+    ).toEqual(observation.image)
 
     useEditorStore.getState().redo()
-
-    expect(useEditorStore.getState().document.planes[0].corners[0]).toEqual(moved)
+    expect(
+      useEditorStore.getState().document.scene.observations[0].image,
+    ).toEqual(moved)
   })
 })
 
 describe('face evidence editing', () => {
   it('applies a block profile to every selected face', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().updateAxisMapping('c', 'y+')
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
     useEditorStore.getState().setBlockForSelection('dirt')
 
     expect(useEditorStore.getState().document.evidence).toHaveLength(2)
     expect(
-      useEditorStore.getState().document.evidence.every((entry) => entry.blockId === 'dirt'),
+      useEditorStore
+        .getState()
+        .document.evidence.every((entry) => entry.blockId === 'dirt'),
     ).toBe(true)
   })
 
   it('deselects a variant when the active variant is chosen again', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
     const evidenceId = useEditorStore.getState().selectedEvidenceIds[0]
 
     useEditorStore.getState().setVariant(evidenceId, 2)
@@ -105,9 +150,9 @@ describe('face evidence editing', () => {
   })
 
   it('accepts every proposal and opens queue items for inspection', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
     const [firstId, secondId] = useEditorStore.getState().selectedEvidenceIds
 
     useEditorStore.getState().applyAnalysisResults([
@@ -129,9 +174,9 @@ describe('face evidence editing', () => {
 
     useEditorStore.getState().acceptProposed()
     expect(
-      useEditorStore.getState().document.evidence.every(
-        (entry) => entry.reviewStatus === 'confirmed',
-      ),
+      useEditorStore
+        .getState()
+        .document.evidence.every((entry) => entry.reviewStatus === 'confirmed'),
     ).toBe(true)
 
     useEditorStore.getState().inspectEvidence(secondId)
@@ -143,8 +188,8 @@ describe('face evidence editing', () => {
   })
 
   it('only proposes analyzed variants that meet the current threshold', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
     const evidenceId = useEditorStore.getState().selectedEvidenceIds[0]
 
     useEditorStore.getState().applyAnalysisResults([
@@ -173,10 +218,11 @@ describe('face evidence editing', () => {
   })
 
   it('clears analysis results without erasing confirmed evidence', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
-    const [confirmedId, proposedId] = useEditorStore.getState().selectedEvidenceIds
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
+    const [confirmedId, proposedId] =
+      useEditorStore.getState().selectedEvidenceIds
 
     useEditorStore.getState().applyAnalysisResults([
       {
@@ -191,7 +237,6 @@ describe('face evidence editing', () => {
       },
     ])
     useEditorStore.getState().setEvidenceStatus([confirmedId], 'confirmed')
-
     useEditorStore.getState().clearReviewQueue()
 
     const [confirmed, proposed] = useEditorStore.getState().document.evidence

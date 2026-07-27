@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialDocument } from '../store/editorStore'
 import type { EditorDocument, FaceEvidence } from './types'
+import type { Point3 } from './types'
 import {
   confirmedUniqueEvidence,
   constraintBits,
@@ -10,16 +11,19 @@ import {
 
 const evidence = (
   id: string,
-  coordinate: FaceEvidence['coordinate'],
+  coordinate: Point3,
   stateCount: 2 | 4,
   selectedVariant: number,
 ): FaceEvidence => ({
   id,
-  planeId: 'test-plane',
+  patchId: 'floor-demo',
   column: 0,
   row: 0,
-  coordinate,
-  face: stateCount === 2 ? 'north' : 'up',
+  latticeCoordinate: coordinate,
+  localNormal:
+    stateCount === 2
+      ? { x: 0, y: 0, z: -1 }
+      : { x: 0, y: 1, z: 0 },
   blockId: 'stone',
   stateCount,
   selectedVariant,
@@ -29,6 +33,10 @@ const evidence = (
 const documentWith = (entries: FaceEvidence[]): EditorDocument => ({
   ...createInitialDocument(),
   evidence: entries,
+  scene: {
+    ...createInitialDocument().scene,
+    axisMapping: { a: 'x+', b: 'y+', c: 'z+' },
+  },
   scanner: {
     ...createInitialDocument().scanner,
     compassResolved: true,

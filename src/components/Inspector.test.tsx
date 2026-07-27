@@ -1,26 +1,32 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialDocument, useEditorStore } from '../store/editorStore'
 import { Inspector } from './Inspector'
 
-afterEach(() => {
-  cleanup()
+beforeEach(() => {
+  const document = createInitialDocument()
+  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scanner.compassResolved = true
   useEditorStore.setState({
-    document: createInitialDocument(),
+    document,
     step: 'grid',
     faceTab: 'selection',
     tool: 'select',
     past: [],
     future: [],
+    selectedPatchId: 'floor-demo',
+    selectedEdges: [],
     selectedEvidenceIds: [],
   })
 })
 
+afterEach(cleanup)
+
 describe('face inspector batch selection', () => {
   it('shows Mixed, hides per-face imagery, and updates every selected profile', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
 
     const document = structuredClone(useEditorStore.getState().document)
     document.evidence[1].blockId = 'dirt'
@@ -78,9 +84,9 @@ describe('face inspector batch selection', () => {
   })
 
   it('only auto analyzes unlabeled faces and only confirms proposed faces', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
     const [unlabeledId, proposedId] = useEditorStore.getState().selectedEvidenceIds
     const document = structuredClone(useEditorStore.getState().document)
     const proposed = document.evidence.find((entry) => entry.id === proposedId)!
@@ -125,9 +131,9 @@ describe('face inspector batch selection', () => {
   })
 
   it('turns Exclude into Include for excluded faces', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
     useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
 
     render(
@@ -160,10 +166,10 @@ describe('face inspector batch selection', () => {
 
 describe('Auto Analyze queue', () => {
   it('shows only analyzed faces in descending confidence order and can be cleared', () => {
-    const plane = useEditorStore.getState().document.planes[0]
-    useEditorStore.getState().selectCell(plane.id, 0, 0, false)
-    useEditorStore.getState().selectCell(plane.id, 1, 0, true)
-    useEditorStore.getState().selectCell(plane.id, 2, 0, true)
+    const patch = useEditorStore.getState().document.scene.patches[0]
+    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
+    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
+    useEditorStore.getState().selectCell(patch.id, 2, 0, true)
     const [lowConfidenceId, unanalyzedId, highConfidenceId] =
       useEditorStore.getState().selectedEvidenceIds
 

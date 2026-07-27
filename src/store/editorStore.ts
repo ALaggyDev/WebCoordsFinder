@@ -1,42 +1,71 @@
 import { create } from 'zustand'
 import {
-  cellCoordinate,
-  createHingedPlane,
-  defaultAxesForFace,
+  add3,
+  chooseEdgeExtrusionAxis,
+  computeHomography,
+  createEdgeExtrusionPatches,
   evidenceId,
+  faceForLocalNormal,
+  isAxisMappingComplete,
+  mappedVector,
+  meshEdgeKey,
+  patchCornersLattice,
+  patchVertex,
+  refitProjection,
+  selectedEdgeEndpoints,
+  selectedEdgeGeometry,
+  same3,
+  scale3,
 } from '../domain/geometry'
 import { statesForFace } from '../domain/references'
 import type {
+  AbstractAxis,
+  AxisMapping,
+  CalibrationObservation,
   CandidateScore,
   EditorDocument,
   EditorStep,
   EditorTool,
   FaceDirection,
   FaceEvidence,
-  PerspectivePlane,
   Point2,
+  Point3,
   ScannerSettings,
+  SelectedEdge,
+  SurfacePatch,
+  WorldAxisLabel,
 } from '../domain/types'
 
-const demoPlanes: PerspectivePlane[] = [
-  {
-    id: 'floor-demo',
-    name: 'Cavern floor',
-    corners: [
-      { x: 0, y: 644 },
-      { x: 1058, y: 574 },
-      { x: 1450, y: 1000 },
-      { x: 0, y: 1102 },
-    ],
-    columns: 6,
-    rows: 4,
-    face: 'up',
-    origin: { x: 0, y: 0, z: 0 },
-    uAxis: { x: 1, y: 0, z: 0 },
-    vAxis: { x: 0, y: 0, z: 1 },
-    inactiveCells: [],
-  },
+const demoCorners: [Point2, Point2, Point2, Point2] = [
+  { x: 0, y: 644 },
+  { x: 1058, y: 574 },
+  { x: 1450, y: 1000 },
+  { x: 0, y: 1102 },
 ]
+
+const demoPatch: SurfacePatch = {
+  id: 'floor-demo',
+  name: 'Cavern floor',
+  origin: { x: 0, y: 0, z: 0 },
+  uAxis: { x: 1, y: 0, z: 0 },
+  vAxis: { x: 0, y: 1, z: 0 },
+  normal: { x: 0, y: 0, z: 1 },
+  columns: 6,
+  rows: 4,
+  inactiveCells: [],
+}
+
+function cornerObservations(
+  patch: SurfacePatch,
+  corners: [Point2, Point2, Point2, Point2],
+): CalibrationObservation[] {
+  return patchCornersLattice(patch).map((lattice, index) => ({
+    id: crypto.randomUUID(),
+    lattice,
+    image: corners[index],
+    weight: 1,
+  }))
+}
 
 export const createInitialDocument = (): EditorDocument => ({
   schemaVersion: 1,
@@ -49,7 +78,24 @@ export const createInitialDocument = (): EditorDocument => ({
     height: 1494,
     mime: 'image/png',
   },
-  planes: structuredClone(demoPlanes),
+  scene: {
+    patches: [structuredClone(demoPatch)],
+    observations: cornerObservations(demoPatch, demoCorners),
+    projection: {
+      kind: 'planar',
+      patchId: demoPatch.id,
+      homography: computeHomography(
+        [
+          { x: 0, y: 0 },
+          { x: demoPatch.columns, y: 0 },
+          { x: demoPatch.columns, y: demoPatch.rows },
+          { x: 0, y: demoPatch.rows },
+        ],
+        demoCorners,
+      ),
+    },
+    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+  },
   evidence: [],
   scanner: {
     textureAlgorithm: 'Vanilla-3',
@@ -69,6 +115,14 @@ export const createInitialDocument = (): EditorDocument => ({
     confidenceThreshold: 0.08,
   },
 })
+
+export function normalizeEditorDocument(input: unknown): EditorDocument {
+  const candidate = input as Record<string, unknown>
+  if (candidate.schemaVersion !== 1 || !candidate.scene) {
+    throw new Error('This project uses an unsupported document schema.')
+  }
+  return structuredClone(input as EditorDocument)
+}
 
 interface AnalysisResult {
   evidenceId: string
@@ -95,6 +149,20 @@ function syncUnconfirmedProposals(document: EditorDocument): void {
     )
 }
 
+function evidenceFace(
+  document: EditorDocument,
+  evidence: FaceEvidence,
+): FaceDirection | undefined {
+  return faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
+}
+
+export function evidenceWorldCoordinate(
+  document: EditorDocument,
+  evidence: FaceEvidence,
+): Point3 | undefined {
+  return mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
+}
+
 type FaceTab = 'selection' | 'review'
 
 interface EditorState {
@@ -102,27 +170,31 @@ interface EditorState {
   step: EditorStep
   faceTab: FaceTab
   tool: EditorTool
-  selectedPlaneId?: string
+  selectedPatchId?: string
+  selectedEdges: SelectedEdge[]
   selectedEvidenceIds: string[]
+  extrusionBlocks: number
   past: EditorDocument[]
   future: EditorDocument[]
   setStep: (step: EditorStep) => void
   setFaceTab: (tab: FaceTab) => void
   setTool: (tool: EditorTool) => void
-  setSelectedPlane: (planeId?: string) => void
+  setSelectedPatch: (patchId?: string) => void
+  toggleSelectedEdge: (edge: SelectedEdge) => void
+  clearSelectedEdges: () => void
+  setExtrusionBlocks: (blocks: number) => void
   inspectEvidence: (evidenceId: string) => void
-  loadDocument: (document: EditorDocument) => void
+  loadDocument: (document: unknown) => void
   replaceImage: (image: EditorDocument['image']) => void
-  addPlane: (
-    corners: [Point2, Point2, Point2, Point2],
-    face?: FaceDirection,
-    singleFace?: boolean,
-  ) => void
-  addHingedPlane: () => void
-  updatePlane: (id: string, patch: Partial<PerspectivePlane>) => void
-  movePlaneCorner: (id: string, corner: number, point: Point2) => void
-  removePlane: (id: string) => void
-  selectCell: (planeId: string, column: number, row: number, additive: boolean) => void
+  addBasePatch: (corners: [Point2, Point2, Point2, Point2]) => void
+  updatePatch: (id: string, patch: Partial<Pick<SurfacePatch, 'name' | 'normal'>>) => void
+  moveObservation: (id: string, point: Point2) => void
+  upsertObservation: (lattice: Point3, point: Point2) => void
+  extrudeSelectedEdges: (point: Point2, secondPoint?: Point2) => void
+  removePatch: (id: string) => void
+  deleteCell: (patchId: string, column: number, row: number) => void
+  updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
+  selectCell: (patchId: string, column: number, row: number, additive: boolean) => void
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
   setVariant: (evidenceId: string, variant: number) => void
@@ -154,166 +226,320 @@ function mutateDocument(
   }
 }
 
+function basePatchFromCorners(
+  corners: [Point2, Point2, Point2, Point2],
+): { patch: SurfacePatch; observations: CalibrationObservation[] } {
+  const patch: SurfacePatch = {
+    id: crypto.randomUUID(),
+    name: 'Base surface',
+    origin: { x: 0, y: 0, z: 0 },
+    uAxis: { x: 1, y: 0, z: 0 },
+    vAxis: { x: 0, y: 1, z: 0 },
+    normal: { x: 0, y: 0, z: 1 },
+    columns: 4,
+    rows: 4,
+    inactiveCells: [],
+  }
+  return { patch, observations: cornerObservations(patch, corners) }
+}
+
 export const useEditorStore = create<EditorState>((set) => ({
   document: createInitialDocument(),
   step: 'grid',
   faceTab: 'selection',
   tool: 'select',
-  selectedPlaneId: 'wall-demo',
+  selectedPatchId: 'floor-demo',
+  selectedEdges: [],
   selectedEvidenceIds: [],
+  extrusionBlocks: 4,
   past: [],
   future: [],
   setStep: (step) => set({ step }),
   setFaceTab: (faceTab) => set({ faceTab }),
-  setTool: (tool) => set({ tool }),
-  setSelectedPlane: (selectedPlaneId) => set({ selectedPlaneId }),
+  setTool: (tool) =>
+    set((state) => ({
+      tool: tool === 'extrude' && state.selectedEdges.length === 0 ? 'select' : tool,
+    })),
+  setSelectedPatch: (selectedPatchId) =>
+    set({ selectedPatchId, selectedEdges: [] }),
+  toggleSelectedEdge: (edge) =>
+    set((state) => {
+      const geometry = selectedEdgeGeometry(state.document.scene, edge)
+      if (!geometry) return state
+      const key = meshEdgeKey(geometry.start, geometry.end)
+      const selectedIndex = state.selectedEdges.findIndex((selection) => {
+        const selected = selectedEdgeGeometry(state.document.scene, selection)
+        return selected && meshEdgeKey(selected.start, selected.end) === key
+      })
+      if (selectedIndex >= 0) {
+        return {
+          selectedEdges: state.selectedEdges.filter((_, index) => index !== selectedIndex),
+        }
+      }
+      const connected =
+        state.selectedEdges.length === 0 ||
+        state.selectedEdges.some((selection) => {
+          const selected = selectedEdgeGeometry(state.document.scene, selection)
+          if (!selected) return false
+          return [selected.start, selected.end].some((left) =>
+            [geometry.start, geometry.end].some((right) => same3(left, right)),
+          )
+        })
+      return {
+        selectedEdges: connected ? [...state.selectedEdges, edge] : [edge],
+        selectedPatchId: edge.patchId,
+      }
+    }),
+  clearSelectedEdges: () => set({ selectedEdges: [] }),
+  setExtrusionBlocks: (extrusionBlocks) =>
+    set({ extrusionBlocks: Math.max(1, Math.min(64, Math.round(extrusionBlocks))) }),
   inspectEvidence: (evidenceId) =>
     set((state) => {
       const evidence = state.document.evidence.find((entry) => entry.id === evidenceId)
       if (!evidence) return state
       return {
         selectedEvidenceIds: [evidenceId],
-        selectedPlaneId: evidence.planeId,
+        selectedPatchId: evidence.patchId,
+        selectedEdges: [],
         step: 'faces' as EditorStep,
         faceTab: 'selection' as FaceTab,
       }
     }),
-  loadDocument: (document) => {
-    const normalizedDocument = structuredClone(document)
-    syncUnconfirmedProposals(normalizedDocument)
+  loadDocument: (input) => {
+    const document = normalizeEditorDocument(input)
+    syncUnconfirmedProposals(document)
     set({
-      document: normalizedDocument,
+      document,
       past: [],
       future: [],
       faceTab: 'selection',
       selectedEvidenceIds: [],
-      selectedPlaneId: normalizedDocument.planes[0]?.id,
+      selectedPatchId: document.scene.patches[0]?.id,
+      selectedEdges: [],
     })
   },
   replaceImage: (image) =>
     set((state) => ({
       ...mutateDocument(state, (document) => {
         document.image = image
-        document.planes = []
+        document.scene.patches = []
+        document.scene.observations = []
         document.evidence = []
       }),
-      selectedPlaneId: undefined,
+      selectedPatchId: undefined,
+      selectedEdges: [],
       selectedEvidenceIds: [],
       step: 'grid',
       faceTab: 'selection',
       tool: 'plane',
     })),
-  addPlane: (corners, face = 'north', singleFace = false) =>
+  addBasePatch: (corners) =>
     set((state) => {
-      const id = crypto.randomUUID()
-      const axes = defaultAxesForFace(face)
+      if (state.document.scene.patches.length > 0) return state
+      const { patch, observations } = basePatchFromCorners(corners)
+      const homography = computeHomography(
+        [
+          { x: 0, y: 0 },
+          { x: patch.columns, y: 0 },
+          { x: patch.columns, y: patch.rows },
+          { x: 0, y: patch.rows },
+        ],
+        corners,
+      )
       return {
         ...mutateDocument(state, (document) => {
-          document.planes.push({
-            id,
-            name: `Plane ${document.planes.length + 1}`,
-            corners,
-            columns: singleFace ? 1 : 4,
-            rows: singleFace ? 1 : 4,
-            face,
-            origin: { x: 0, y: 0, z: 0 },
-            uAxis: axes.uAxis,
-            vAxis: axes.vAxis,
-            inactiveCells: [],
-          })
+          document.scene = {
+            patches: [patch],
+            observations,
+            projection: { kind: 'planar', patchId: patch.id, homography },
+            axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+          }
+          document.evidence = []
+          document.scanner.compassResolved = false
         }),
-        selectedPlaneId: id,
+        selectedPatchId: patch.id,
+        selectedEdges: [],
         tool: 'select' as EditorTool,
       }
     }),
-  addHingedPlane: () =>
+  updatePatch: (id, patch) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const entry = document.scene.patches.find((item) => item.id === id)
+        if (entry) Object.assign(entry, patch)
+      }),
+    ),
+  moveObservation: (id, point) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const observation = document.scene.observations.find((entry) => entry.id === id)
+        if (!observation) return
+        observation.image = point
+        document.scene.projection = refitProjection(document.scene)
+      }),
+    ),
+  upsertObservation: (lattice, point) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const existing = document.scene.observations.find((entry) =>
+          same3(entry.lattice, lattice),
+        )
+        if (existing) existing.image = point
+        else {
+          document.scene.observations.push({
+            id: crypto.randomUUID(),
+            lattice,
+            image: point,
+            weight: 1,
+          })
+        }
+        document.scene.projection = refitProjection(document.scene)
+      }),
+    ),
+  extrudeSelectedEdges: (point, secondPoint) =>
     set((state) => {
-      const source = state.document.planes.find(
-        (plane) => plane.id === state.selectedPlaneId,
+      if (state.selectedEdges.length === 0) return state
+      if (state.document.scene.projection.kind !== 'camera' && !secondPoint) {
+        return state
+      }
+      const extrusionAxis = chooseEdgeExtrusionAxis(
+        state.document.scene,
+        state.selectedEdges,
+        state.extrusionBlocks,
+        point,
       )
-      if (!source) return state
-      const id = crypto.randomUUID()
+      const endpoints = selectedEdgeEndpoints(
+        state.document.scene,
+        state.selectedEdges,
+      )
+      if (!extrusionAxis || !endpoints) return state
+      const patches = createEdgeExtrusionPatches(
+        state.document.scene,
+        state.selectedEdges,
+        extrusionAxis,
+        state.extrusionBlocks,
+        () => crypto.randomUUID(),
+      )
+      if (patches.length === 0) return state
+      const newAnchor = add3(endpoints[0], scale3(extrusionAxis, state.extrusionBlocks))
+      const secondAnchor = add3(
+        endpoints[1],
+        scale3(extrusionAxis, state.extrusionBlocks),
+      )
+      const outerEdges = patches
+        .filter((_, index) => index % state.extrusionBlocks === state.extrusionBlocks - 1)
+        .map((patch) => ({
+          patchId: patch.id,
+          column: 0,
+          row: 0,
+          edge: 'bottom' as const,
+        }))
       return {
         ...mutateDocument(state, (document) => {
-          document.planes.push(createHingedPlane(source, id))
+          document.scene.patches.push(...patches)
+          const existing = document.scene.observations.find((entry) =>
+            same3(entry.lattice, newAnchor),
+          )
+          if (existing) existing.image = point
+          else {
+            document.scene.observations.push({
+              id: crypto.randomUUID(),
+              lattice: newAnchor,
+              image: point,
+              weight: 1,
+            })
+          }
+          if (secondPoint) {
+            const existingSecond = document.scene.observations.find((entry) =>
+              same3(entry.lattice, secondAnchor),
+            )
+            if (existingSecond) existingSecond.image = secondPoint
+            else {
+              document.scene.observations.push({
+                id: crypto.randomUUID(),
+                lattice: secondAnchor,
+                image: secondPoint,
+                weight: 1,
+              })
+            }
+          }
+          document.scene.projection = refitProjection(document.scene)
         }),
-        selectedPlaneId: id,
+        selectedPatchId: patches[0].id,
+        selectedEdges: outerEdges,
+        tool: 'select' as EditorTool,
       }
     }),
-  updatePlane: (id, patch) =>
-    set((state) =>
-      mutateDocument(state, (document) => {
-        const plane = document.planes.find((entry) => entry.id === id)
-        if (!plane) return
-        const nextPatch = { ...patch }
-        if (
-          patch.face !== undefined &&
-          patch.face !== plane.face &&
-          patch.uAxis === undefined &&
-          patch.vAxis === undefined
-        ) {
-          Object.assign(nextPatch, defaultAxesForFace(patch.face))
-        }
-        const sameAxis = (
-          left: PerspectivePlane['uAxis'],
-          right: PerspectivePlane['uAxis'],
-        ) => left.x === right.x && left.y === right.y && left.z === right.z
-        const orientationChanged =
-          (nextPatch.face !== undefined && nextPatch.face !== plane.face) ||
-          (nextPatch.uAxis !== undefined && !sameAxis(nextPatch.uAxis, plane.uAxis)) ||
-          (nextPatch.vAxis !== undefined && !sameAxis(nextPatch.vAxis, plane.vAxis))
-        Object.assign(plane, nextPatch)
-        if (orientationChanged) document.scanner.compassResolved = false
-        document.evidence
-          .filter((entry) => entry.planeId === id)
-          .forEach((entry) => {
-            entry.coordinate = cellCoordinate(plane, entry.column, entry.row)
-            entry.face = plane.face
-            const stateCount = statesForFace(entry.blockId, plane.face)
-            if (stateCount) entry.stateCount = stateCount
-            if (orientationChanged) {
-              entry.selectedVariant = undefined
-              entry.reviewStatus = 'unlabeled'
-              entry.scores = undefined
-              entry.confidence = undefined
-            }
-          })
-      }),
-    ),
-  movePlaneCorner: (id, corner, point) =>
-    set((state) =>
-      mutateDocument(state, (document) => {
-        const plane = document.planes.find((entry) => entry.id === id)
-        if (plane) plane.corners[corner] = point
-      }),
-    ),
-  removePlane: (id) =>
+  removePatch: (id) =>
     set((state) => ({
       ...mutateDocument(state, (document) => {
-        document.planes = document.planes.filter((plane) => plane.id !== id)
-        document.evidence = document.evidence.filter((entry) => entry.planeId !== id)
+        document.scene.patches = document.scene.patches.filter((patch) => patch.id !== id)
+        document.evidence = document.evidence.filter((entry) => entry.patchId !== id)
       }),
-      selectedPlaneId: undefined,
+      selectedPatchId: undefined,
+      selectedEdges: [],
       selectedEvidenceIds: [],
     })),
-  selectCell: (planeId, column, row, additive) =>
+  deleteCell: (patchId, column, row) =>
+    set((state) => ({
+      ...mutateDocument(state, (document) => {
+        const patch = document.scene.patches.find((entry) => entry.id === patchId)
+        if (!patch) return
+        const key = `${column}:${row}`
+        if (!patch.inactiveCells.includes(key)) patch.inactiveCells.push(key)
+        const id = evidenceId(patchId, column, row)
+        document.evidence = document.evidence.filter((entry) => entry.id !== id)
+        if (patch.inactiveCells.length >= patch.columns * patch.rows) {
+          document.scene.patches = document.scene.patches.filter(
+            (entry) => entry.id !== patchId,
+          )
+        }
+      }),
+      selectedPatchId:
+        state.selectedPatchId === patchId ? undefined : state.selectedPatchId,
+      selectedEdges: [],
+    })),
+  updateAxisMapping: (axis, label) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const next: AxisMapping = { ...document.scene.axisMapping, [axis]: label }
+        const worldAxis = label === 'unknown' ? undefined : label[0]
+        if (worldAxis) {
+          for (const other of ['a', 'b', 'c'] as const) {
+            if (other !== axis && next[other][0] === worldAxis) next[other] = 'unknown'
+          }
+        }
+        document.scene.axisMapping = next
+        document.scanner.compassResolved = isAxisMappingComplete(next)
+        document.evidence.forEach((entry) => {
+          const face = evidenceFace(document, entry)
+          entry.stateCount = face ? statesForFace(entry.blockId, face) ?? 4 : 4
+          entry.selectedVariant = undefined
+          entry.reviewStatus = 'unlabeled'
+          entry.scores = undefined
+          entry.confidence = undefined
+        })
+      }),
+    ),
+  selectCell: (patchId, column, row, additive) =>
     set((state) => {
-      const id = evidenceId(planeId, column, row)
-      const plane = state.document.planes.find((entry) => entry.id === planeId)
-      if (!plane) return state
+      const id = evidenceId(patchId, column, row)
+      const patch = state.document.scene.patches.find((entry) => entry.id === patchId)
+      if (!patch) return state
       const existing = state.document.evidence.find((entry) => entry.id === id)
       let documentPatch: Pick<EditorState, 'document' | 'past' | 'future'> | undefined
       if (!existing) {
         documentPatch = mutateDocument(state, (document) => {
+          const face = faceForLocalNormal(document.scene.axisMapping, patch.normal)
           document.evidence.push({
             id,
-            planeId,
+            patchId,
             column,
             row,
-            coordinate: cellCoordinate(plane, column, row),
-            face: plane.face,
+            latticeCoordinate: patchVertex(patch, column, row),
+            localNormal: patch.normal,
             blockId: 'stone',
-            stateCount: statesForFace('stone', plane.face) ?? 4,
+            stateCount: face ? statesForFace('stone', face) ?? 4 : 4,
             reviewStatus: 'unlabeled',
           })
         })
@@ -326,7 +552,8 @@ export const useEditorStore = create<EditorState>((set) => ({
         : [id]
       return {
         ...(documentPatch ?? {}),
-        selectedPlaneId: planeId,
+        selectedPatchId: patchId,
+        selectedEdges: [],
         selectedEvidenceIds,
         step: 'faces' as EditorStep,
         faceTab: 'selection' as FaceTab,
@@ -339,11 +566,11 @@ export const useEditorStore = create<EditorState>((set) => ({
         const selected = document.evidence.filter((entry) =>
           state.selectedEvidenceIds.includes(entry.id),
         )
-        if (selected.some((entry) => !statesForFace(blockId, entry.face))) return
-        selected.forEach((entry) => {
-          const stateCount = statesForFace(blockId, entry.face)!
+        const faces = selected.map((entry) => evidenceFace(document, entry))
+        if (faces.some((face) => !face || !statesForFace(blockId, face))) return
+        selected.forEach((entry, index) => {
           entry.blockId = blockId
-          entry.stateCount = stateCount
+          entry.stateCount = statesForFace(blockId, faces[index]!)!
           entry.selectedVariant = undefined
           entry.reviewStatus = 'unlabeled'
           entry.scores = undefined
@@ -381,9 +608,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) =>
       mutateDocument(state, (document) => {
         results.forEach((result) => {
-          const entry = document.evidence.find(
-            (item) => item.id === result.evidenceId,
-          )
+          const entry = document.evidence.find((item) => item.id === result.evidenceId)
           if (!entry || result.scores.length === 0) return
           entry.scores = result.scores
           entry.confidence = result.confidence
@@ -421,9 +646,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) =>
       mutateDocument(state, (document) => {
         document.scanner = { ...document.scanner, ...patch }
-        if (patch.confidenceThreshold !== undefined) {
-          syncUnconfirmedProposals(document)
-        }
+        if (patch.confidenceThreshold !== undefined) syncUnconfirmedProposals(document)
       }),
     ),
   updateBounds: (patch) =>
@@ -464,7 +687,8 @@ export const useEditorStore = create<EditorState>((set) => ({
       past: [],
       future: [],
       faceTab: 'selection',
-      selectedPlaneId: 'wall-demo',
+      selectedPatchId: 'floor-demo',
+      selectedEdges: [],
       selectedEvidenceIds: [],
       step: 'grid',
       tool: 'select',

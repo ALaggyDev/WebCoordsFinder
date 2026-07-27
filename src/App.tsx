@@ -5,7 +5,11 @@ import { EditorCanvas } from './components/EditorCanvas'
 import { Inspector } from './components/Inspector'
 import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
-import { cellQuad } from './domain/geometry'
+import {
+  faceForLocalNormal,
+  patchCellQuad,
+  patchHasWorldOrientation,
+} from './domain/geometry'
 import {
   imageToPixels,
   orientCropToWorld,
@@ -24,7 +28,7 @@ import {
   persistImage,
   persistProject,
 } from './storage/db'
-import { useEditorStore } from './store/editorStore'
+import { normalizeEditorDocument, useEditorStore } from './store/editorStore'
 
 type ToastKind = 'success' | 'warning' | 'info'
 
@@ -67,7 +71,7 @@ function App() {
       .then((saved) => {
         if (!active) return
         if (saved) {
-          const restored = structuredClone(saved.document)
+          const restored = normalizeEditorDocument(saved.document)
           if (saved.imageBlob) {
             restored.image.src = URL.createObjectURL(saved.imageBlob)
           } else if (!restored.image.src) {
@@ -121,7 +125,8 @@ function App() {
       const toolShortcut = {
         v: 'select',
         g: 'plane',
-        f: 'face',
+        e: 'extrude',
+        x: 'delete',
       } as const
       const shortcut = toolShortcut[event.key.toLowerCase() as keyof typeof toolShortcut]
       if (shortcut) setTool(shortcut)
@@ -157,7 +162,7 @@ function App() {
         height: image.naturalHeight,
         mime: file.type,
       })
-      notify('Image loaded. Click four corners to create the first plane.', 'success')
+      notify('Image loaded. Click four corners to create the base faces.', 'success')
     } catch {
       URL.revokeObjectURL(source)
       notify('The selected image could not be decoded.', 'warning')
@@ -178,7 +183,7 @@ function App() {
   const importProject = async (file: File) => {
     try {
       const imported = await readProjectBundle(file)
-      const restored = imported.document
+      const restored = normalizeEditorDocument(imported.document)
       if (imported.imageBlob) {
         const key = crypto.randomUUID()
         await persistImage(key, imported.imageBlob)
@@ -205,14 +210,31 @@ function App() {
       targetIds.includes(entry.id),
     )
     if (targets.length === 0) {
-      notify('Select one or more grid faces first.', 'warning')
+      notify('Select one or more faces first.', 'warning')
       return
     }
     const analyzable = targets.filter((entry) =>
-      referenceTextureForFace(entry.blockId, entry.face),
+      {
+        const patch = state.document.scene.patches.find(
+          (candidate) => candidate.id === entry.patchId,
+        )
+        const face = faceForLocalNormal(
+          state.document.scene.axisMapping,
+          entry.localNormal,
+        )
+        return (
+          patch &&
+          patchHasWorldOrientation(state.document.scene, patch) &&
+          face &&
+          referenceTextureForFace(entry.blockId, face)
+        )
+      },
     )
     if (analyzable.length === 0) {
-      notify('The selected block profile does not support this face.', 'warning')
+      notify(
+        'Resolve the selected surface axes and choose a supported block profile first.',
+        'warning',
+      )
       return
     }
 
@@ -231,15 +253,31 @@ function App() {
       }
 
       const jobs = analyzable.map(async (entry) => {
-        const plane = state.document.planes.find((item) => item.id === entry.planeId)
+        const patch = state.document.scene.patches.find(
+          (item) => item.id === entry.patchId,
+        )
+        const face = faceForLocalNormal(
+          state.document.scene.axisMapping,
+          entry.localNormal,
+        )
         const profile = blockProfileMap.get(entry.blockId)
-        const referenceUrl = referenceTextureForFace(entry.blockId, entry.face)
-        if (!plane || !profile || !referenceUrl) return null
+        const referenceUrl = face
+          ? referenceTextureForFace(entry.blockId, face)
+          : undefined
+        const quad = patch
+          ? patchCellQuad(
+              state.document.scene,
+              patch,
+              entry.column,
+              entry.row,
+            )
+          : undefined
+        if (!patch || !profile || !referenceUrl || !quad) return null
         const [rawSample, reference] = await Promise.all([
-          warpQuad(state.document.image.src, cellQuad(plane, entry.column, entry.row), 96),
+          warpQuad(state.document.image.src, quad, 96),
           imageToPixels(referenceUrl, 96),
         ])
-        const sample = orientCropToWorld(rawSample, plane)
+        const sample = orientCropToWorld(rawSample, state.document.scene, patch)
         const requestId = crypto.randomUUID()
         const result = new Promise<WorkerResponse>((resolve) => {
           pending.set(requestId, resolve)

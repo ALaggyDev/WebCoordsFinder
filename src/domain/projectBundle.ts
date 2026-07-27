@@ -14,7 +14,7 @@ const projectSchema = z
       height: z.number(),
       mime: z.string(),
     }),
-    planes: z.array(z.unknown()),
+    scene: z.unknown(),
     evidence: z.array(z.unknown()),
     scanner: z
       .object({

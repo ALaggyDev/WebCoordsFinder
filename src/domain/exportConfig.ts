@@ -1,16 +1,20 @@
 import type {
   EditorDocument,
   FaceEvidence,
+  Point3,
   ValidationResult,
 } from './types'
+import { isAxisMappingComplete, mappedVector } from './geometry'
 
-function coordinateKey(evidence: FaceEvidence): string {
+type ExportEvidence = FaceEvidence & { coordinate: Point3 }
+
+function coordinateKey(evidence: ExportEvidence): string {
   const { x, y, z } = evidence.coordinate
   return `${x}:${y}:${z}`
 }
 
-export function confirmedUniqueEvidence(document: EditorDocument): FaceEvidence[] {
-  const unique = new Map<string, FaceEvidence>()
+export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidence[] {
+  const unique = new Map<string, ExportEvidence>()
   document.evidence
     .filter(
       (entry) =>
@@ -18,9 +22,17 @@ export function confirmedUniqueEvidence(document: EditorDocument): FaceEvidence[
         entry.selectedVariant !== undefined,
     )
     .forEach((entry) => {
-      const key = coordinateKey(entry)
+      const coordinate = mappedVector(
+        document.scene.axisMapping,
+        entry.latticeCoordinate,
+      )
+      if (!coordinate) return
+      const mapped = { ...entry, coordinate }
+      const key = coordinateKey(mapped)
       const existing = unique.get(key)
-      if (!existing || entry.stateCount > existing.stateCount) unique.set(key, entry)
+      if (!existing || entry.stateCount > existing.stateCount) {
+        unique.set(key, mapped)
+      }
     })
   return [...unique.values()].sort((a, b) => {
     if (a.coordinate.y !== b.coordinate.y) return a.coordinate.y - b.coordinate.y
@@ -35,7 +47,10 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 
-  if (!document.scanner.compassResolved) {
+  if (
+    !document.scanner.compassResolved ||
+    !isAxisMappingComplete(document.scene.axisMapping)
+  ) {
     errors.push('Resolve the screenshot compass direction before export.')
   }
   if (rows.length === 0) errors.push('Confirm at least one block face before export.')

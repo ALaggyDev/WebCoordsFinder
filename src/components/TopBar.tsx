@@ -16,7 +16,7 @@ const steps: Array<{
   icon: typeof FileImage
 }> = [
   { id: 'image', label: 'Image', icon: FileImage },
-  { id: 'grid', label: 'Grid', icon: Grid3X3 },
+  { id: 'grid', label: 'Geometry', icon: Grid3X3 },
   { id: 'faces', label: 'Faces', icon: BoxSelect },
   { id: 'export', label: 'Export', icon: Download },
 ]

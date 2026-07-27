@@ -4,7 +4,7 @@ import type { EditorDocument } from '../domain/types'
 interface ProjectRecord {
   id: 'current'
   updatedAt: number
-  document: EditorDocument
+  document: unknown
 }
 
 interface AssetRecord {
@@ -48,12 +48,13 @@ export async function persistImage(key: string, blob: Blob): Promise<void> {
 }
 
 export async function loadPersistedProject(): Promise<{
-  document: EditorDocument
+  document: unknown
   imageBlob?: Blob
 } | null> {
   const record = await db.projects.get('current')
   if (!record) return null
-  const asset = await db.assets.get(record.document.image.key)
+  const document = record.document as EditorDocument
+  const asset = await db.assets.get(document.image.key)
   return { document: record.document, imageBlob: asset?.blob }
 }
 
