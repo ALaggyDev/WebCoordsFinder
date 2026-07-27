@@ -56,6 +56,7 @@ function App() {
   const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
   const setFaceTab = useEditorStore((state) => state.setFaceTab)
   const setTool = useEditorStore((state) => state.setTool)
+  const selectAllFaces = useEditorStore((state) => state.selectAllFaces)
   const setVariant = useEditorStore((state) => state.setVariant)
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
@@ -122,6 +123,11 @@ function App() {
         redo()
         return
       }
+      if (event.ctrlKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        selectAllFaces()
+        return
+      }
       const toolShortcut = {
         v: 'select',
         g: 'plane',
@@ -140,7 +146,7 @@ function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [redo, selectedEvidenceIds, setTool, setVariant, undo])
+  }, [redo, selectAllFaces, selectedEvidenceIds, setTool, setVariant, undo])
 
   const importImage = async (file: File) => {
     if (!file.type.startsWith('image/')) {

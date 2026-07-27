@@ -127,6 +127,23 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().step).toBe('grid')
   })
 
+  it('selects every face and initializes missing evidence in one transaction', () => {
+    const state = useEditorStore.getState()
+    const faceIds = state.document.scene.faces.map((face) => face.id)
+
+    state.selectAllFaces()
+
+    const selected = useEditorStore.getState()
+    expect(selected.selectedEvidenceIds).toEqual(faceIds)
+    expect(selected.document.evidence.map((entry) => entry.id)).toEqual(faceIds)
+    expect(selected.document.evidence.every((entry) => entry.blockId === 'stone')).toBe(true)
+    expect(selected.faceTab).toBe('selection')
+    expect(selected.past).toHaveLength(1)
+
+    selected.selectAllFaces()
+    expect(useEditorStore.getState().past).toHaveLength(1)
+  })
+
   it('applies profiles and invalidates variants when axis mapping changes', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().updateAxisMapping('c', 'y+')

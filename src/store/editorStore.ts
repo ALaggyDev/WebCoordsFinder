@@ -164,6 +164,19 @@ function evidenceFace(
   return faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
 }
 
+function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEvidence {
+  const direction = faceForLocalNormal(document.scene.axisMapping, face.normal)
+  return {
+    id: face.id,
+    faceId: face.id,
+    latticeCoordinate: face.origin,
+    localNormal: face.normal,
+    blockId: 'stone',
+    stateCount: direction ? statesForFace('stone', direction) ?? 4 : 4,
+    reviewStatus: 'unlabeled',
+  }
+}
+
 export function evidenceWorldCoordinate(
   document: EditorDocument,
   evidence: FaceEvidence,
@@ -205,6 +218,7 @@ interface EditorState {
   flipSelectedFaces: () => void
   updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
   selectFace: (faceId: string, additive: boolean) => void
+  selectAllFaces: () => void
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
   setVariant: (evidenceId: string, variant: number) => void
@@ -492,16 +506,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       const documentPatch = exists
         ? {}
         : mutateDocument(state, (document) => {
-            const direction = faceForLocalNormal(document.scene.axisMapping, face.normal)
-            document.evidence.push({
-              id: faceId,
-              faceId,
-              latticeCoordinate: face.origin,
-              localNormal: face.normal,
-              blockId: 'stone',
-              stateCount: direction ? statesForFace('stone', direction) ?? 4 : 4,
-              reviewStatus: 'unlabeled',
-            })
+            document.evidence.push(createDefaultEvidence(document, face))
           })
       const selectedEvidenceIds = additive
         ? state.selectedEvidenceIds.includes(faceId)
@@ -512,6 +517,28 @@ export const useEditorStore = create<EditorState>((set) => ({
         ...documentPatch,
         selectedEdges: [],
         selectedEvidenceIds,
+        faceTab: 'selection' as FaceTab,
+      }
+    }),
+  selectAllFaces: () =>
+    set((state) => {
+      const faceIds = state.document.scene.faces.map((face) => face.id)
+      const evidenceIds = new Set(state.document.evidence.map((entry) => entry.id))
+      const missingFaces = state.document.scene.faces.filter(
+        (face) => !evidenceIds.has(face.id),
+      )
+      const documentPatch =
+        missingFaces.length === 0
+          ? {}
+          : mutateDocument(state, (document) => {
+              document.evidence.push(
+                ...missingFaces.map((face) => createDefaultEvidence(document, face)),
+              )
+            })
+      return {
+        ...documentPatch,
+        selectedEdges: [],
+        selectedEvidenceIds: faceIds,
         faceTab: 'selection' as FaceTab,
       }
     }),
