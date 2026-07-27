@@ -14,7 +14,6 @@ beforeEach(() => {
     tool: 'select',
     past: [],
     future: [],
-    selectedPatchId: 'floor-demo',
     selectedEdges: [],
     selectedEvidenceIds: [],
   })
@@ -23,10 +22,30 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('face inspector batch selection', () => {
+  it('warns instead of loading forever when world orientation is unresolved', async () => {
+    const document = createInitialDocument()
+    useEditorStore.setState({ document, step: 'faces', faceTab: 'selection' })
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+        onClearProject={vi.fn()}
+      />,
+    )
+
+    expect(
+      await screen.findByText('Resolve global axes to align this face'),
+    ).toBeInTheDocument()
+  })
+
   it('shows Mixed, hides per-face imagery, and updates every selected profile', () => {
-    const patch = useEditorStore.getState().document.scene.patches[0]
-    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
-    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
 
     const document = structuredClone(useEditorStore.getState().document)
     document.evidence[1].blockId = 'dirt'
@@ -84,9 +103,9 @@ describe('face inspector batch selection', () => {
   })
 
   it('only auto analyzes unlabeled faces and only confirms proposed faces', () => {
-    const patch = useEditorStore.getState().document.scene.patches[0]
-    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
-    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
     const [unlabeledId, proposedId] = useEditorStore.getState().selectedEvidenceIds
     const document = structuredClone(useEditorStore.getState().document)
     const proposed = document.evidence.find((entry) => entry.id === proposedId)!
@@ -131,9 +150,9 @@ describe('face inspector batch selection', () => {
   })
 
   it('turns Exclude into Include for excluded faces', () => {
-    const patch = useEditorStore.getState().document.scene.patches[0]
-    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
-    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
     useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
 
     render(
@@ -164,12 +183,38 @@ describe('face inspector batch selection', () => {
   })
 })
 
+describe('geometry deletion', () => {
+  it('deletes all selected faces from the geometry inspector', () => {
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
+    useEditorStore.setState({ step: 'grid' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+        onClearProject={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete selected faces' }),
+    )
+
+    expect(
+      useEditorStore.getState().document.scene.faces.map((face) => face.id),
+    ).not.toEqual(expect.arrayContaining([first.id, second.id]))
+  })
+})
+
 describe('Auto Analyze queue', () => {
   it('shows only analyzed faces in descending confidence order and can be cleared', () => {
-    const patch = useEditorStore.getState().document.scene.patches[0]
-    useEditorStore.getState().selectCell(patch.id, 0, 0, false)
-    useEditorStore.getState().selectCell(patch.id, 1, 0, true)
-    useEditorStore.getState().selectCell(patch.id, 2, 0, true)
+    const [first, second, third] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
+    useEditorStore.getState().selectFace(third.id, true)
     const [lowConfidenceId, unanalyzedId, highConfidenceId] =
       useEditorStore.getState().selectedEvidenceIds
 

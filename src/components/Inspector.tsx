@@ -25,12 +25,12 @@ import {
 } from '../domain/exportConfig'
 import {
   axisDisplayLabel,
+  faceHasWorldOrientation,
   faceForLocalNormal,
   faceDisplayName,
+  faceQuad,
   isAxisMappingComplete,
   mappedVector,
-  patchCellQuad,
-  patchHasWorldOrientation,
 } from '../domain/geometry'
 import { imageDataUrl, orientCropToWorld, warpQuad } from '../domain/imageAnalysis'
 import {
@@ -43,7 +43,6 @@ import {
   textureAlgorithms,
   type AbstractAxis,
   type CandidateTransform,
-  type SurfacePatch,
   type TextureAlgorithm,
   type WorldAxisLabel,
 } from '../domain/types'
@@ -128,22 +127,25 @@ function SectionTitle({
   )
 }
 
-function PatchInspector({ patch }: { patch?: SurfacePatch }) {
+function GeometryInspector() {
   const scene = useEditorStore((state) => state.document.scene)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
-  const extrusionBlocks = useEditorStore((state) => state.extrusionBlocks)
-  const updatePatch = useEditorStore((state) => state.updatePatch)
-  const removePatch = useEditorStore((state) => state.removePatch)
+  const selectedFaceCount = useEditorStore(
+    (state) => state.selectedEvidenceIds.length,
+  )
+  const deleteSelectedFaces = useEditorStore(
+    (state) => state.deleteSelectedFaces,
+  )
+  const flipSelectedFaces = useEditorStore((state) => state.flipSelectedFaces)
   const updateAxisMapping = useEditorStore((state) => state.updateAxisMapping)
-  const setExtrusionBlocks = useEditorStore((state) => state.setExtrusionBlocks)
   const setTool = useEditorStore((state) => state.setTool)
 
-  if (!patch) {
+  if (scene.faces.length === 0) {
     return (
       <div className="empty-inspector">
         <Grid3X3 size={28} />
-        <h3>No surface selected</h3>
-        <p>Create the base faces, or choose a projected face in the image.</p>
+        <h3>No geometry</h3>
+        <p>Draw four corners to create the initial set of 1×1 faces.</p>
       </div>
     )
   }
@@ -154,30 +156,15 @@ function PatchInspector({ patch }: { patch?: SurfacePatch }) {
 
   return (
     <>
-      <SectionTitle icon={Grid3X3} eyebrow="Mesh geometry" title={patch.name} />
-      <div className="field-stack">
-        <label className="field">
-          <span>Surface name</span>
-          <input
-            value={patch.name}
-            onChange={(event) => updatePatch(patch.id, { name: event.target.value })}
-          />
-        </label>
-        <div className="field-grid two">
-          <label className="field">
-            <span>Active faces</span>
-            <input
-              value={patch.columns * patch.rows - patch.inactiveCells.length}
-              readOnly
-            />
-          </label>
-          <NumberField
-            label="Extrusion blocks"
-            value={extrusionBlocks}
-            min={1}
-            max={64}
-            onChange={setExtrusionBlocks}
-          />
+      <SectionTitle icon={Grid3X3} eyebrow="Mesh geometry" title="Global geometry" />
+      <div className="geometry-summary" aria-label="Geometry summary">
+        <div>
+          <strong>{scene.faces.length}</strong>
+          <span>Faces</span>
+        </div>
+        <div>
+          <strong>{selectedEdges.length}</strong>
+          <span>Selected edges</span>
         </div>
       </div>
       <div className="subsection">
@@ -233,22 +220,25 @@ function PatchInspector({ patch }: { patch?: SurfacePatch }) {
         <button
           type="button"
           className="secondary-button"
-          onClick={() => updatePatch(patch.id, { normal: {
-            x: -patch.normal.x,
-            y: -patch.normal.y,
-            z: -patch.normal.z,
-          } })}
+          disabled={selectedFaceCount === 0}
+          onClick={flipSelectedFaces}
         >
           Flip visible side
         </button>
-        <button type="button" className="danger-button" onClick={() => removePatch(patch.id)}>
-          <Trash2 size={15} /> Delete surface
+        <button
+          type="button"
+          className="danger-button"
+          disabled={selectedFaceCount === 0}
+          onClick={deleteSelectedFaces}
+        >
+          <Trash2 size={15} /> Delete selected {selectedFaceCount === 1 ? 'face' : 'faces'}
         </button>
       </div>
       <div className="hint-card">
         Click individual connected edges to toggle their selection, then press
-        E. Move toward the intended axis and click to extrude. The first 3D
-        extrusion asks for both outer endpoints so the camera has six anchors.
+        E. Move toward the intended axis and distance, then click to extrude.
+        Before a 3D camera exists, the selected edge moves as one rigid unit and
+        creates a one-block face.
       </div>
     </>
   )
@@ -267,8 +257,8 @@ function FaceInspector({
   )
   const evidence = selectedEvidence[0]
   const multiple = selectedEvidence.length > 1
-  const evidencePatch = document.scene.patches.find(
-    (entry) => entry.id === evidence?.patchId,
+  const meshFace = document.scene.faces.find(
+    (entry) => entry.id === evidence?.faceId,
   )
   const evidenceFace = evidence
     ? faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
@@ -276,27 +266,33 @@ function FaceInspector({
   const evidenceCoordinate = evidence
     ? mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
     : undefined
-  const worldOrientationKnown = evidencePatch
-    ? patchHasWorldOrientation(document.scene, evidencePatch)
+  const worldOrientationKnown = meshFace
+    ? faceHasWorldOrientation(document.scene, meshFace)
     : false
   const [cropUrl, setCropUrl] = useState('')
+  const [cropStatus, setCropStatus] = useState<
+    'loading' | 'ready' | 'unresolved' | 'error'
+  >('loading')
 
   useEffect(() => {
     let active = true
-    if (!evidence || !evidencePatch || !evidenceFace || multiple) {
+    if (!evidence || !meshFace || multiple) {
       setCropUrl('')
       return
     }
-    const quad = patchCellQuad(
-      document.scene,
-      evidencePatch,
-      evidence.column,
-      evidence.row,
-    )
+    if (!evidenceFace || !worldOrientationKnown) {
+      setCropUrl('')
+      setCropStatus('unresolved')
+      return
+    }
+    const quad = faceQuad(document.scene, meshFace)
     if (!quad) {
       setCropUrl('')
+      setCropStatus('error')
       return
     }
+    setCropUrl('')
+    setCropStatus('loading')
     warpQuad(
       document.image.src,
       quad,
@@ -305,17 +301,29 @@ function FaceInspector({
       .then((crop) => {
         if (active) {
           setCropUrl(
-            imageDataUrl(orientCropToWorld(crop, document.scene, evidencePatch)),
+            imageDataUrl(orientCropToWorld(crop, document.scene, meshFace)),
           )
+          setCropStatus('ready')
         }
       })
       .catch(() => {
-        if (active) setCropUrl('')
+        if (active) {
+          setCropUrl('')
+          setCropStatus('error')
+        }
       })
     return () => {
       active = false
     }
-  }, [document.image.src, document.scene, evidence, evidenceFace, evidencePatch, multiple])
+  }, [
+    document.image.src,
+    document.scene,
+    evidence,
+    evidenceFace,
+    meshFace,
+    multiple,
+    worldOrientationKnown,
+  ])
 
   if (!evidence) {
     return (
@@ -370,13 +378,13 @@ function FaceInspector({
             document.scene.axisMapping,
             entry.localNormal,
           )
-          const patch = document.scene.patches.find(
-            (candidate) => candidate.id === entry.patchId,
+          const meshFace = document.scene.faces.find(
+            (candidate) => candidate.id === entry.faceId,
           )
           return (
             face &&
-            patch &&
-            patchHasWorldOrientation(document.scene, patch) &&
+            meshFace &&
+            faceHasWorldOrientation(document.scene, meshFace) &&
             referenceTextureForFace(entry.blockId, face)
           )
         })(),
@@ -417,7 +425,17 @@ function FaceInspector({
         <div className="face-preview-row">
           <div className="face-preview-item">
             <div className="face-preview">
-              {cropUrl ? <img src={cropUrl} alt="Perspective-correct selected block face" /> : <LoaderCircle className="spin" />}
+              {cropStatus === 'ready' && cropUrl ? (
+                <img src={cropUrl} alt="Perspective-correct selected block face" />
+              ) : cropStatus === 'loading' ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <div className="reference-unavailable" role="status">
+                  {cropStatus === 'unresolved'
+                    ? 'Resolve global axes to align this face'
+                    : 'Unable to unwarp this face'}
+                </div>
+              )}
             </div>
             <span className="face-preview-label">Unwarped · world-aligned</span>
           </div>
@@ -965,17 +983,12 @@ function ExportInspector() {
 
 export function Inspector(props: InspectorProps) {
   const step = useEditorStore((state) => state.step)
-  const document = useEditorStore((state) => state.document)
-  const selectedPatchId = useEditorStore((state) => state.selectedPatchId)
-  const selectedPatch = document.scene.patches.find(
-    (patch) => patch.id === selectedPatchId,
-  )
 
   return (
     <aside className="inspector">
       <div className="inspector-scroll">
         {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} onClearProject={props.onClearProject} />}
-        {step === 'grid' && <PatchInspector patch={selectedPatch} />}
+        {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
       </div>

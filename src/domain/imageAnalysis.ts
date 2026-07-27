@@ -1,11 +1,11 @@
 import type {
   CandidateTransform,
+  MeshFace,
   Point2,
   SceneGeometry,
-  SurfacePatch,
 } from './types'
 import {
-  canonicalCropTransformForPatch,
+  canonicalCropTransformForFace,
   computeHomography,
   projectPoint,
 } from './geometry'
@@ -173,9 +173,9 @@ export function transformPixels(
 export function orientCropToWorld(
   crop: ImageData,
   scene: SceneGeometry,
-  patch: SurfacePatch,
+  face: MeshFace,
 ): ImageData {
-  const transform = canonicalCropTransformForPatch(scene, patch)
+  const transform = canonicalCropTransformForFace(scene, face)
   if (transform === 'identity') return crop
   const result = new ImageData(crop.width, crop.height)
   result.data.set(transformPixels(crop.data, crop.width, transform))

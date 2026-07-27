@@ -1,38 +1,35 @@
 import { create } from 'zustand'
 import {
   add3,
-  chooseEdgeExtrusionAxis,
+  chooseEdgeExtrusion,
   computeHomography,
-  createEdgeExtrusionPatches,
-  evidenceId,
+  createEdgeExtrusionFaces,
   faceForLocalNormal,
   isAxisMappingComplete,
   mappedVector,
   meshEdgeKey,
-  patchCornersLattice,
-  patchVertex,
   refitProjection,
+  scale3,
   selectedEdgeEndpoints,
   selectedEdgeGeometry,
   same3,
-  scale3,
+  translatedExtrusionAnchors,
 } from '../domain/geometry'
 import { statesForFace } from '../domain/references'
 import type {
   AbstractAxis,
   AxisMapping,
-  CalibrationObservation,
   CandidateScore,
   EditorDocument,
   EditorStep,
   EditorTool,
   FaceDirection,
   FaceEvidence,
+  MeshFace,
   Point2,
   Point3,
   ScannerSettings,
   SelectedEdge,
-  SurfacePatch,
   WorldAxisLabel,
 } from '../domain/types'
 
@@ -42,29 +39,61 @@ const demoCorners: [Point2, Point2, Point2, Point2] = [
   { x: 1450, y: 1000 },
   { x: 0, y: 1102 },
 ]
+const planeOrigin = { x: 0, y: 0, z: 0 }
+const planeU = { x: 1, y: 0, z: 0 }
+const planeV = { x: 0, y: 1, z: 0 }
+const planeNormal = { x: 0, y: 0, z: 1 }
 
-const demoPatch: SurfacePatch = {
-  id: 'floor-demo',
-  name: 'Cavern floor',
-  origin: { x: 0, y: 0, z: 0 },
-  uAxis: { x: 1, y: 0, z: 0 },
-  vAxis: { x: 0, y: 1, z: 0 },
-  normal: { x: 0, y: 0, z: 1 },
-  columns: 6,
-  rows: 4,
-  inactiveCells: [],
+function createFaceGrid(columns: number, rows: number, prefix: string): MeshFace[] {
+  return Array.from({ length: rows }).flatMap((_, row) =>
+    Array.from({ length: columns }).map((__, column) => ({
+      id: `${prefix}-${column}-${row}`,
+      origin: { x: column, y: row, z: 0 },
+      uAxis: planeU,
+      vAxis: planeV,
+      normal: planeNormal,
+    })),
+  )
 }
 
-function cornerObservations(
-  patch: SurfacePatch,
+function createPlanarScene(
+  columns: number,
+  rows: number,
   corners: [Point2, Point2, Point2, Point2],
-): CalibrationObservation[] {
-  return patchCornersLattice(patch).map((lattice, index) => ({
-    id: crypto.randomUUID(),
-    lattice,
-    image: corners[index],
-    weight: 1,
-  }))
+  prefix: string,
+): EditorDocument['scene'] {
+  const cornerLattice: [Point3, Point3, Point3, Point3] = [
+    planeOrigin,
+    { x: columns, y: 0, z: 0 },
+    { x: columns, y: rows, z: 0 },
+    { x: 0, y: rows, z: 0 },
+  ]
+  return {
+    faces: createFaceGrid(columns, rows, prefix),
+    observations: cornerLattice.map((lattice, index) => ({
+      id: crypto.randomUUID(),
+      lattice,
+      image: corners[index],
+      weight: 1,
+    })),
+    projection: {
+      kind: 'planar',
+      origin: planeOrigin,
+      uAxis: planeU,
+      vAxis: planeV,
+      cornerLattice,
+      homography: computeHomography(
+        [
+          { x: 0, y: 0 },
+          { x: columns, y: 0 },
+          { x: columns, y: rows },
+          { x: 0, y: rows },
+        ],
+        corners,
+      ),
+    },
+    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+  }
 }
 
 export const createInitialDocument = (): EditorDocument => ({
@@ -78,24 +107,7 @@ export const createInitialDocument = (): EditorDocument => ({
     height: 1494,
     mime: 'image/png',
   },
-  scene: {
-    patches: [structuredClone(demoPatch)],
-    observations: cornerObservations(demoPatch, demoCorners),
-    projection: {
-      kind: 'planar',
-      patchId: demoPatch.id,
-      homography: computeHomography(
-        [
-          { x: 0, y: 0 },
-          { x: demoPatch.columns, y: 0 },
-          { x: demoPatch.columns, y: demoPatch.rows },
-          { x: 0, y: demoPatch.rows },
-        ],
-        demoCorners,
-      ),
-    },
-    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-  },
+  scene: createPlanarScene(6, 4, demoCorners, 'floor-demo'),
   evidence: [],
   scanner: {
     textureAlgorithm: 'Vanilla-3',
@@ -139,11 +151,7 @@ function syncProposalToThreshold(entry: FaceEvidence, threshold: number): void {
 
 function syncUnconfirmedProposals(document: EditorDocument): void {
   document.evidence
-    .filter(
-      (entry) =>
-        entry.reviewStatus !== 'confirmed' &&
-        entry.reviewStatus !== 'excluded',
-    )
+    .filter((entry) => !['confirmed', 'excluded'].includes(entry.reviewStatus))
     .forEach((entry) =>
       syncProposalToThreshold(entry, document.scanner.confidenceThreshold),
     )
@@ -163,6 +171,12 @@ export function evidenceWorldCoordinate(
   return mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
 }
 
+function pruneGeometry(document: EditorDocument): void {
+  const faceIds = new Set(document.scene.faces.map((face) => face.id))
+  document.evidence = document.evidence.filter((entry) => faceIds.has(entry.faceId))
+  if (document.scene.faces.length === 0) document.scene.observations = []
+}
+
 type FaceTab = 'selection' | 'review'
 
 interface EditorState {
@@ -170,31 +184,27 @@ interface EditorState {
   step: EditorStep
   faceTab: FaceTab
   tool: EditorTool
-  selectedPatchId?: string
   selectedEdges: SelectedEdge[]
   selectedEvidenceIds: string[]
-  extrusionBlocks: number
   past: EditorDocument[]
   future: EditorDocument[]
   setStep: (step: EditorStep) => void
   setFaceTab: (tab: FaceTab) => void
   setTool: (tool: EditorTool) => void
-  setSelectedPatch: (patchId?: string) => void
   toggleSelectedEdge: (edge: SelectedEdge) => void
   clearSelectedEdges: () => void
-  setExtrusionBlocks: (blocks: number) => void
   inspectEvidence: (evidenceId: string) => void
   loadDocument: (document: unknown) => void
   replaceImage: (image: EditorDocument['image']) => void
-  addBasePatch: (corners: [Point2, Point2, Point2, Point2]) => void
-  updatePatch: (id: string, patch: Partial<Pick<SurfacePatch, 'name' | 'normal'>>) => void
+  addBaseFaces: (corners: [Point2, Point2, Point2, Point2]) => void
   moveObservation: (id: string, point: Point2) => void
   upsertObservation: (lattice: Point3, point: Point2) => void
   extrudeSelectedEdges: (point: Point2, secondPoint?: Point2) => void
-  removePatch: (id: string) => void
-  deleteCell: (patchId: string, column: number, row: number) => void
+  deleteFace: (faceId: string) => void
+  deleteSelectedFaces: () => void
+  flipSelectedFaces: () => void
   updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
-  selectCell: (patchId: string, column: number, row: number, additive: boolean) => void
+  selectFace: (faceId: string, additive: boolean) => void
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
   setVariant: (evidenceId: string, variant: number) => void
@@ -226,21 +236,9 @@ function mutateDocument(
   }
 }
 
-function basePatchFromCorners(
-  corners: [Point2, Point2, Point2, Point2],
-): { patch: SurfacePatch; observations: CalibrationObservation[] } {
-  const patch: SurfacePatch = {
-    id: crypto.randomUUID(),
-    name: 'Base surface',
-    origin: { x: 0, y: 0, z: 0 },
-    uAxis: { x: 1, y: 0, z: 0 },
-    vAxis: { x: 0, y: 1, z: 0 },
-    normal: { x: 0, y: 0, z: 1 },
-    columns: 4,
-    rows: 4,
-    inactiveCells: [],
-  }
-  return { patch, observations: cornerObservations(patch, corners) }
+function removeFaces(document: EditorDocument, ids: Set<string>): void {
+  document.scene.faces = document.scene.faces.filter((face) => !ids.has(face.id))
+  pruneGeometry(document)
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -248,10 +246,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   step: 'grid',
   faceTab: 'selection',
   tool: 'select',
-  selectedPatchId: 'floor-demo',
   selectedEdges: [],
   selectedEvidenceIds: [],
-  extrusionBlocks: 4,
   past: [],
   future: [],
   setStep: (step) => set({ step }),
@@ -260,8 +256,6 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       tool: tool === 'extrude' && state.selectedEdges.length === 0 ? 'select' : tool,
     })),
-  setSelectedPatch: (selectedPatchId) =>
-    set({ selectedPatchId, selectedEdges: [] }),
   toggleSelectedEdge: (edge) =>
     set((state) => {
       const geometry = selectedEdgeGeometry(state.document.scene, edge)
@@ -280,26 +274,23 @@ export const useEditorStore = create<EditorState>((set) => ({
         state.selectedEdges.length === 0 ||
         state.selectedEdges.some((selection) => {
           const selected = selectedEdgeGeometry(state.document.scene, selection)
-          if (!selected) return false
-          return [selected.start, selected.end].some((left) =>
-            [geometry.start, geometry.end].some((right) => same3(left, right)),
+          return (
+            selected &&
+            [selected.start, selected.end].some((left) =>
+              [geometry.start, geometry.end].some((right) => same3(left, right)),
+            )
           )
         })
       return {
         selectedEdges: connected ? [...state.selectedEdges, edge] : [edge],
-        selectedPatchId: edge.patchId,
       }
     }),
   clearSelectedEdges: () => set({ selectedEdges: [] }),
-  setExtrusionBlocks: (extrusionBlocks) =>
-    set({ extrusionBlocks: Math.max(1, Math.min(64, Math.round(extrusionBlocks))) }),
   inspectEvidence: (evidenceId) =>
     set((state) => {
-      const evidence = state.document.evidence.find((entry) => entry.id === evidenceId)
-      if (!evidence) return state
+      if (!state.document.evidence.some((entry) => entry.id === evidenceId)) return state
       return {
         selectedEvidenceIds: [evidenceId],
-        selectedPatchId: evidence.patchId,
         selectedEdges: [],
         step: 'faces' as EditorStep,
         faceTab: 'selection' as FaceTab,
@@ -314,7 +305,6 @@ export const useEditorStore = create<EditorState>((set) => ({
       future: [],
       faceTab: 'selection',
       selectedEvidenceIds: [],
-      selectedPatchId: document.scene.patches[0]?.id,
       selectedEdges: [],
     })
   },
@@ -322,53 +312,29 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       ...mutateDocument(state, (document) => {
         document.image = image
-        document.scene.patches = []
+        document.scene.faces = []
         document.scene.observations = []
         document.evidence = []
       }),
-      selectedPatchId: undefined,
       selectedEdges: [],
       selectedEvidenceIds: [],
       step: 'grid',
       faceTab: 'selection',
       tool: 'plane',
     })),
-  addBasePatch: (corners) =>
+  addBaseFaces: (corners) =>
     set((state) => {
-      if (state.document.scene.patches.length > 0) return state
-      const { patch, observations } = basePatchFromCorners(corners)
-      const homography = computeHomography(
-        [
-          { x: 0, y: 0 },
-          { x: patch.columns, y: 0 },
-          { x: patch.columns, y: patch.rows },
-          { x: 0, y: patch.rows },
-        ],
-        corners,
-      )
+      if (state.document.scene.faces.length > 0) return state
       return {
         ...mutateDocument(state, (document) => {
-          document.scene = {
-            patches: [patch],
-            observations,
-            projection: { kind: 'planar', patchId: patch.id, homography },
-            axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-          }
+          document.scene = createPlanarScene(4, 4, corners, crypto.randomUUID())
           document.evidence = []
           document.scanner.compassResolved = false
         }),
-        selectedPatchId: patch.id,
         selectedEdges: [],
         tool: 'select' as EditorTool,
       }
     }),
-  updatePatch: (id, patch) =>
-    set((state) =>
-      mutateDocument(state, (document) => {
-        const entry = document.scene.patches.find((item) => item.id === id)
-        if (entry) Object.assign(entry, patch)
-      }),
-    ),
   moveObservation: (id, point) =>
     set((state) =>
       mutateDocument(state, (document) => {
@@ -396,109 +362,105 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scene.projection = refitProjection(document.scene)
       }),
     ),
-  extrudeSelectedEdges: (point, secondPoint) =>
+  extrudeSelectedEdges: (point) =>
     set((state) => {
       if (state.selectedEdges.length === 0) return state
-      if (state.document.scene.projection.kind !== 'camera' && !secondPoint) {
-        return state
-      }
-      const extrusionAxis = chooseEdgeExtrusionAxis(
+      const extrusion = chooseEdgeExtrusion(
         state.document.scene,
         state.selectedEdges,
-        state.extrusionBlocks,
         point,
       )
       const endpoints = selectedEdgeEndpoints(
         state.document.scene,
         state.selectedEdges,
       )
-      if (!extrusionAxis || !endpoints) return state
-      const patches = createEdgeExtrusionPatches(
+      const planarAnchors =
+        state.document.scene.projection.kind === 'camera'
+          ? undefined
+          : translatedExtrusionAnchors(
+              state.document.scene,
+              state.selectedEdges,
+              point,
+            )
+      if (!extrusion || !endpoints) return state
+      const faces = createEdgeExtrusionFaces(
         state.document.scene,
         state.selectedEdges,
-        extrusionAxis,
-        state.extrusionBlocks,
+        extrusion.axis,
+        extrusion.blocks,
         () => crypto.randomUUID(),
       )
-      if (patches.length === 0) return state
-      const newAnchor = add3(endpoints[0], scale3(extrusionAxis, state.extrusionBlocks))
-      const secondAnchor = add3(
-        endpoints[1],
-        scale3(extrusionAxis, state.extrusionBlocks),
-      )
-      const outerEdges = patches
-        .filter((_, index) => index % state.extrusionBlocks === state.extrusionBlocks - 1)
-        .map((patch) => ({
-          patchId: patch.id,
-          column: 0,
-          row: 0,
-          edge: 'bottom' as const,
-        }))
+      if (faces.length === 0) return state
+      const outerEdges = faces
+        .filter((_, index) => index % extrusion.blocks === extrusion.blocks - 1)
+        .map((face) => ({ faceId: face.id, edge: 'bottom' as const }))
       return {
         ...mutateDocument(state, (document) => {
-          document.scene.patches.push(...patches)
-          const existing = document.scene.observations.find((entry) =>
-            same3(entry.lattice, newAnchor),
-          )
-          if (existing) existing.image = point
-          else {
-            document.scene.observations.push({
-              id: crypto.randomUUID(),
-              lattice: newAnchor,
-              image: point,
-              weight: 1,
-            })
-          }
-          if (secondPoint) {
-            const existingSecond = document.scene.observations.find((entry) =>
-              same3(entry.lattice, secondAnchor),
-            )
-            if (existingSecond) existingSecond.image = secondPoint
-            else {
+          document.scene.faces.push(...faces)
+          if (document.scene.projection.kind !== 'camera' && planarAnchors) {
+            planarAnchors.endpoints.forEach((endpoint, index) => {
               document.scene.observations.push({
                 id: crypto.randomUUID(),
-                lattice: secondAnchor,
-                image: secondPoint,
+                lattice: add3(
+                  endpoint,
+                  scale3(extrusion.axis, extrusion.blocks),
+                ),
+                image: planarAnchors.images[index],
                 weight: 1,
               })
-            }
+            })
+            document.scene.projection = refitProjection(document.scene)
           }
-          document.scene.projection = refitProjection(document.scene)
         }),
-        selectedPatchId: patches[0].id,
         selectedEdges: outerEdges,
         tool: 'select' as EditorTool,
       }
     }),
-  removePatch: (id) =>
+  deleteFace: (faceId) =>
     set((state) => ({
-      ...mutateDocument(state, (document) => {
-        document.scene.patches = document.scene.patches.filter((patch) => patch.id !== id)
-        document.evidence = document.evidence.filter((entry) => entry.patchId !== id)
-      }),
-      selectedPatchId: undefined,
-      selectedEdges: [],
-      selectedEvidenceIds: [],
+      ...mutateDocument(state, (document) => removeFaces(document, new Set([faceId]))),
+      selectedEdges: state.selectedEdges.filter((edge) => edge.faceId !== faceId),
+      selectedEvidenceIds: state.selectedEvidenceIds.filter((id) => id !== faceId),
     })),
-  deleteCell: (patchId, column, row) =>
-    set((state) => ({
-      ...mutateDocument(state, (document) => {
-        const patch = document.scene.patches.find((entry) => entry.id === patchId)
-        if (!patch) return
-        const key = `${column}:${row}`
-        if (!patch.inactiveCells.includes(key)) patch.inactiveCells.push(key)
-        const id = evidenceId(patchId, column, row)
-        document.evidence = document.evidence.filter((entry) => entry.id !== id)
-        if (patch.inactiveCells.length >= patch.columns * patch.rows) {
-          document.scene.patches = document.scene.patches.filter(
-            (entry) => entry.id !== patchId,
-          )
-        }
-      }),
-      selectedPatchId:
-        state.selectedPatchId === patchId ? undefined : state.selectedPatchId,
-      selectedEdges: [],
-    })),
+  deleteSelectedFaces: () =>
+    set((state) => {
+      if (state.selectedEvidenceIds.length === 0) return state
+      const ids = new Set(state.selectedEvidenceIds)
+      return {
+        ...mutateDocument(state, (document) => removeFaces(document, ids)),
+        selectedEdges: state.selectedEdges.filter((edge) => !ids.has(edge.faceId)),
+        selectedEvidenceIds: [],
+      }
+    }),
+  flipSelectedFaces: () =>
+    set((state) => {
+      if (state.selectedEvidenceIds.length === 0) return state
+      const ids = new Set(state.selectedEvidenceIds)
+      return mutateDocument(state, (document) => {
+        document.scene.faces
+          .filter((face) => ids.has(face.id))
+          .forEach((face) => {
+            face.normal = {
+              x: -face.normal.x,
+              y: -face.normal.y,
+              z: -face.normal.z,
+            }
+          })
+        document.evidence
+          .filter((entry) => ids.has(entry.faceId))
+          .forEach((entry) => {
+            const face = document.scene.faces.find(
+              (candidate) => candidate.id === entry.faceId,
+            )
+            if (!face) return
+            entry.localNormal = face.normal
+            entry.selectedVariant = undefined
+            entry.reviewStatus = 'unlabeled'
+            entry.scores = undefined
+            entry.confidence = undefined
+          })
+      })
+    }),
   updateAxisMapping: (axis, label) =>
     set((state) =>
       mutateDocument(state, (document) => {
@@ -521,41 +483,34 @@ export const useEditorStore = create<EditorState>((set) => ({
         })
       }),
     ),
-  selectCell: (patchId, column, row, additive) =>
+  selectFace: (faceId, additive) =>
     set((state) => {
-      const id = evidenceId(patchId, column, row)
-      const patch = state.document.scene.patches.find((entry) => entry.id === patchId)
-      if (!patch) return state
-      const existing = state.document.evidence.find((entry) => entry.id === id)
-      let documentPatch: Pick<EditorState, 'document' | 'past' | 'future'> | undefined
-      if (!existing) {
-        documentPatch = mutateDocument(state, (document) => {
-          const face = faceForLocalNormal(document.scene.axisMapping, patch.normal)
-          document.evidence.push({
-            id,
-            patchId,
-            column,
-            row,
-            latticeCoordinate: patchVertex(patch, column, row),
-            localNormal: patch.normal,
-            blockId: 'stone',
-            stateCount: face ? statesForFace('stone', face) ?? 4 : 4,
-            reviewStatus: 'unlabeled',
+      const face = state.document.scene.faces.find((entry) => entry.id === faceId)
+      if (!face) return state
+      const exists = state.document.evidence.some((entry) => entry.id === faceId)
+      const documentPatch = exists
+        ? {}
+        : mutateDocument(state, (document) => {
+            const direction = faceForLocalNormal(document.scene.axisMapping, face.normal)
+            document.evidence.push({
+              id: faceId,
+              faceId,
+              latticeCoordinate: face.origin,
+              localNormal: face.normal,
+              blockId: 'stone',
+              stateCount: direction ? statesForFace('stone', direction) ?? 4 : 4,
+              reviewStatus: 'unlabeled',
+            })
           })
-        })
-      }
-      const previous = state.selectedEvidenceIds
       const selectedEvidenceIds = additive
-        ? previous.includes(id)
-          ? previous.filter((entry) => entry !== id)
-          : [...previous, id]
-        : [id]
+        ? state.selectedEvidenceIds.includes(faceId)
+          ? state.selectedEvidenceIds.filter((id) => id !== faceId)
+          : [...state.selectedEvidenceIds, faceId]
+        : [faceId]
       return {
-        ...(documentPatch ?? {}),
-        selectedPatchId: patchId,
+        ...documentPatch,
         selectedEdges: [],
         selectedEvidenceIds,
-        step: 'faces' as EditorStep,
         faceTab: 'selection' as FaceTab,
       }
     }),
@@ -586,10 +541,10 @@ export const useEditorStore = create<EditorState>((set) => ({
         if (entry.selectedVariant === variant) {
           entry.selectedVariant = undefined
           entry.reviewStatus = 'unlabeled'
-          return
+        } else {
+          entry.selectedVariant = variant
+          entry.reviewStatus = 'confirmed'
         }
-        entry.selectedVariant = variant
-        entry.reviewStatus = 'confirmed'
       }),
     ),
   setEvidenceStatus: (ids, reviewStatus) =>
@@ -687,7 +642,6 @@ export const useEditorStore = create<EditorState>((set) => ({
       past: [],
       future: [],
       faceTab: 'selection',
-      selectedPatchId: 'floor-demo',
       selectedEdges: [],
       selectedEvidenceIds: [],
       step: 'grid',

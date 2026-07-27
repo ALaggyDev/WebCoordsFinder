@@ -430,6 +430,31 @@ button:disabled {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.geometry-summary {
+  padding: 9px 10px;
+  display: flex;
+  gap: 22px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+}
+
+.geometry-summary div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.geometry-summary strong {
+  color: var(--text);
+  font: 600 13px var(--mono);
+}
+
+.geometry-summary span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .field {
   min-width: 0;
   display: grid;

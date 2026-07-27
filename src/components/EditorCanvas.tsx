@@ -16,28 +16,26 @@ import {
   add3,
   axisColor,
   axisDisplayLabel,
-  cellEdgeGeometry,
-  cellKey,
-  chooseEdgeExtrusionAxis,
-  createEdgeExtrusionPatches,
+  chooseEdgeExtrusion,
+  createEdgeExtrusionFaces,
   distance,
-  evidenceId,
+  faceCornersLattice,
+  faceEdgeGeometry,
+  faceQuad,
   flattenPoints,
   meshEdgeKey,
-  patchCellQuad,
-  patchVertex,
   projectScenePoint,
   projectedAbstractAxes,
   refitProjection,
-  selectedEdgeEndpoints,
   selectedEdgeGeometry,
   same3,
   scale3,
+  translatedExtrusionAnchors,
 } from '../domain/geometry'
 import type {
   AbstractAxis,
   CalibrationObservation,
-  PatchEdge,
+  FaceEdge,
   Point2,
   SceneGeometry,
   SelectedEdge,
@@ -90,7 +88,7 @@ const visualizationOptions: Array<{
   },
 ]
 
-const patchEdges: PatchEdge[] = ['top', 'right', 'bottom', 'left']
+const faceEdges: FaceEdge[] = ['top', 'right', 'bottom', 'left']
 
 function statusColor(status?: string): string {
   if (status === 'confirmed') return CONFIRMED
@@ -102,55 +100,55 @@ function statusColor(status?: string): string {
 function makeExtrusionPreview(
   scene: SceneGeometry,
   selections: SelectedEdge[],
-  blocks: number,
   pointer: Point2,
-  firstPoint?: Point2,
-): SceneGeometry | undefined {
-  if (scene.projection.kind !== 'camera' && !firstPoint) return undefined
-  const extrusionAxis = chooseEdgeExtrusionAxis(
-    scene,
-    selections,
-    blocks,
-    firstPoint ?? pointer,
-  )
-  const endpoints = selectedEdgeEndpoints(scene, selections)
-  if (!extrusionAxis || !endpoints) return undefined
+): { scene: SceneGeometry; blocks: number } | undefined {
+  const extrusion = chooseEdgeExtrusion(scene, selections, pointer)
+  if (!extrusion) return undefined
   let previewId = 0
-  const patches = createEdgeExtrusionPatches(
+  const faces = createEdgeExtrusionFaces(
     scene,
     selections,
-    extrusionAxis,
-    blocks,
+    extrusion.axis,
+    extrusion.blocks,
     () => `__preview_${previewId++}__`,
   )
-  const anchors: CalibrationObservation[] = [{
-    id: '__preview_anchor__',
-    lattice: add3(endpoints[0], scale3(extrusionAxis, blocks)),
-    image: firstPoint ?? pointer,
-    weight: 1,
-  }]
-  if (firstPoint) {
-    anchors.push({
-      id: '__preview_anchor_2__',
-      lattice: add3(endpoints[1], scale3(extrusionAxis, blocks)),
-      image: pointer,
-      weight: 1,
-    })
-  }
   const previewScene: SceneGeometry = {
     ...scene,
-    patches: [...scene.patches, ...patches],
-    observations: [
-      ...scene.observations.filter(
-        (observation) =>
-          !anchors.some((anchor) => same3(observation.lattice, anchor.lattice)),
-      ),
-      ...anchors,
-    ],
+    faces: [...scene.faces, ...faces],
   }
+  if (scene.projection.kind === 'camera') {
+    return { scene: previewScene, blocks: extrusion.blocks }
+  }
+
+  const translated = translatedExtrusionAnchors(scene, selections, pointer)
+  if (!translated) return undefined
+  const anchors: CalibrationObservation[] = [{
+    id: '__preview_anchor__',
+    lattice: add3(
+      translated.endpoints[0],
+      scale3(extrusion.axis, extrusion.blocks),
+    ),
+    image: translated.images[0],
+    weight: 1,
+  }, {
+    id: '__preview_anchor_2__',
+    lattice: add3(
+      translated.endpoints[1],
+      scale3(extrusion.axis, extrusion.blocks),
+    ),
+    image: translated.images[1],
+    weight: 1,
+  }]
+  previewScene.observations = [
+    ...scene.observations.filter(
+      (observation) =>
+        !anchors.some((anchor) => same3(observation.lattice, anchor.lattice)),
+    ),
+    ...anchors,
+  ]
   try {
     previewScene.projection = refitProjection(previewScene)
-    return previewScene
+    return { scene: previewScene, blocks: extrusion.blocks }
   } catch {
     return undefined
   }
@@ -165,7 +163,7 @@ function GlobalAxisGizmo({
   origin: Point2
   scale: number
 }) {
-  const anchor = scene.patches[0]?.origin ?? { x: 0, y: 0, z: 0 }
+  const anchor = scene.faces[0]?.origin ?? { x: 0, y: 0, z: 0 }
   const directions = projectedAbstractAxes(scene, anchor)
   const axes = (['a', 'b', 'c'] as AbstractAxis[]).filter(
     (axis) => directions[axis],
@@ -231,16 +229,14 @@ export function EditorCanvas() {
   const stageRef = useRef<Konva.Stage>(null)
   const document = useEditorStore((state) => state.document)
   const tool = useEditorStore((state) => state.tool)
-  const selectedPatchId = useEditorStore((state) => state.selectedPatchId)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
-  const extrusionBlocks = useEditorStore((state) => state.extrusionBlocks)
   const setTool = useEditorStore((state) => state.setTool)
   const toggleSelectedEdge = useEditorStore((state) => state.toggleSelectedEdge)
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
-  const selectCell = useEditorStore((state) => state.selectCell)
-  const deleteCell = useEditorStore((state) => state.deleteCell)
-  const addBasePatch = useEditorStore((state) => state.addBasePatch)
+  const selectFace = useEditorStore((state) => state.selectFace)
+  const deleteFace = useEditorStore((state) => state.deleteFace)
+  const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
   const moveObservation = useEditorStore((state) => state.moveObservation)
   const upsertObservation = useEditorStore((state) => state.upsertObservation)
   const extrudeSelectedEdges = useEditorStore((state) => state.extrudeSelectedEdges)
@@ -251,7 +247,6 @@ export function EditorCanvas() {
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
   const [draggedObservation, setDraggedObservation] = useState<DraggedObservation>()
   const [pointerPoint, setPointerPoint] = useState<Point2>()
-  const [extrusionFirstPoint, setExtrusionFirstPoint] = useState<Point2>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
     calibrationPoints: true,
@@ -287,39 +282,27 @@ export function EditorCanvas() {
     return makeExtrusionPreview(
       renderedScene,
       selectedEdges,
-      extrusionBlocks,
       pointerPoint,
-      extrusionFirstPoint,
     )
   }, [
-    extrusionFirstPoint,
-    extrusionBlocks,
     pointerPoint,
     renderedScene,
     selectedEdges,
     tool,
   ])
 
-  const sceneForRendering = preview ?? renderedScene
+  const sceneForRendering = preview?.scene ?? renderedScene
   const meshEdges = useMemo(() => {
     const edges = new Map<string, RenderedMeshEdge>()
-    renderedScene.patches.forEach((patch) => {
-      if (patch.id.startsWith('__preview_')) return
-      for (let row = 0; row < patch.rows; row += 1) {
-        for (let column = 0; column < patch.columns; column += 1) {
-          if (patch.inactiveCells.includes(cellKey(column, row))) continue
-          patchEdges.forEach((edge) => {
-            const geometry = cellEdgeGeometry(patch, column, row, edge)
-            const key = meshEdgeKey(geometry.start, geometry.end)
-            if (!edges.has(key)) {
-              edges.set(key, {
-                key,
-                selection: { patchId: patch.id, column, row, edge },
-              })
-            }
-          })
+    renderedScene.faces.forEach((face) => {
+      if (face.id.startsWith('__preview_')) return
+      faceEdges.forEach((edge) => {
+        const geometry = faceEdgeGeometry(face, edge)
+        const key = meshEdgeKey(geometry.start, geometry.end)
+        if (!edges.has(key)) {
+          edges.set(key, { key, selection: { faceId: face.id, edge } })
         }
-      }
+      })
     })
     return [...edges.values()]
   }, [renderedScene])
@@ -334,21 +317,20 @@ export function EditorCanvas() {
     [renderedScene, selectedEdges],
   )
   const calibrationCandidates = useMemo(() => {
-    const patch = document.scene.patches.find(
-      (entry) => entry.id === selectedPatchId,
-    )
-    if (!patch || document.scene.projection.kind !== 'camera') return []
-    return Array.from({ length: patch.rows + 1 }).flatMap((_, row) =>
-      Array.from({ length: patch.columns + 1 })
-        .map((__, column) => patchVertex(patch, column, row))
-        .filter(
-          (lattice) =>
-            !document.scene.observations.some((observation) =>
-              same3(observation.lattice, lattice),
-            ),
+    if (document.scene.projection.kind !== 'camera') return []
+    const unique = new Map<string, { x: number; y: number; z: number }>()
+    document.scene.faces.forEach((face) => {
+      faceCornersLattice(face).forEach((lattice) => {
+        unique.set(`${lattice.x}:${lattice.y}:${lattice.z}`, lattice)
+      })
+    })
+    return [...unique.values()].filter(
+      (lattice) =>
+        !document.scene.observations.some((observation) =>
+          same3(observation.lattice, lattice),
         ),
     )
-  }, [document.scene, selectedPatchId])
+  }, [document.scene])
   const evidenceMap = useMemo(
     () => new Map(document.evidence.map((entry) => [entry.id, entry])),
     [document.evidence],
@@ -384,7 +366,6 @@ export function EditorCanvas() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraft([])
-        setExtrusionFirstPoint(undefined)
         if (tool === 'extrude') setTool('select')
         else if (tool === 'select') clearSelectedEdges()
       }
@@ -392,12 +373,6 @@ export function EditorCanvas() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [clearSelectedEdges, setTool, tool])
-
-  useEffect(() => {
-    if (tool !== 'extrude' || selectedEdges.length === 0) {
-      setExtrusionFirstPoint(undefined)
-    }
-  }, [selectedEdges.length, tool])
 
   const pointerInImage = (): Point2 | null => {
     const pointer = stageRef.current?.getPointerPosition()
@@ -413,15 +388,7 @@ export function EditorCanvas() {
     const point = pointerInImage()
     if (!point) return
     if (tool === 'extrude' && selectedEdges.length > 0) {
-      if (document.scene.projection.kind !== 'camera' && !extrusionFirstPoint) {
-        setExtrusionFirstPoint(point)
-      } else {
-        extrudeSelectedEdges(
-          extrusionFirstPoint ?? point,
-          extrusionFirstPoint ? point : undefined,
-        )
-        setExtrusionFirstPoint(undefined)
-      }
+      extrudeSelectedEdges(point)
       return
     }
     if (tool === 'select') {
@@ -431,7 +398,7 @@ export function EditorCanvas() {
     if (tool !== 'plane') return
     const next = [...draft, point]
     if (next.length === 4) {
-      addBasePatch(next as [Point2, Point2, Point2, Point2])
+      addBaseFaces(next as [Point2, Point2, Point2, Point2])
       setDraft([])
     } else {
       setDraft(next)
@@ -550,69 +517,45 @@ export function EditorCanvas() {
           )}
         </Layer>
         <Layer>
-          {sceneForRendering.patches.map((patch) => {
-            const isPreview = patch.id.startsWith('__preview_')
+          {sceneForRendering.faces.map((face) => {
+            const isPreview = face.id.startsWith('__preview_')
+            const evidence = evidenceMap.get(face.id)
+            const selected = selectedEvidenceIds.includes(face.id)
+            const quad = faceQuad(sceneForRendering, face)
+            if (!quad) return null
+            const color = isPreview
+              ? PROPOSED
+              : selected
+                ? SELECTED
+                : statusColor(evidence?.reviewStatus)
             return (
-              <Group key={patch.id} opacity={isPreview ? 0.72 : 1}>
-                {Array.from({ length: patch.rows }).flatMap((_, row) =>
-                  Array.from({ length: patch.columns }).map((__, column) => {
-                    if (patch.inactiveCells.includes(cellKey(column, row))) return null
-                    const id = evidenceId(patch.id, column, row)
-                    const evidence = evidenceMap.get(id)
-                    const selected = selectedEvidenceIds.includes(id)
-                    const quad = patchCellQuad(
-                      sceneForRendering,
-                      patch,
-                      column,
-                      row,
-                    )
-                    if (!quad) return null
-                    const color = isPreview
-                      ? PROPOSED
-                      : selected
-                        ? SELECTED
-                        : statusColor(evidence?.reviewStatus)
-                    return (
-                      <Line
-                        key={id}
-                        points={flattenPoints(quad)}
-                        closed
-                        stroke={color}
-                        strokeWidth={(selected ? 1.8 : 0.8) / view.scale}
-                        dash={
-                          isPreview || evidence?.reviewStatus === 'proposed'
-                            ? [4 / view.scale, 3 / view.scale]
-                            : undefined
-                        }
-                        fill={
-                          selected
-                            ? 'rgba(112,167,255,.18)'
-                            : evidence?.reviewStatus === 'confirmed'
-                              ? 'rgba(83,230,165,.08)'
-                              : 'rgba(0,0,0,.001)'
-                        }
-                        hitStrokeWidth={8 / view.scale}
-                        listening={
-                          !isPreview && (tool === 'select' || tool === 'delete')
-                        }
-                        onClick={(event) => {
-                          event.cancelBubble = true
-                          if (tool === 'delete') {
-                            deleteCell(patch.id, column, row)
-                          } else if (tool === 'select') {
-                            selectCell(
-                              patch.id,
-                              column,
-                              row,
-                              event.evt.shiftKey,
-                            )
-                          }
-                        }}
-                      />
-                    )
-                  }),
-                )}
-              </Group>
+              <Line
+                key={face.id}
+                points={flattenPoints(quad)}
+                closed
+                stroke={color}
+                opacity={isPreview ? 0.72 : 1}
+                strokeWidth={(selected ? 1.8 : 0.8) / view.scale}
+                dash={
+                  isPreview || evidence?.reviewStatus === 'proposed'
+                    ? [4 / view.scale, 3 / view.scale]
+                    : undefined
+                }
+                fill={
+                  selected
+                    ? 'rgba(112,167,255,.18)'
+                    : evidence?.reviewStatus === 'confirmed'
+                      ? 'rgba(83,230,165,.08)'
+                      : 'rgba(0,0,0,.001)'
+                }
+                hitStrokeWidth={8 / view.scale}
+                listening={!isPreview && (tool === 'select' || tool === 'delete')}
+                onClick={(event) => {
+                  event.cancelBubble = true
+                  if (tool === 'delete') deleteFace(face.id)
+                  else if (tool === 'select') selectFace(face.id, event.evt.shiftKey)
+                }}
+              />
             )
           })}
           {meshEdges.map(({ key, selection }) => {
@@ -740,28 +683,6 @@ export function EditorCanvas() {
               ))}
             </>
           )}
-          {extrusionFirstPoint && (
-            <>
-              {pointerPoint && (
-                <Line
-                  points={flattenPoints([extrusionFirstPoint, pointerPoint])}
-                  stroke={PROPOSED}
-                  strokeWidth={1.2 / view.scale}
-                  dash={[5 / view.scale, 4 / view.scale]}
-                  listening={false}
-                />
-              )}
-              <Circle
-                x={extrusionFirstPoint.x}
-                y={extrusionFirstPoint.y}
-                radius={4.5 / view.scale}
-                fill={PROPOSED}
-                stroke="#071014"
-                strokeWidth={1 / view.scale}
-                listening={false}
-              />
-            </>
-          )}
         </Layer>
       </Stage>
       {visualizations.axisGizmo && (
@@ -808,10 +729,8 @@ export function EditorCanvas() {
         {tool === 'extrude' && selectedEdges.length > 0 && (
           <strong>
             {document.scene.projection.kind === 'camera'
-              ? `Move to choose direction · click for ${extrusionBlocks} blocks`
-              : extrusionFirstPoint
-                ? 'Align the other endpoint of the extruded edges · click to fit 3D camera'
-                : 'Align one endpoint of the extruded edges · click to continue'}
+              ? `Snapped to ${preview?.blocks ?? 1} block${(preview?.blocks ?? 1) === 1 ? '' : 's'} · click to extrude`
+              : 'One-block camera setup · move both endpoints together and click'}
           </strong>
         )}
       </div>

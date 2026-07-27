@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
+  chooseEdgeExtrusion,
   computeHomography,
-  chooseEdgeExtrusionAxis,
-  createExtrudedPatch,
+  createEdgeExtrusionFaces,
   faceForLocalNormal,
+  faceQuad,
+  faceVertex,
   fitCameraProjection,
   isAxisMappingComplete,
   mappedVector,
-  patchCellQuad,
-  patchVertex,
   projectCamera,
   projectPoint,
 } from './geometry'
 import type {
   CalibrationObservation,
   Matrix3x4,
+  MeshFace,
   Point2,
   SceneGeometry,
-  SurfacePatch,
 } from './types'
 
 const expectPointClose = (actual: Point2, expected: Point2, precision = 6) => {
@@ -25,16 +25,12 @@ const expectPointClose = (actual: Point2, expected: Point2, precision = 6) => {
   expect(actual.y).toBeCloseTo(expected.y, precision)
 }
 
-const patch: SurfacePatch = {
-  id: 'base',
-  name: 'Base',
+const face: MeshFace = {
+  id: 'base-0-0',
   origin: { x: 0, y: 0, z: 0 },
   uAxis: { x: 1, y: 0, z: 0 },
   vAxis: { x: 0, y: 1, z: 0 },
   normal: { x: 0, y: 0, z: 1 },
-  columns: 4,
-  rows: 3,
-  inactiveCells: [],
 }
 
 describe('global perspective geometry', () => {
@@ -57,32 +53,35 @@ describe('global perspective geometry', () => {
     })
   })
 
-  it('subdivides the base patch without losing shared edges', () => {
+  it('projects adjacent unit faces with a shared edge', () => {
+    const right: MeshFace = { ...face, id: 'base-1-0', origin: { x: 1, y: 0, z: 0 } }
     const homography = computeHomography(
-      [
-        { x: 0, y: 0 },
-        { x: 4, y: 0 },
-        { x: 4, y: 3 },
-        { x: 0, y: 3 },
-      ],
-      [
-        { x: 10, y: 10 },
-        { x: 110, y: 20 },
-        { x: 90, y: 80 },
-        { x: 20, y: 70 },
-      ],
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
     )
     const scene: SceneGeometry = {
-      patches: [patch],
+      faces: [face, right],
       observations: [],
-      projection: { kind: 'planar', patchId: patch.id, homography },
+      projection: {
+        kind: 'planar',
+        origin: { x: 0, y: 0, z: 0 },
+        uAxis: face.uAxis,
+        vAxis: face.vAxis,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 4, y: 0, z: 0 },
+          { x: 4, y: 3, z: 0 },
+          { x: 0, y: 3, z: 0 },
+        ],
+        homography,
+      },
       axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
     }
-    const left = patchCellQuad(scene, patch, 0, 0)!
-    const right = patchCellQuad(scene, patch, 1, 0)!
-    expectPointClose(left[1], right[0])
-    expectPointClose(left[2], right[3])
-    expect(patchVertex(patch, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
+    const leftQuad = faceQuad(scene, face)!
+    const rightQuad = faceQuad(scene, right)!
+    expectPointClose(leftQuad[1], rightQuad[0])
+    expectPointClose(leftQuad[2], rightQuad[3])
+    expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
   })
 
   it('fits a camera from six non-coplanar observations', () => {
@@ -116,33 +115,49 @@ describe('global perspective geometry', () => {
     )
   })
 
-  it('extrudes exact lattice geometry without sequential screen-space drift', () => {
-    const wall = createExtrudedPatch(patch, 'top', 1, 10, 'wall')
-    expect(wall.columns).toBe(4)
-    expect(wall.rows).toBe(10)
-    expect(patchVertex(wall, 4, 10)).toEqual({ x: 4, y: 0, z: 10 })
+  it('creates one stored face per selected edge and depth block', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: [800, 0, 320, 100, 0, 700, -100, 200, 0.1, 0.05, 1, 5],
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const created = createEdgeExtrusionFaces(
+      scene,
+      [{ faceId: face.id, edge: 'top' }],
+      { x: 0, y: 0, z: 1 },
+      3,
+      () => crypto.randomUUID(),
+    )
+    expect(created).toHaveLength(3)
+    expect(created.map((entry) => entry.origin.z)).toEqual([0, 1, 2])
   })
 
-  it('chooses an extrusion axis from the pointer position', () => {
+  it('chooses extrusion direction and block count from the pointer', () => {
     const matrix: Matrix3x4 = [
       800, 0, 320, 100,
       0, 700, -100, 200,
       0.1, 0.05, 1, 5,
     ]
     const scene: SceneGeometry = {
-      patches: [patch],
+      faces: [face],
       observations: [],
       projection: { kind: 'camera', matrix, rmsError: 0, maxError: 0 },
       axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     }
-    const selection = [{ patchId: patch.id, column: 0, row: 0, edge: 'top' as const }]
-    const pointer = projectCamera(matrix, { x: 0.5, y: 0, z: 4 })
-
-    expect(chooseEdgeExtrusionAxis(scene, selection, 4, pointer)).toEqual({
-      x: 0,
-      y: 0,
-      z: 1,
-    })
+    const selection = [{ faceId: face.id, edge: 'top' as const }]
+    expect(
+      chooseEdgeExtrusion(
+        scene,
+        selection,
+        projectCamera(matrix, { x: 0.5, y: 0, z: 4 }),
+      ),
+    ).toEqual({ axis: { x: 0, y: 0, z: 1 }, blocks: 4 })
   })
 
   it('keeps partial and complete world-axis mappings distinct', () => {

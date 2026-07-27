@@ -58,25 +58,19 @@ export interface ImageAsset {
   mime: string
 }
 
-export interface SurfacePatch {
+export interface MeshFace {
   id: string
-  name: string
-  columns: number
-  rows: number
   origin: Point3
   uAxis: Point3
   vAxis: Point3
   normal: Point3
-  inactiveCells: string[]
 }
 
-export type PatchEdge = 'top' | 'right' | 'bottom' | 'left'
+export type FaceEdge = 'top' | 'right' | 'bottom' | 'left'
 
 export interface SelectedEdge {
-  patchId: string
-  column: number
-  row: number
-  edge: PatchEdge
+  faceId: string
+  edge: FaceEdge
 }
 
 export interface CalibrationObservation {
@@ -88,7 +82,10 @@ export interface CalibrationObservation {
 
 export interface PlanarProjection {
   kind: 'planar'
-  patchId: string
+  origin: Point3
+  uAxis: Point3
+  vAxis: Point3
+  cornerLattice: [Point3, Point3, Point3, Point3]
   homography: [
     number,
     number,
@@ -118,7 +115,7 @@ export interface AxisMapping {
 }
 
 export interface SceneGeometry {
-  patches: SurfacePatch[]
+  faces: MeshFace[]
   observations: CalibrationObservation[]
   projection: SceneProjection
   axisMapping: AxisMapping
@@ -131,9 +128,7 @@ export interface CandidateScore {
 
 export interface FaceEvidence {
   id: string
-  patchId: string
-  column: number
-  row: number
+  faceId: string
   latticeCoordinate: Point3
   localNormal: Point3
   blockId: string

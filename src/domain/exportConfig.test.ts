@@ -16,9 +16,6 @@ const evidence = (
   selectedVariant: number,
 ): FaceEvidence => ({
   id,
-  patchId: 'floor-demo',
-  column: 0,
-  row: 0,
   latticeCoordinate: coordinate,
   localNormal:
     stateCount === 2
@@ -28,6 +25,7 @@ const evidence = (
   stateCount,
   selectedVariant,
   reviewStatus: 'confirmed',
+  faceId: id,
 })
 
 const documentWith = (entries: FaceEvidence[]): EditorDocument => ({

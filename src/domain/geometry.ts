@@ -4,16 +4,16 @@ import type {
   CalibrationObservation,
   CameraProjection,
   CandidateTransform,
+  FaceEdge,
   FaceDirection,
   Matrix3x4,
-  PatchEdge,
+  MeshFace,
   PlanarProjection,
   Point2,
   Point3,
   SceneGeometry,
   SceneProjection,
   SelectedEdge,
-  SurfacePatch,
   WorldAxisLabel,
 } from './types'
 
@@ -233,63 +233,67 @@ export function projectCamera(matrix: Matrix3x4, point: Point3): Point2 {
     : { x: x / w, y: y / w }
 }
 
-export function patchVertex(
-  patch: SurfacePatch,
-  column: number,
-  row: number,
+export function faceVertex(
+  face: MeshFace,
+  u: number,
+  v: number,
 ): Point3 {
   return add3(
-    add3(patch.origin, scale3(patch.uAxis, column)),
-    scale3(patch.vAxis, row),
+    add3(face.origin, scale3(face.uAxis, u)),
+    scale3(face.vAxis, v),
   )
 }
 
-export function patchCornersLattice(
-  patch: SurfacePatch,
+export function faceCornersLattice(
+  face: MeshFace,
 ): [Point3, Point3, Point3, Point3] {
   return [
-    patchVertex(patch, 0, 0),
-    patchVertex(patch, patch.columns, 0),
-    patchVertex(patch, patch.columns, patch.rows),
-    patchVertex(patch, 0, patch.rows),
+    faceVertex(face, 0, 0),
+    faceVertex(face, 1, 0),
+    faceVertex(face, 1, 1),
+    faceVertex(face, 0, 1),
   ]
 }
 
-export function planarProjectionForPatch(
-  patch: SurfacePatch,
+export function planarProjectionForPlane(
+  origin: Point3,
+  uAxis: Point3,
+  vAxis: Point3,
+  cornerLattice: [Point3, Point3, Point3, Point3],
   observations: CalibrationObservation[],
 ): PlanarProjection {
-  const corners = patchCornersLattice(patch)
-  const destination = corners.map((corner) => {
+  const destination = cornerLattice.map((corner) => {
     const observation = observations.find((entry) => same3(entry.lattice, corner))
     if (!observation) throw new Error('The base surface needs four corner observations.')
     return observation.image
   }) as [Point2, Point2, Point2, Point2]
+  const source = cornerLattice.map((corner) => {
+    const local = localCoordinatesOnPlane(origin, uAxis, vAxis, corner)
+    if (!local) throw new Error('The base surface corners must be coplanar.')
+    return local
+  }) as [Point2, Point2, Point2, Point2]
   return {
     kind: 'planar',
-    patchId: patch.id,
-    homography: computeHomography(
-      [
-        { x: 0, y: 0 },
-        { x: patch.columns, y: 0 },
-        { x: patch.columns, y: patch.rows },
-        { x: 0, y: patch.rows },
-      ],
-      destination,
-    ),
+    origin,
+    uAxis,
+    vAxis,
+    cornerLattice,
+    homography: computeHomography(source, destination),
   }
 }
 
-function localCoordinatesOnPatch(
-  patch: SurfacePatch,
+function localCoordinatesOnPlane(
+  origin: Point3,
+  uAxis: Point3,
+  vAxis: Point3,
   point: Point3,
 ): Point2 | undefined {
-  const delta = subtract3(point, patch.origin)
-  const u = dot3(delta, patch.uAxis)
-  const v = dot3(delta, patch.vAxis)
+  const delta = subtract3(point, origin)
+  const u = dot3(delta, uAxis) / dot3(uAxis, uAxis)
+  const v = dot3(delta, vAxis) / dot3(vAxis, vAxis)
   const reconstructed = add3(
-    add3(patch.origin, scale3(patch.uAxis, u)),
-    scale3(patch.vAxis, v),
+    add3(origin, scale3(uAxis, u)),
+    scale3(vAxis, v),
   )
   return same3(reconstructed, point) ? { x: u, y: v } : undefined
 }
@@ -305,9 +309,12 @@ export function projectScenePoint(
       ? projected
       : undefined
   }
-  const patch = scene.patches.find((entry) => entry.id === projection.patchId)
-  if (!patch) return undefined
-  const local = localCoordinatesOnPatch(patch, point)
+  const local = localCoordinatesOnPlane(
+    projection.origin,
+    projection.uAxis,
+    projection.vAxis,
+    point,
+  )
   return local ? projectPoint(projection.homography, local) : undefined
 }
 
@@ -391,37 +398,29 @@ export function refitProjection(
       // sufficiently well-conditioned.
     }
   }
-  const planarPatchId =
-    scene.projection.kind === 'planar' ? scene.projection.patchId : undefined
-  const basePatch =
-    scene.patches.find((entry) => entry.id === planarPatchId) ?? scene.patches[0]
-  if (!basePatch) throw new Error('The scene does not contain a surface.')
-  return planarProjectionForPatch(basePatch, scene.observations)
+  if (scene.projection.kind === 'planar') {
+    const { origin, uAxis, vAxis, cornerLattice } = scene.projection
+    return planarProjectionForPlane(
+      origin,
+      uAxis,
+      vAxis,
+      cornerLattice,
+      scene.observations,
+    )
+  }
+  return scene.projection
 }
 
-export function patchCellQuad(
+export function faceQuad(
   scene: SceneGeometry,
-  patch: SurfacePatch,
-  column: number,
-  row: number,
+  face: MeshFace,
 ): [Point2, Point2, Point2, Point2] | undefined {
-  const projected = [
-    projectScenePoint(scene, patchVertex(patch, column, row)),
-    projectScenePoint(scene, patchVertex(patch, column + 1, row)),
-    projectScenePoint(scene, patchVertex(patch, column + 1, row + 1)),
-    projectScenePoint(scene, patchVertex(patch, column, row + 1)),
-  ]
+  const projected = faceCornersLattice(face).map((point) =>
+    projectScenePoint(scene, point),
+  )
   return projected.every((point): point is Point2 => point !== undefined)
     ? (projected as [Point2, Point2, Point2, Point2])
     : undefined
-}
-
-export function cellKey(column: number, row: number): string {
-  return `${column}:${row}`
-}
-
-export function evidenceId(patchId: string, column: number, row: number): string {
-  return `${patchId}:${column}:${row}`
 }
 
 export function flattenPoints(points: Point2[]): number[] {
@@ -432,83 +431,45 @@ export function distance(a: Point2, b: Point2): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
-export interface PatchEdgeGeometry {
+export interface FaceEdgeGeometry {
   start: Point3
   end: Point3
   direction: Point3
   length: number
 }
 
-export function patchEdgeGeometry(
-  patch: SurfacePatch,
-  edge: PatchEdge,
-): PatchEdgeGeometry {
+export function faceEdgeGeometry(
+  face: MeshFace,
+  edge: FaceEdge,
+): FaceEdgeGeometry {
   if (edge === 'top') {
     return {
-      start: patchVertex(patch, 0, 0),
-      end: patchVertex(patch, patch.columns, 0),
-      direction: patch.uAxis,
-      length: patch.columns,
-    }
-  }
-  if (edge === 'bottom') {
-    return {
-      start: patchVertex(patch, 0, patch.rows),
-      end: patchVertex(patch, patch.columns, patch.rows),
-      direction: patch.uAxis,
-      length: patch.columns,
-    }
-  }
-  if (edge === 'left') {
-    return {
-      start: patchVertex(patch, 0, 0),
-      end: patchVertex(patch, 0, patch.rows),
-      direction: patch.vAxis,
-      length: patch.rows,
-    }
-  }
-  return {
-    start: patchVertex(patch, patch.columns, 0),
-    end: patchVertex(patch, patch.columns, patch.rows),
-    direction: patch.vAxis,
-    length: patch.rows,
-  }
-}
-
-export function cellEdgeGeometry(
-  patch: SurfacePatch,
-  column: number,
-  row: number,
-  edge: PatchEdge,
-): PatchEdgeGeometry {
-  if (edge === 'top') {
-    return {
-      start: patchVertex(patch, column, row),
-      end: patchVertex(patch, column + 1, row),
-      direction: patch.uAxis,
+      start: faceVertex(face, 0, 0),
+      end: faceVertex(face, 1, 0),
+      direction: face.uAxis,
       length: 1,
     }
   }
   if (edge === 'bottom') {
     return {
-      start: patchVertex(patch, column, row + 1),
-      end: patchVertex(patch, column + 1, row + 1),
-      direction: patch.uAxis,
+      start: faceVertex(face, 0, 1),
+      end: faceVertex(face, 1, 1),
+      direction: face.uAxis,
       length: 1,
     }
   }
   if (edge === 'left') {
     return {
-      start: patchVertex(patch, column, row),
-      end: patchVertex(patch, column, row + 1),
-      direction: patch.vAxis,
+      start: faceVertex(face, 0, 0),
+      end: faceVertex(face, 0, 1),
+      direction: face.vAxis,
       length: 1,
     }
   }
   return {
-    start: patchVertex(patch, column + 1, row),
-    end: patchVertex(patch, column + 1, row + 1),
-    direction: patch.vAxis,
+    start: faceVertex(face, 1, 0),
+    end: faceVertex(face, 1, 1),
+    direction: face.vAxis,
     length: 1,
   }
 }
@@ -524,11 +485,9 @@ export function meshEdgeKey(start: Point3, end: Point3): string {
 export function selectedEdgeGeometry(
   scene: SceneGeometry,
   selection: SelectedEdge,
-): PatchEdgeGeometry | undefined {
-  const patch = scene.patches.find((entry) => entry.id === selection.patchId)
-  return patch
-    ? cellEdgeGeometry(patch, selection.column, selection.row, selection.edge)
-    : undefined
+): FaceEdgeGeometry | undefined {
+  const face = scene.faces.find((entry) => entry.id === selection.faceId)
+  return face ? faceEdgeGeometry(face, selection.edge) : undefined
 }
 
 export function selectedEdgeEndpoints(
@@ -537,7 +496,7 @@ export function selectedEdgeEndpoints(
 ): [Point3, Point3] | undefined {
   const geometries = selections
     .map((selection) => selectedEdgeGeometry(scene, selection))
-    .filter((entry): entry is PatchEdgeGeometry => entry !== undefined)
+    .filter((entry): entry is FaceEdgeGeometry => entry !== undefined)
   if (geometries.length === 0) return undefined
   const counts = new Map<string, { point: Point3; count: number }>()
   geometries.forEach(({ start, end }) => {
@@ -564,47 +523,87 @@ const extrusionDirections: Point3[] = [
   { x: 0, y: 0, z: -1 },
 ]
 
-export function chooseEdgeExtrusionAxis(
+export interface EdgeExtrusion {
+  axis: Point3
+  blocks: number
+}
+
+export function chooseEdgeExtrusion(
   scene: SceneGeometry,
   selections: SelectedEdge[],
-  blocks: number,
   pointer: Point2,
-): Point3 | undefined {
+  maxBlocks = 64,
+): EdgeExtrusion | undefined {
   const geometries = selections
     .map((selection) => selectedEdgeGeometry(scene, selection))
-    .filter((entry): entry is PatchEdgeGeometry => entry !== undefined)
+    .filter((entry): entry is FaceEdgeGeometry => entry !== undefined)
   if (geometries.length === 0) return undefined
   if (scene.projection.kind !== 'camera') {
-    const patch = scene.patches.find((entry) => entry.id === selections[0].patchId)
-    return patch?.normal
+    const face = scene.faces.find((entry) => entry.id === selections[0].faceId)
+    return face ? { axis: face.normal, blocks: 1 } : undefined
   }
   const candidates = extrusionDirections.filter((axis) =>
     geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
   )
-  let best: { axis: Point3; distance: number } | undefined
+  let best: (EdgeExtrusion & { distance: number }) | undefined
   for (const axis of candidates) {
     const geometry = geometries[0]
     const midpoint = scale3(add3(geometry.start, geometry.end), 0.5)
-    const projected = projectScenePoint(
-      scene,
-      add3(midpoint, scale3(axis, blocks)),
-    )
-    if (!projected) continue
-    const candidate = { axis, distance: distance(pointer, projected) }
-    if (!best || candidate.distance < best.distance) best = candidate
+    for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
+      const projected = projectScenePoint(
+        scene,
+        add3(midpoint, scale3(axis, blocks)),
+      )
+      if (!projected) continue
+      const candidate = {
+        axis,
+        blocks,
+        distance: distance(pointer, projected),
+      }
+      if (!best || candidate.distance < best.distance) best = candidate
+    }
   }
-  return best?.axis
+  return best ? { axis: best.axis, blocks: best.blocks } : undefined
 }
 
-export function createEdgeExtrusionPatches(
+export function translatedExtrusionAnchors(
+  scene: SceneGeometry,
+  selections: SelectedEdge[],
+  pointer: Point2,
+): { endpoints: [Point3, Point3]; images: [Point2, Point2] } | undefined {
+  const endpoints = selectedEdgeEndpoints(scene, selections)
+  if (!endpoints) return undefined
+  const projected = endpoints.map((point) => projectScenePoint(scene, point))
+  if (!projected[0] || !projected[1]) return undefined
+  if (distance(pointer, projected[1]) < distance(pointer, projected[0])) {
+    endpoints.reverse()
+    projected.reverse()
+  }
+  const offset = {
+    x: pointer.x - projected[0]!.x,
+    y: pointer.y - projected[0]!.y,
+  }
+  return {
+    endpoints,
+    images: [
+      pointer,
+      {
+        x: projected[1]!.x + offset.x,
+        y: projected[1]!.y + offset.y,
+      },
+    ],
+  }
+}
+
+export function createEdgeExtrusionFaces(
   scene: SceneGeometry,
   selections: SelectedEdge[],
   extrusionAxis: Point3,
   blocks: number,
   makeId: () => string,
-): SurfacePatch[] {
+): MeshFace[] {
   const seen = new Set<string>()
-  const result: SurfacePatch[] = []
+  const result: MeshFace[] = []
   for (const selection of selections) {
     const geometry = selectedEdgeGeometry(scene, selection)
     if (!geometry) continue
@@ -614,51 +613,14 @@ export function createEdgeExtrusionPatches(
     for (let depth = 0; depth < blocks; depth += 1) {
       result.push({
         id: makeId(),
-        name: 'Extruded face',
         origin: add3(geometry.start, scale3(extrusionAxis, depth)),
         uAxis: geometry.direction,
         vAxis: extrusionAxis,
         normal: cross3(geometry.direction, extrusionAxis),
-        columns: 1,
-        rows: 1,
-        inactiveCells: [],
       })
     }
   }
   return result
-}
-
-export function createExtrudedPatch(
-  source: SurfacePatch,
-  edge: PatchEdge,
-  sign: 1 | -1,
-  distanceBlocks: number,
-  id: string,
-): SurfacePatch {
-  const selected = patchEdgeGeometry(source, edge)
-  const extrusionAxis = scale3(source.normal, sign)
-  return {
-    id,
-    name: `${source.name} · extrusion`,
-    origin: selected.start,
-    uAxis: selected.direction,
-    vAxis: extrusionAxis,
-    normal: cross3(selected.direction, extrusionAxis),
-    columns: selected.length,
-    rows: Math.max(1, Math.round(distanceBlocks)),
-    inactiveCells: [],
-  }
-}
-
-export function patchBoundary(
-  scene: SceneGeometry,
-  patch: SurfacePatch,
-  edge: PatchEdge,
-): [Point2, Point2] | undefined {
-  const geometry = patchEdgeGeometry(patch, edge)
-  const start = projectScenePoint(scene, geometry.start)
-  const end = projectScenePoint(scene, geometry.end)
-  return start && end ? [start, end] : undefined
 }
 
 export function projectedAbstractAxes(
@@ -680,13 +642,13 @@ export function projectedAbstractAxes(
   return result
 }
 
-export function canonicalCropTransformForPatch(
+export function canonicalCropTransformForFace(
   scene: SceneGeometry,
-  patch: SurfacePatch,
+  meshFace: MeshFace,
 ): CandidateTransform {
-  const face = faceForLocalNormal(scene.axisMapping, patch.normal)
-  const u = mappedVector(scene.axisMapping, patch.uAxis)
-  const v = mappedVector(scene.axisMapping, patch.vAxis)
+  const face = faceForLocalNormal(scene.axisMapping, meshFace.normal)
+  const u = mappedVector(scene.axisMapping, meshFace.uAxis)
+  const v = mappedVector(scene.axisMapping, meshFace.vAxis)
   if (!face || !u || !v) return 'identity'
   const target = defaultAxesForFace(face)
   for (let turns = 0; turns < 4; turns += 1) {
@@ -704,14 +666,14 @@ export function canonicalCropTransformForPatch(
     : 'identity'
 }
 
-export function patchHasWorldOrientation(
+export function faceHasWorldOrientation(
   scene: SceneGeometry,
-  patch: SurfacePatch,
+  face: MeshFace,
 ): boolean {
   return (
-    mappedVector(scene.axisMapping, patch.uAxis) !== undefined &&
-    mappedVector(scene.axisMapping, patch.vAxis) !== undefined &&
-    faceForLocalNormal(scene.axisMapping, patch.normal) !== undefined
+    mappedVector(scene.axisMapping, face.uAxis) !== undefined &&
+    mappedVector(scene.axisMapping, face.vAxis) !== undefined &&
+    faceForLocalNormal(scene.axisMapping, face.normal) !== undefined
   )
 }
 

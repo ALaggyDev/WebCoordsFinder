@@ -24,7 +24,7 @@ export function ToolRail() {
   const canUndo = useEditorStore((state) => state.past.length > 0)
   const canRedo = useEditorStore((state) => state.future.length > 0)
   const hasGeometry = useEditorStore(
-    (state) => state.document.scene.patches.length > 0,
+    (state) => state.document.scene.faces.length > 0,
   )
   const hasSelectedEdges = useEditorStore((state) => state.selectedEdges.length > 0)
 

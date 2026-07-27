@@ -6,9 +6,9 @@ import { Inspector } from './components/Inspector'
 import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
 import {
+  faceHasWorldOrientation,
   faceForLocalNormal,
-  patchCellQuad,
-  patchHasWorldOrientation,
+  faceQuad,
 } from './domain/geometry'
 import {
   imageToPixels,
@@ -215,16 +215,16 @@ function App() {
     }
     const analyzable = targets.filter((entry) =>
       {
-        const patch = state.document.scene.patches.find(
-          (candidate) => candidate.id === entry.patchId,
+        const meshFace = state.document.scene.faces.find(
+          (candidate) => candidate.id === entry.faceId,
         )
         const face = faceForLocalNormal(
           state.document.scene.axisMapping,
           entry.localNormal,
         )
         return (
-          patch &&
-          patchHasWorldOrientation(state.document.scene, patch) &&
+          meshFace &&
+          faceHasWorldOrientation(state.document.scene, meshFace) &&
           face &&
           referenceTextureForFace(entry.blockId, face)
         )
@@ -253,8 +253,8 @@ function App() {
       }
 
       const jobs = analyzable.map(async (entry) => {
-        const patch = state.document.scene.patches.find(
-          (item) => item.id === entry.patchId,
+        const meshFace = state.document.scene.faces.find(
+          (item) => item.id === entry.faceId,
         )
         const face = faceForLocalNormal(
           state.document.scene.axisMapping,
@@ -264,20 +264,19 @@ function App() {
         const referenceUrl = face
           ? referenceTextureForFace(entry.blockId, face)
           : undefined
-        const quad = patch
-          ? patchCellQuad(
-              state.document.scene,
-              patch,
-              entry.column,
-              entry.row,
-            )
+        const quad = meshFace
+          ? faceQuad(state.document.scene, meshFace)
           : undefined
-        if (!patch || !profile || !referenceUrl || !quad) return null
+        if (!meshFace || !profile || !referenceUrl || !quad) return null
         const [rawSample, reference] = await Promise.all([
           warpQuad(state.document.image.src, quad, 96),
           imageToPixels(referenceUrl, 96),
         ])
-        const sample = orientCropToWorld(rawSample, state.document.scene, patch)
+        const sample = orientCropToWorld(
+          rawSample,
+          state.document.scene,
+          meshFace,
+        )
         const requestId = crypto.randomUUID()
         const result = new Promise<WorkerResponse>((resolve) => {
           pending.set(requestId, resolve)
