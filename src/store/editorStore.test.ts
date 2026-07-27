@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { projectScenePoint } from '../domain/geometry'
+import { projectScenePoint, selectedEdgeGeometry } from '../domain/geometry'
 import { createInitialDocument, useEditorStore } from './editorStore'
 
 afterEach(() => {
@@ -20,6 +20,10 @@ describe('unit-face geometry', () => {
     const scene = useEditorStore.getState().document.scene
     expect(scene.faces).toHaveLength(24)
     expect(scene.faces.every((face) => !('columns' in face))).toBe(true)
+    expect(scene.faces.every((face) => !('uAxis' in face) && !('vAxis' in face))).toBe(
+      true,
+    )
+    expect(scene.faces[0].blockCoordinate).toEqual({ x: 0, y: 0, z: 0 })
   })
 
   it('toggles connected unit edges without entering extrusion mode', () => {
@@ -101,6 +105,10 @@ describe('unit-face geometry', () => {
     expect(updated.faces).toHaveLength(27)
     expect(updated.observations).toHaveLength(4)
     expect(updated.projection.kind).toBe('planar')
+    const [outerSelection] = useEditorStore.getState().selectedEdges
+    const outerEdge = selectedEdgeGeometry(updated, outerSelection)
+    expect(outerEdge?.start.y).toBe(-3)
+    expect(outerEdge?.end.y).toBe(-3)
   })
 
   it('extrudes through an existing camera without recalibrating it', () => {

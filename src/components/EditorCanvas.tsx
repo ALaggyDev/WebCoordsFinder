@@ -177,7 +177,7 @@ function GlobalAxisGizmo({
   origin: Point2
   scale: number
 }) {
-  const anchor = scene.faces[0]?.origin ?? { x: 0, y: 0, z: 0 }
+  const anchor = scene.faces[0]?.blockCoordinate ?? { x: 0, y: 0, z: 0 }
   const directions = projectedAbstractAxes(scene, anchor)
   const axes = (['a', 'b', 'c'] as AbstractAxis[]).filter(
     (axis) => directions[axis],

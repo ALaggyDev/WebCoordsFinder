@@ -3,7 +3,6 @@ import type {
   AxisMapping,
   CalibrationObservation,
   CameraProjection,
-  CandidateTransform,
   FaceEdge,
   FaceDirection,
   Matrix3x4,
@@ -238,10 +237,33 @@ export function faceVertex(
   u: number,
   v: number,
 ): Point3 {
+  const axes = localAxesForFace(face)
   return add3(
-    add3(face.origin, scale3(face.uAxis, u)),
-    scale3(face.vAxis, v),
+    add3(face.blockCoordinate, scale3(axes.uAxis, u)),
+    scale3(axes.vAxis, v),
   )
+}
+
+export function localAxesForFace(face: MeshFace): {
+  uAxis: Point3
+  vAxis: Point3
+} {
+  if (face.normal.x !== 0) {
+    return {
+      uAxis: { x: 0, y: 1, z: 0 },
+      vAxis: { x: 0, y: 0, z: 1 },
+    }
+  }
+  if (face.normal.y !== 0) {
+    return {
+      uAxis: { x: 1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 0, z: 1 },
+    }
+  }
+  return {
+    uAxis: { x: 1, y: 0, z: 0 },
+    vAxis: { x: 0, y: 1, z: 0 },
+  }
 }
 
 export function faceCornersLattice(
@@ -442,11 +464,12 @@ export function faceEdgeGeometry(
   face: MeshFace,
   edge: FaceEdge,
 ): FaceEdgeGeometry {
+  const axes = localAxesForFace(face)
   if (edge === 'top') {
     return {
       start: faceVertex(face, 0, 0),
       end: faceVertex(face, 1, 0),
-      direction: face.uAxis,
+      direction: axes.uAxis,
       length: 1,
     }
   }
@@ -454,7 +477,7 @@ export function faceEdgeGeometry(
     return {
       start: faceVertex(face, 0, 1),
       end: faceVertex(face, 1, 1),
-      direction: face.uAxis,
+      direction: axes.uAxis,
       length: 1,
     }
   }
@@ -462,14 +485,14 @@ export function faceEdgeGeometry(
     return {
       start: faceVertex(face, 0, 0),
       end: faceVertex(face, 0, 1),
-      direction: face.vAxis,
+      direction: axes.vAxis,
       length: 1,
     }
   }
   return {
     start: faceVertex(face, 1, 0),
     end: faceVertex(face, 1, 1),
-    direction: face.vAxis,
+    direction: axes.vAxis,
     length: 1,
   }
 }
@@ -569,11 +592,12 @@ export function chooseEdgeExtrusion(
       add3(referenceGeometry.start, referenceGeometry.end),
       0.5,
     )
+    const faceAxes = localAxesForFace(face)
     const inPlaneAxes = [
-      face.uAxis,
-      negate3(face.uAxis),
-      face.vAxis,
-      negate3(face.vAxis),
+      faceAxes.uAxis,
+      negate3(faceAxes.uAxis),
+      faceAxes.vAxis,
+      negate3(faceAxes.vAxis),
     ].filter((axis, index, axes) =>
       axes.findIndex((candidate) => same3(candidate, axis)) === index &&
       geometries.every((geometry) => Math.abs(dot3(axis, geometry.direction)) < EPSILON),
@@ -713,16 +737,41 @@ export function createEdgeExtrusionFaces(
     if (seen.has(key)) continue
     seen.add(key)
     for (let depth = 0; depth < blocks; depth += 1) {
+      const start = add3(geometry.start, scale3(extrusionAxis, depth))
+      const end = add3(geometry.end, scale3(extrusionAxis, depth))
+      const corners = [
+        start,
+        end,
+        add3(end, extrusionAxis),
+        add3(start, extrusionAxis),
+      ]
       result.push({
         id: makeId(),
-        origin: add3(geometry.start, scale3(extrusionAxis, depth)),
-        uAxis: geometry.direction,
-        vAxis: extrusionAxis,
+        blockCoordinate: {
+          x: Math.min(...corners.map((corner) => corner.x)),
+          y: Math.min(...corners.map((corner) => corner.y)),
+          z: Math.min(...corners.map((corner) => corner.z)),
+        },
         normal: cross3(geometry.direction, extrusionAxis),
       })
     }
   }
   return result
+}
+
+export function outerEdgeForExtrusion(
+  face: MeshFace,
+  extrusionAxis: Point3,
+): FaceEdge | undefined {
+  let result: { edge: FaceEdge; distance: number } | undefined
+  for (const edge of ['top', 'right', 'bottom', 'left'] as const) {
+    const geometry = faceEdgeGeometry(face, edge)
+    if (Math.abs(dot3(geometry.direction, extrusionAxis)) > EPSILON) continue
+    const midpoint = scale3(add3(geometry.start, geometry.end), 0.5)
+    const candidate = { edge, distance: dot3(midpoint, extrusionAxis) }
+    if (!result || candidate.distance > result.distance) result = candidate
+  }
+  return result?.edge
 }
 
 export function projectedAbstractAxes(
@@ -744,39 +793,77 @@ export function projectedAbstractAxes(
   return result
 }
 
-export function canonicalCropTransformForFace(
-  scene: SceneGeometry,
-  meshFace: MeshFace,
-): CandidateTransform {
-  const face = faceForLocalNormal(scene.axisMapping, meshFace.normal)
-  const u = mappedVector(scene.axisMapping, meshFace.uAxis)
-  const v = mappedVector(scene.axisMapping, meshFace.vAxis)
-  if (!face || !u || !v) return 'identity'
-  const target = defaultAxesForFace(face)
-  for (let turns = 0; turns < 4; turns += 1) {
-    const axes = axesForFaceRotation(face, turns)
-    if (same3(u, axes.uAxis) && same3(v, axes.vAxis)) {
-      const targetRotation = face === 'down' ? 2 : 0
-      const required = (targetRotation - turns + 4) % 4
-      return (
-        ['identity', 'rotate90', 'rotate180', 'rotate270'] as const
-      )[required]
+function localVectorForWorld(
+  mapping: AxisMapping,
+  world: Point3,
+): Point3 | undefined {
+  for (const axis of extrusionDirections) {
+    const mapped = mappedVector(mapping, axis)
+    if (mapped && same3(mapped, world)) return axis
+  }
+  return undefined
+}
+
+function orientedFaceCorners(
+  face: MeshFace,
+  uAxis: Point3,
+  vAxis: Point3,
+): [Point3, Point3, Point3, Point3] | undefined {
+  if (
+    dot3(face.normal, uAxis) !== 0 ||
+    dot3(face.normal, vAxis) !== 0 ||
+    dot3(uAxis, vAxis) !== 0
+  ) {
+    return undefined
+  }
+  let origin = face.blockCoordinate
+  for (const axis of [uAxis, vAxis]) {
+    if (axis.x < 0 || axis.y < 0 || axis.z < 0) {
+      origin = subtract3(origin, axis)
     }
   }
-  return same3(u, target.uAxis) && same3(v, target.vAxis)
-    ? 'identity'
-    : 'identity'
+  return [
+    origin,
+    add3(origin, uAxis),
+    add3(add3(origin, uAxis), vAxis),
+    add3(origin, vAxis),
+  ]
+}
+
+export function worldAlignedFaceCorners(
+  scene: SceneGeometry,
+  meshFace: MeshFace,
+): [Point3, Point3, Point3, Point3] | undefined {
+  const face = faceForLocalNormal(scene.axisMapping, meshFace.normal)
+  if (!face) return undefined
+  const target =
+    face === 'down'
+      ? axesForFaceRotation(face, 2)
+      : defaultAxesForFace(face)
+  const uAxis = localVectorForWorld(scene.axisMapping, target.uAxis)
+  const vAxis = localVectorForWorld(scene.axisMapping, target.vAxis)
+  return uAxis && vAxis
+    ? orientedFaceCorners(meshFace, uAxis, vAxis)
+    : undefined
+}
+
+export function worldAlignedFaceQuad(
+  scene: SceneGeometry,
+  meshFace: MeshFace,
+): [Point2, Point2, Point2, Point2] | undefined {
+  const corners = worldAlignedFaceCorners(scene, meshFace)
+  if (!corners) return undefined
+  const projected = corners.map((point) => projectScenePoint(scene, point))
+  return projected.every((point): point is Point2 => point !== undefined)
+    ? (projected as [Point2, Point2, Point2, Point2])
+    : undefined
 }
 
 export function faceHasWorldOrientation(
   scene: SceneGeometry,
   face: MeshFace,
 ): boolean {
-  return (
-    mappedVector(scene.axisMapping, face.uAxis) !== undefined &&
-    mappedVector(scene.axisMapping, face.vAxis) !== undefined &&
-    faceForLocalNormal(scene.axisMapping, face.normal) !== undefined
-  )
+  return worldAlignedFaceCorners(scene, face) !== undefined
 }
 
 export function defaultAxesForFace(face: FaceDirection): {

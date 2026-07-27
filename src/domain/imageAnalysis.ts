@@ -1,11 +1,8 @@
 import type {
   CandidateTransform,
-  MeshFace,
   Point2,
-  SceneGeometry,
 } from './types'
 import {
-  canonicalCropTransformForFace,
   computeHomography,
   projectPoint,
 } from './geometry'
@@ -168,18 +165,6 @@ export function transformPixels(
     }
   }
   return output
-}
-
-export function orientCropToWorld(
-  crop: ImageData,
-  scene: SceneGeometry,
-  face: MeshFace,
-): ImageData {
-  const transform = canonicalCropTransformForFace(scene, face)
-  if (transform === 'identity') return crop
-  const result = new ImageData(crop.width, crop.height)
-  result.data.set(transformPixels(crop.data, crop.width, transform))
-  return result
 }
 
 export function normalizedGradientScore(

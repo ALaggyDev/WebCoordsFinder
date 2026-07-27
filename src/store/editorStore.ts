@@ -8,6 +8,7 @@ import {
   isAxisMappingComplete,
   mappedVector,
   meshEdgeKey,
+  outerEdgeForExtrusion,
   refitProjection,
   scale3,
   selectedEdgeEndpoints,
@@ -48,9 +49,7 @@ function createFaceGrid(columns: number, rows: number, prefix: string): MeshFace
   return Array.from({ length: rows }).flatMap((_, row) =>
     Array.from({ length: columns }).map((__, column) => ({
       id: `${prefix}-${column}-${row}`,
-      origin: { x: column, y: row, z: 0 },
-      uAxis: planeU,
-      vAxis: planeV,
+      blockCoordinate: { x: column, y: row, z: 0 },
       normal: planeNormal,
     })),
   )
@@ -169,7 +168,7 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
   return {
     id: face.id,
     faceId: face.id,
-    latticeCoordinate: face.origin,
+    latticeCoordinate: face.blockCoordinate,
     localNormal: face.normal,
     blockId: 'stone',
     stateCount: direction ? statesForFace('stone', direction) ?? 4 : 4,
@@ -408,7 +407,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (faces.length === 0) return state
       const outerEdges = faces
         .filter((_, index) => index % extrusion.blocks === extrusion.blocks - 1)
-        .map((face) => ({ faceId: face.id, edge: 'bottom' as const }))
+        .flatMap((face) => {
+          const edge = outerEdgeForExtrusion(face, extrusion.axis)
+          return edge ? [{ faceId: face.id, edge }] : []
+        })
       return {
         ...mutateDocument(state, (document) => {
           document.scene.faces.push(...faces)

@@ -26,11 +26,11 @@ import {
   faceHasWorldOrientation,
   faceForLocalNormal,
   faceDisplayName,
-  faceQuad,
   isAxisMappingComplete,
   mappedVector,
+  worldAlignedFaceQuad,
 } from '../domain/geometry'
-import { imageDataUrl, orientCropToWorld, warpQuad } from '../domain/imageAnalysis'
+import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
 import {
   blockProfiles,
   blockProfileMap,
@@ -284,7 +284,7 @@ function FaceInspector({
       setCropStatus('unresolved')
       return
     }
-    const quad = faceQuad(document.scene, meshFace)
+    const quad = worldAlignedFaceQuad(document.scene, meshFace)
     if (!quad) {
       setCropUrl('')
       setCropStatus('error')
@@ -299,9 +299,7 @@ function FaceInspector({
     )
       .then((crop) => {
         if (active) {
-          setCropUrl(
-            imageDataUrl(orientCropToWorld(crop, document.scene, meshFace)),
-          )
+          setCropUrl(imageDataUrl(crop))
           setCropStatus('ready')
         }
       })

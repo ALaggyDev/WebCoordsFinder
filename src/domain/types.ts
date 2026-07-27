@@ -60,9 +60,7 @@ export interface ImageAsset {
 
 export interface MeshFace {
   id: string
-  origin: Point3
-  uAxis: Point3
-  vAxis: Point3
+  blockCoordinate: Point3
   normal: Point3
 }
 

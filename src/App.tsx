@@ -8,11 +8,10 @@ import { TopBar } from './components/TopBar'
 import {
   faceHasWorldOrientation,
   faceForLocalNormal,
-  faceQuad,
+  worldAlignedFaceQuad,
 } from './domain/geometry'
 import {
   imageToPixels,
-  orientCropToWorld,
   warpQuad,
 } from './domain/imageAnalysis'
 import {
@@ -271,18 +270,13 @@ function App() {
           ? referenceTextureForFace(entry.blockId, face)
           : undefined
         const quad = meshFace
-          ? faceQuad(state.document.scene, meshFace)
+          ? worldAlignedFaceQuad(state.document.scene, meshFace)
           : undefined
         if (!meshFace || !profile || !referenceUrl || !quad) return null
-        const [rawSample, reference] = await Promise.all([
+        const [sample, reference] = await Promise.all([
           warpQuad(state.document.image.src, quad, 96),
           imageToPixels(referenceUrl, 96),
         ])
-        const sample = orientCropToWorld(
-          rawSample,
-          state.document.scene,
-          meshFace,
-        )
         const requestId = crypto.randomUUID()
         const result = new Promise<WorkerResponse>((resolve) => {
           pending.set(requestId, resolve)

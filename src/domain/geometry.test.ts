@@ -11,6 +11,7 @@ import {
   mappedVector,
   projectCamera,
   projectPoint,
+  worldAlignedFaceCorners,
 } from './geometry'
 import type {
   CalibrationObservation,
@@ -27,11 +28,11 @@ const expectPointClose = (actual: Point2, expected: Point2, precision = 6) => {
 
 const face: MeshFace = {
   id: 'base-0-0',
-  origin: { x: 0, y: 0, z: 0 },
-  uAxis: { x: 1, y: 0, z: 0 },
-  vAxis: { x: 0, y: 1, z: 0 },
+  blockCoordinate: { x: 0, y: 0, z: 0 },
   normal: { x: 0, y: 0, z: 1 },
 }
+const planeU = { x: 1, y: 0, z: 0 }
+const planeV = { x: 0, y: 1, z: 0 }
 
 describe('global perspective geometry', () => {
   it('maps all four planar corners through a homography', () => {
@@ -54,7 +55,11 @@ describe('global perspective geometry', () => {
   })
 
   it('projects adjacent unit faces with a shared edge', () => {
-    const right: MeshFace = { ...face, id: 'base-1-0', origin: { x: 1, y: 0, z: 0 } }
+    const right: MeshFace = {
+      ...face,
+      id: 'base-1-0',
+      blockCoordinate: { x: 1, y: 0, z: 0 },
+    }
     const homography = computeHomography(
       [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
       [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
@@ -65,8 +70,8 @@ describe('global perspective geometry', () => {
       projection: {
         kind: 'planar',
         origin: { x: 0, y: 0, z: 0 },
-        uAxis: face.uAxis,
-        vAxis: face.vAxis,
+        uAxis: planeU,
+        vAxis: planeV,
         cornerLattice: [
           { x: 0, y: 0, z: 0 },
           { x: 4, y: 0, z: 0 },
@@ -135,7 +140,7 @@ describe('global perspective geometry', () => {
       () => crypto.randomUUID(),
     )
     expect(created).toHaveLength(3)
-    expect(created.map((entry) => entry.origin.z)).toEqual([0, 1, 2])
+    expect(created.map((entry) => entry.blockCoordinate.z)).toEqual([0, 1, 2])
   })
 
   it('chooses extrusion direction and block count from the pointer', () => {
@@ -174,9 +179,9 @@ describe('global perspective geometry', () => {
       observations: [],
       projection: {
         kind: 'planar',
-        origin: face.origin,
-        uAxis: face.uAxis,
-        vAxis: face.vAxis,
+        origin: face.blockCoordinate,
+        uAxis: planeU,
+        vAxis: planeV,
         cornerLattice: [
           { x: 0, y: 0, z: 0 },
           { x: 4, y: 0, z: 0 },
@@ -212,9 +217,9 @@ describe('global perspective geometry', () => {
       observations: [],
       projection: {
         kind: 'planar',
-        origin: face.origin,
-        uAxis: face.uAxis,
-        vAxis: face.vAxis,
+        origin: face.blockCoordinate,
+        uAxis: planeU,
+        vAxis: planeV,
         cornerLattice: [
           { x: 0, y: 0, z: 0 },
           { x: 4, y: 0, z: 0 },
@@ -243,7 +248,7 @@ describe('global perspective geometry', () => {
     const laterFace: MeshFace = {
       ...face,
       id: 'later',
-      origin: { x: 0, y: 5, z: 0 },
+      blockCoordinate: { x: 0, y: 5, z: 0 },
     }
     const homography = computeHomography(
       [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
@@ -254,9 +259,9 @@ describe('global perspective geometry', () => {
       observations: [],
       projection: {
         kind: 'planar',
-        origin: face.origin,
-        uAxis: face.uAxis,
-        vAxis: face.vAxis,
+        origin: face.blockCoordinate,
+        uAxis: planeU,
+        vAxis: planeV,
         cornerLattice: [
           { x: 0, y: 0, z: 0 },
           { x: 10, y: 0, z: 0 },
@@ -282,6 +287,70 @@ describe('global perspective geometry', () => {
       blocks: 3,
       createsAxis: false,
     })
+  })
+
+  it('normalizes a negative extrusion to the adjacent block coordinate', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: [800, 0, 320, 100, 0, 700, -100, 200, 0.1, 0.05, 1, 5],
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const [created] = createEdgeExtrusionFaces(
+      scene,
+      [{ faceId: face.id, edge: 'top' }],
+      { x: 0, y: -1, z: 0 },
+      1,
+      () => 'negative',
+    )
+
+    expect(created).toEqual({
+      id: 'negative',
+      blockCoordinate: { x: 0, y: -1, z: 0 },
+      normal: { x: 0, y: 0, z: -1 },
+    })
+  })
+
+  it('world-aligns top crops independently of extrusion direction and visible-side flips', () => {
+    const scene: SceneGeometry = {
+      faces: [],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: [800, 0, 320, 100, 0, 700, -100, 200, 0.1, 0.05, 1, 5],
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
+    }
+    const topFromPositiveExtrusion: MeshFace = {
+      id: 'positive',
+      blockCoordinate: { x: 0, y: 0, z: 0 },
+      normal: { x: 0, y: 0, z: 1 },
+    }
+    const topAfterNegativeExtrusionAndFlip: MeshFace = {
+      id: 'negative-flipped',
+      blockCoordinate: { x: 0, y: -1, z: 0 },
+      normal: { x: 0, y: 0, z: 1 },
+    }
+
+    expect(worldAlignedFaceCorners(scene, topFromPositiveExtrusion)).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 1, y: 1, z: 0 },
+      { x: 0, y: 1, z: 0 },
+    ])
+    expect(worldAlignedFaceCorners(scene, topAfterNegativeExtrusionAndFlip)).toEqual([
+      { x: 0, y: -1, z: 0 },
+      { x: 1, y: -1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+    ])
   })
 
   it('keeps partial and complete world-axis mappings distinct', () => {
