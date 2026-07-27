@@ -66,7 +66,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     errors.push('Chunk dimensions must be positive.')
   }
   if (document.scanner.maxBadBlocks < 0) {
-    errors.push('Allowed bad blocks cannot be negative.')
+    errors.push('Error tolerance cannot be negative.')
   }
 
   rows.forEach((entry) => {
@@ -83,9 +83,6 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     }
   })
 
-  if (rows.length < 24) {
-    warnings.push('Fewer than 24 unique constraints may leave many coordinate candidates.')
-  }
   const proposals = document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length
   if (proposals > 0) {
     warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} excluded until reviewed.`)

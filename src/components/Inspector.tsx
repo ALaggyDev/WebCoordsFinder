@@ -18,8 +18,6 @@ import {
   X,
 } from 'lucide-react'
 import {
-  approximateCandidateCount,
-  constraintBits,
   generateCoordsFinderConfig,
   validateForExport,
 } from '../domain/exportConfig'
@@ -48,6 +46,7 @@ import {
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { useEditorStore } from '../store/editorStore'
+import { ExportRunDialog } from './ExportRunDialog'
 
 interface InspectorProps {
   busy: boolean
@@ -857,6 +856,7 @@ function ExportInspector() {
   const document = useEditorStore((state) => state.document)
   const updateScanner = useEditorStore((state) => state.updateScanner)
   const updateBounds = useEditorStore((state) => state.updateBounds)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const validation = validateForExport(document)
   const config = generateCoordsFinderConfig(document)
   const bounds = document.scanner.bounds
@@ -867,8 +867,8 @@ function ExportInspector() {
   }
 
   return (
-    <>
-      <SectionTitle icon={Download} eyebrow="CoordsFinder handoff" title="Export configuration" />
+    <div className="export-inspector">
+      <SectionTitle icon={Download} eyebrow="Search setup" title="Export configuration" />
       <label className="field">
         <span>Texture algorithm</span>
         <select
@@ -937,47 +937,52 @@ function ExportInspector() {
           ))}
         </div>
       </div>
+      <div className="subsection">
+        <NumberField
+          label="Error tolerance"
+          value={document.scanner.maxBadBlocks}
+          min={0}
+          onChange={(maxBadBlocks) => updateScanner({ maxBadBlocks })}
+        />
+        <p className="field-help">
+          Maximum number of confirmed observations that may disagree. Zero
+          requires an exact match.
+        </p>
+      </div>
       <details className="advanced-settings">
-        <summary>Scanner runtime settings</summary>
+        <summary>CoordsFinder settings</summary>
+        <p className="field-help">
+          These options affect only the downloaded CoordsFinder configuration.
+        </p>
         <div className="field-grid two">
           <NumberField label="Chunk blocks X" value={document.scanner.chunkBlocksX} min={1} onChange={(chunkBlocksX) => updateScanner({ chunkBlocksX })} />
           <NumberField label="Chunk blocks Z" value={document.scanner.chunkBlocksZ} min={1} onChange={(chunkBlocksZ) => updateScanner({ chunkBlocksZ })} />
-          <NumberField label="Allowed bad blocks" value={document.scanner.maxBadBlocks} min={0} onChange={(maxBadBlocks) => updateScanner({ maxBadBlocks })} />
           <label className="check-field">
             <input type="checkbox" checked={document.scanner.printChunks} onChange={(event) => updateScanner({ printChunks: event.target.checked })} />
             Print chunks
           </label>
         </div>
       </details>
-      <div className="strength-card">
-        <div><span>Confirmed rows</span><strong>{validation.rowCount}</strong></div>
-        <div><span>Information</span><strong>{constraintBits(document)} bits</strong></div>
-        <div><span>Est. candidates</span><strong>{approximateCandidateCount(document)}</strong></div>
-      </div>
-      {(validation.errors.length > 0 || validation.warnings.length > 0) && (
-        <div className="validation-list">
-          {validation.errors.map((message) => (
-            <div key={message} className="validation error"><X size={14} />{message}</div>
-          ))}
-          {validation.warnings.map((message) => (
-            <div key={message} className="validation warning"><AlertTriangle size={14} />{message}</div>
-          ))}
-        </div>
-      )}
-      <pre className="config-preview">{config}</pre>
-      <button
-        type="button"
-        className="primary-button full"
-        onClick={downloadConfig}
-        disabled={validation.errors.length > 0}
-      >
-        <Download size={16} /> Download coordsfinder.conf
-      </button>
       <div className="todo-card">
         <AlertTriangle size={15} />
         <span><b>Note:</b> world directions are user-confirmed; the app does not infer a compass bearing from the screenshot.</span>
       </div>
-    </>
+      <div className="export-inspector-footer">
+        <button
+          className="primary-button full"
+          onClick={() => setDialogOpen(true)}
+          type="button"
+        >
+          <ScanSearch size={16} /> Export / Run
+        </button>
+      </div>
+      <ExportRunDialog
+        document={document}
+        onClose={() => setDialogOpen(false)}
+        onDownload={downloadConfig}
+        open={dialogOpen}
+      />
+    </div>
   )
 }
 
