@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { projectScenePoint } from '../domain/geometry'
 import { createInitialDocument, useEditorStore } from './editorStore'
 
 afterEach(() => {
@@ -83,6 +84,23 @@ describe('unit-face geometry', () => {
     expect(scene.faces).toHaveLength(25)
     expect(scene.observations).toHaveLength(6)
     expect(scene.projection.kind).toBe('camera')
+  })
+
+  it('extends within the plane without creating a camera or new anchors', () => {
+    const scene = useEditorStore.getState().document.scene
+    const face = scene.faces[0]
+    const pointer = projectScenePoint(scene, { x: 0.5, y: -3, z: 0 })!
+    useEditorStore.getState().toggleSelectedEdge({
+      faceId: face.id,
+      edge: 'top',
+    })
+
+    useEditorStore.getState().extrudeSelectedEdges(pointer)
+
+    const updated = useEditorStore.getState().document.scene
+    expect(updated.faces).toHaveLength(27)
+    expect(updated.observations).toHaveLength(4)
+    expect(updated.projection.kind).toBe('planar')
   })
 
   it('extrudes through an existing camera without recalibrating it', () => {

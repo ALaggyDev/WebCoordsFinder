@@ -101,7 +101,7 @@ function makeExtrusionPreview(
   scene: SceneGeometry,
   selections: SelectedEdge[],
   pointer: Point2,
-): { scene: SceneGeometry; blocks: number } | undefined {
+): { scene: SceneGeometry; blocks: number; createsAxis: boolean } | undefined {
   const extrusion = chooseEdgeExtrusion(scene, selections, pointer)
   if (!extrusion) return undefined
   let previewId = 0
@@ -116,8 +116,12 @@ function makeExtrusionPreview(
     ...scene,
     faces: [...scene.faces, ...faces],
   }
-  if (scene.projection.kind === 'camera') {
-    return { scene: previewScene, blocks: extrusion.blocks }
+  if (scene.projection.kind === 'camera' || !extrusion.createsAxis) {
+    return {
+      scene: previewScene,
+      blocks: extrusion.blocks,
+      createsAxis: extrusion.createsAxis,
+    }
   }
 
   const translated = translatedExtrusionAnchors(scene, selections, pointer)
@@ -148,7 +152,11 @@ function makeExtrusionPreview(
   ]
   try {
     previewScene.projection = refitProjection(previewScene)
-    return { scene: previewScene, blocks: extrusion.blocks }
+    return {
+      scene: previewScene,
+      blocks: extrusion.blocks,
+      createsAxis: extrusion.createsAxis,
+    }
   } catch {
     return undefined
   }
@@ -685,7 +693,7 @@ export function EditorCanvas() {
           )}
         </Layer>
       </Stage>
-      {visualizations.axisGizmo && (
+      {visualizations.axisGizmo && sceneForRendering.faces.length > 0 && (
         <Stage
           width={size.width}
           height={size.height}
@@ -730,7 +738,9 @@ export function EditorCanvas() {
           <strong>
             {document.scene.projection.kind === 'camera'
               ? `Snapped to ${preview?.blocks ?? 1} block${(preview?.blocks ?? 1) === 1 ? '' : 's'} · click to extrude`
-              : 'One-block camera setup · move both endpoints together and click'}
+              : preview && !preview.createsAxis
+                ? `Along plane · ${preview.blocks} block${preview.blocks === 1 ? '' : 's'} · click to extrude`
+                : 'New axis · move both endpoints together and click'}
           </strong>
         )}
       </div>

@@ -375,7 +375,8 @@ export const useEditorStore = create<EditorState>((set) => ({
         state.selectedEdges,
       )
       const planarAnchors =
-        state.document.scene.projection.kind === 'camera'
+        state.document.scene.projection.kind === 'camera' ||
+        !extrusion?.createsAxis
           ? undefined
           : translatedExtrusionAnchors(
               state.document.scene,

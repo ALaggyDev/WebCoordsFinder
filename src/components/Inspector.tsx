@@ -203,7 +203,7 @@ function GeometryInspector() {
           <span>
             {cameraProjection
               ? `${scene.observations.length} anchors · ${cameraProjection.rmsError.toFixed(1)} px RMS`
-              : 'Select a boundary edge, then align both endpoints of its extrusion.'}
+              : 'Move near the plane to extend it, or away to establish a new axis.'}
           </span>
         </div>
         {mappingComplete && <Check size={15} />}
@@ -237,8 +237,8 @@ function GeometryInspector() {
       <div className="hint-card">
         Click individual connected edges to toggle their selection, then press
         E. Move toward the intended axis and distance, then click to extrude.
-        Before a 3D camera exists, the selected edge moves as one rigid unit and
-        creates a one-block face.
+        Before a 3D camera exists, moving near the plane keeps the extrusion
+        planar; moving away creates the third axis.
       </div>
     </>
   )

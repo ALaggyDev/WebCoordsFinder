@@ -526,6 +526,26 @@ const extrusionDirections: Point3[] = [
 export interface EdgeExtrusion {
   axis: Point3
   blocks: number
+  createsAxis: boolean
+}
+
+function distanceToSegment(point: Point2, start: Point2, end: Point2): number {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared < EPSILON) return distance(point, start)
+  const amount = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+        lengthSquared,
+    ),
+  )
+  return distance(point, {
+    x: start.x + dx * amount,
+    y: start.y + dy * amount,
+  })
 }
 
 export function chooseEdgeExtrusion(
@@ -540,7 +560,77 @@ export function chooseEdgeExtrusion(
   if (geometries.length === 0) return undefined
   if (scene.projection.kind !== 'camera') {
     const face = scene.faces.find((entry) => entry.id === selections[0].faceId)
-    return face ? { axis: face.normal, blocks: 1 } : undefined
+    if (!face) return undefined
+    const midpoint = scale3(add3(geometries[0].start, geometries[0].end), 0.5)
+    const inPlaneAxes = [
+      face.uAxis,
+      negate3(face.uAxis),
+      face.vAxis,
+      negate3(face.vAxis),
+    ].filter((axis, index, axes) =>
+      axes.findIndex((candidate) => same3(candidate, axis)) === index &&
+      geometries.every((geometry) => Math.abs(dot3(axis, geometry.direction)) < EPSILON),
+    )
+    let bestInPlane:
+      | (EdgeExtrusion & { pointerDistance: number; pathDistance: number; unitLength: number })
+      | undefined
+    for (const axis of inPlaneAxes) {
+      let previous = projectScenePoint(scene, midpoint)
+      if (!previous) continue
+      const first = projectScenePoint(scene, add3(midpoint, axis))
+      if (!first) continue
+      const unitLength = distance(previous, first)
+      let pathDistance = Number.POSITIVE_INFINITY
+      let pointerDistance = Number.POSITIVE_INFINITY
+      let bestBlocks = 1
+      for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
+        const projected = projectScenePoint(
+          scene,
+          add3(midpoint, scale3(axis, blocks)),
+        )
+        if (!projected) break
+        pathDistance = Math.min(
+          pathDistance,
+          distanceToSegment(pointer, previous, projected),
+        )
+        const snappedDistance = distance(pointer, projected)
+        if (snappedDistance < pointerDistance) {
+          pointerDistance = snappedDistance
+          bestBlocks = blocks
+        }
+        previous = projected
+      }
+      const candidate = {
+        axis,
+        blocks: bestBlocks,
+        createsAxis: false,
+        pointerDistance,
+        pathDistance,
+        unitLength,
+      }
+      if (
+        !bestInPlane ||
+        candidate.pathDistance < bestInPlane.pathDistance ||
+        (candidate.pathDistance === bestInPlane.pathDistance &&
+          candidate.pointerDistance < bestInPlane.pointerDistance)
+      ) {
+        bestInPlane = candidate
+      }
+    }
+    if (bestInPlane) {
+      const planeSnapDistance = Math.max(
+        12,
+        Math.min(48, bestInPlane.unitLength * 0.4),
+      )
+      if (bestInPlane.pathDistance <= planeSnapDistance) {
+        return {
+          axis: bestInPlane.axis,
+          blocks: bestInPlane.blocks,
+          createsAxis: false,
+        }
+      }
+    }
+    return { axis: face.normal, blocks: 1, createsAxis: true }
   }
   const candidates = extrusionDirections.filter((axis) =>
     geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
@@ -558,12 +648,15 @@ export function chooseEdgeExtrusion(
       const candidate = {
         axis,
         blocks,
+        createsAxis: false,
         distance: distance(pointer, projected),
       }
       if (!best || candidate.distance < best.distance) best = candidate
     }
   }
-  return best ? { axis: best.axis, blocks: best.blocks } : undefined
+  return best
+    ? { axis: best.axis, blocks: best.blocks, createsAxis: false }
+    : undefined
 }
 
 export function translatedExtrusionAnchors(

@@ -157,7 +157,86 @@ describe('global perspective geometry', () => {
         selection,
         projectCamera(matrix, { x: 0.5, y: 0, z: 4 }),
       ),
-    ).toEqual({ axis: { x: 0, y: 0, z: 1 }, blocks: 4 })
+    ).toEqual({
+      axis: { x: 0, y: 0, z: 1 },
+      blocks: 4,
+      createsAxis: false,
+    })
+  })
+
+  it('keeps a first extrusion in the plane when the pointer is near it', () => {
+    const homography = computeHomography(
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
+    )
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: face.origin,
+        uAxis: face.uAxis,
+        vAxis: face.vAxis,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 4, y: 0, z: 0 },
+          { x: 4, y: 3, z: 0 },
+          { x: 0, y: 3, z: 0 },
+        ],
+        homography,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const pointer = projectPoint(homography, { x: 0.5, y: -3 })
+
+    expect(
+      chooseEdgeExtrusion(
+        scene,
+        [{ faceId: face.id, edge: 'top' }],
+        pointer,
+      ),
+    ).toEqual({
+      axis: { x: 0, y: -1, z: 0 },
+      blocks: 3,
+      createsAxis: false,
+    })
+  })
+
+  it('uses the face normal when a first extrusion leaves the plane', () => {
+    const homography = computeHomography(
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
+      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
+    )
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: face.origin,
+        uAxis: face.uAxis,
+        vAxis: face.vAxis,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 4, y: 0, z: 0 },
+          { x: 4, y: 3, z: 0 },
+          { x: 0, y: 3, z: 0 },
+        ],
+        homography,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    expect(
+      chooseEdgeExtrusion(
+        scene,
+        [{ faceId: face.id, edge: 'top' }],
+        { x: 250, y: 250 },
+      ),
+    ).toEqual({
+      axis: face.normal,
+      blocks: 1,
+      createsAxis: true,
+    })
   })
 
   it('keeps partial and complete world-axis mappings distinct', () => {
