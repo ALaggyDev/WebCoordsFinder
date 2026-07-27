@@ -558,10 +558,17 @@ export function chooseEdgeExtrusion(
     .map((selection) => selectedEdgeGeometry(scene, selection))
     .filter((entry): entry is FaceEdgeGeometry => entry !== undefined)
   if (geometries.length === 0) return undefined
+  const referenceGeometry = geometries[geometries.length - 1]
   if (scene.projection.kind !== 'camera') {
-    const face = scene.faces.find((entry) => entry.id === selections[0].faceId)
+    const referenceSelection = selections[selections.length - 1]
+    const face = scene.faces.find(
+      (entry) => entry.id === referenceSelection.faceId,
+    )
     if (!face) return undefined
-    const midpoint = scale3(add3(geometries[0].start, geometries[0].end), 0.5)
+    const midpoint = scale3(
+      add3(referenceGeometry.start, referenceGeometry.end),
+      0.5,
+    )
     const inPlaneAxes = [
       face.uAxis,
       negate3(face.uAxis),
@@ -637,8 +644,10 @@ export function chooseEdgeExtrusion(
   )
   let best: (EdgeExtrusion & { distance: number }) | undefined
   for (const axis of candidates) {
-    const geometry = geometries[0]
-    const midpoint = scale3(add3(geometry.start, geometry.end), 0.5)
+    const midpoint = scale3(
+      add3(referenceGeometry.start, referenceGeometry.end),
+      0.5,
+    )
     for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
       const projected = projectScenePoint(
         scene,

@@ -239,6 +239,51 @@ describe('global perspective geometry', () => {
     })
   })
 
+  it('uses the most recently selected edge for pointer distance', () => {
+    const laterFace: MeshFace = {
+      ...face,
+      id: 'later',
+      origin: { x: 0, y: 5, z: 0 },
+    }
+    const homography = computeHomography(
+      [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+      [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }],
+    )
+    const scene: SceneGeometry = {
+      faces: [face, laterFace],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: face.origin,
+        uAxis: face.uAxis,
+        vAxis: face.vAxis,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 10, y: 0, z: 0 },
+          { x: 10, y: 10, z: 0 },
+          { x: 0, y: 10, z: 0 },
+        ],
+        homography,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    expect(
+      chooseEdgeExtrusion(
+        scene,
+        [
+          { faceId: face.id, edge: 'top' },
+          { faceId: laterFace.id, edge: 'top' },
+        ],
+        { x: 50, y: 800 },
+      ),
+    ).toEqual({
+      axis: { x: 0, y: 1, z: 0 },
+      blocks: 3,
+      createsAxis: false,
+    })
+  })
+
   it('keeps partial and complete world-axis mappings distinct', () => {
     const partial = { a: 'x+' as const, b: 'unknown' as const, c: 'y+' as const }
     expect(isAxisMappingComplete(partial)).toBe(false)

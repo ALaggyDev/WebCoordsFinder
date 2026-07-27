@@ -58,6 +58,7 @@ interface CanvasSize {
 interface VisualizationSettings {
   axisGizmo: boolean
   calibrationPoints: boolean
+  calibrationResiduals: boolean
 }
 
 interface DraggedObservation {
@@ -85,6 +86,11 @@ const visualizationOptions: Array<{
     key: 'calibrationPoints',
     label: 'Calibration anchors',
     description: 'Show image points used to fit the global perspective.',
+  },
+  {
+    key: 'calibrationResiduals',
+    label: 'Calibration residuals',
+    description: 'Show the error between each anchor and its predicted position.',
   },
 ]
 
@@ -258,6 +264,7 @@ export function EditorCanvas() {
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
     calibrationPoints: true,
+    calibrationResiduals: true,
   })
 
   const renderedScene = useMemo(() => {
@@ -589,6 +596,29 @@ export function EditorCanvas() {
               />
             )
           })}
+          {visualizations.calibrationResiduals &&
+            document.scene.observations.map((observation) => {
+              const actual =
+                draggedObservation?.id === observation.id
+                  ? draggedObservation.point
+                  : observation.image
+              const predicted = projectScenePoint(
+                renderedScene,
+                observation.lattice,
+              )
+              if (!predicted || distance(actual, predicted) < 0.1) return null
+              return (
+                <Line
+                  key={`residual-${observation.id}`}
+                  points={flattenPoints([actual, predicted])}
+                  stroke="#98a3aa"
+                  opacity={0.8}
+                  strokeWidth={1.2 / view.scale}
+                  dash={[3 / view.scale, 3 / view.scale]}
+                  listening={false}
+                />
+              )
+            })}
           {visualizations.calibrationPoints &&
             document.scene.observations.map((observation) => (
               <Circle
