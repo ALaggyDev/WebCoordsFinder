@@ -5,12 +5,11 @@ body.export-run-dialog-open {
 .export-run-backdrop {
   position: fixed;
   z-index: 30;
-  inset: 64px 0 0;
+  inset: 0;
   padding: 28px;
   display: grid;
   place-items: center;
   background: rgba(4, 8, 10, 0.76);
-  backdrop-filter: blur(5px);
 }
 
 .export-run-dialog {
