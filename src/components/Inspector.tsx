@@ -4,6 +4,7 @@ import {
   Check,
   ChevronRight,
   Compass,
+  Crosshair,
   Download,
   Eye,
   FileImage,
@@ -27,7 +28,7 @@ import {
   faceForLocalNormal,
   faceDisplayName,
   isAxisMappingComplete,
-  mappedVector,
+  mappedAnchorOffset,
   worldAlignedFaceQuad,
 } from '../domain/geometry'
 import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
@@ -137,6 +138,11 @@ function GeometryInspector() {
   const flipSelectedFaces = useEditorStore((state) => state.flipSelectedFaces)
   const updateAxisMapping = useEditorStore((state) => state.updateAxisMapping)
   const setTool = useEditorStore((state) => state.setTool)
+  const tool = useEditorStore((state) => state.tool)
+  const anchorFaceId = useEditorStore((state) => state.document.anchorFaceId)
+  const anchorFace = scene.faces.find(
+    (face) => face.id === anchorFaceId,
+  )
 
   if (scene.faces.length === 0) {
     return (
@@ -164,6 +170,28 @@ function GeometryInspector() {
           <strong>{selectedEdges.length}</strong>
           <span>Selected edges</span>
         </div>
+      </div>
+      <div className={anchorFace ? 'compass-card resolved' : 'compass-card'}>
+        <Crosshair size={19} />
+        <div>
+          <strong>{anchorFace ? 'Anchor selected' : 'Select an anchor block'}</strong>
+          <span>
+            {anchorFace
+              ? 'This block is the coordinate origin at 0, 0, 0.'
+              : 'Choose the Anchor tool, then click any block face.'}
+          </span>
+        </div>
+        {anchorFace ? (
+          <Check size={15} />
+        ) : (
+          <button
+            type="button"
+            className="small-button"
+            onClick={() => setTool('anchor')}
+          >
+            {tool === 'anchor' ? 'Click a face' : 'Select'}
+          </button>
+        )}
       </div>
       <div className="subsection">
         <h3>Global axis directions</h3>
@@ -262,7 +290,11 @@ function FaceInspector({
     ? faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
     : undefined
   const evidenceCoordinate = evidence
-    ? mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
+    ? mappedAnchorOffset(
+        document.scene,
+        document.anchorFaceId,
+        evidence.latticeCoordinate,
+      )
     : undefined
   const worldOrientationKnown = meshFace
     ? faceHasWorldOrientation(document.scene, meshFace)
@@ -652,10 +684,18 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
         .sort(
           (a, b) => {
             const aCoordinate =
-              mappedVector(document.scene.axisMapping, a.latticeCoordinate) ??
+              mappedAnchorOffset(
+                document.scene,
+                document.anchorFaceId,
+                a.latticeCoordinate,
+              ) ??
               a.latticeCoordinate
             const bCoordinate =
-              mappedVector(document.scene.axisMapping, b.latticeCoordinate) ??
+              mappedAnchorOffset(
+                document.scene,
+                document.anchorFaceId,
+                b.latticeCoordinate,
+              ) ??
               b.latticeCoordinate
             return (
               (b.confidence ?? -1) - (a.confidence ?? -1) ||
@@ -665,7 +705,7 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
             )
           },
         ),
-    [document.evidence, document.scene.axisMapping],
+    [document.anchorFaceId, document.evidence, document.scene],
   )
   const counts = useMemo(
     () =>
@@ -727,8 +767,9 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
         ) : (
           reviewItems.map((entry) => {
             const coordinate =
-              mappedVector(
-                document.scene.axisMapping,
+              mappedAnchorOffset(
+                document.scene,
+                document.anchorFaceId,
                 entry.latticeCoordinate,
               ) ?? entry.latticeCoordinate
             return (
@@ -809,7 +850,6 @@ function ImageInspector({
   onOpenImage,
 }: Pick<InspectorProps, 'onOpenImage'>) {
   const document = useEditorStore((state) => state.document)
-  const setProjectName = useEditorStore((state) => state.setProjectName)
 
   return (
     <>
@@ -822,10 +862,6 @@ function ImageInspector({
           <span>{document.image.mime}</span>
         </div>
       </div>
-      <label className="field">
-        <span>Anchor result label</span>
-        <input value={document.projectName} onChange={(event) => setProjectName(event.target.value)} />
-      </label>
       <button className="primary-button full" type="button" onClick={onOpenImage}>
         <Upload size={16} /> Choose another image
       </button>

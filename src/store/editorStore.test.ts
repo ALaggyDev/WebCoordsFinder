@@ -135,6 +135,22 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().step).toBe('grid')
   })
 
+  it('sets a clicked face as the anchor without creating evidence', () => {
+    const face = useEditorStore.getState().document.scene.faces[5]
+    useEditorStore.getState().setTool('anchor')
+
+    useEditorStore.getState().setAnchorFace(face.id)
+
+    const anchored = useEditorStore.getState()
+    expect(anchored.document.anchorFaceId).toBe(face.id)
+    expect(anchored.document.evidence).toEqual([])
+    expect(anchored.tool).toBe('select')
+    expect(anchored.past).toHaveLength(1)
+
+    anchored.deleteFace(face.id)
+    expect(useEditorStore.getState().document.anchorFaceId).toBeNull()
+  })
+
   it('selects every face and initializes missing evidence in one transaction', () => {
     const state = useEditorStore.getState()
     const faceIds = state.document.scene.faces.map((face) => face.id)

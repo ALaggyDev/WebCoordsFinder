@@ -28,18 +28,22 @@ const evidence = (
   faceId: id,
 })
 
-const documentWith = (entries: FaceEvidence[]): EditorDocument => ({
-  ...createInitialDocument(),
-  evidence: entries,
-  scene: {
-    ...createInitialDocument().scene,
-    axisMapping: { a: 'x+', b: 'y+', c: 'z+' },
-  },
-  scanner: {
-    ...createInitialDocument().scanner,
-    compassResolved: true,
-  },
-})
+const documentWith = (entries: FaceEvidence[]): EditorDocument => {
+  const document = createInitialDocument()
+  return {
+    ...document,
+    anchorFaceId: document.scene.faces[0].id,
+    evidence: entries,
+    scene: {
+      ...document.scene,
+      axisMapping: { a: 'x+', b: 'y+', c: 'z+' },
+    },
+    scanner: {
+      ...document.scanner,
+      compassResolved: true,
+    },
+  }
+}
 
 describe('CoordsFinder export', () => {
   it('deduplicates coordinates and keeps the stronger four-state constraint', () => {
@@ -66,12 +70,43 @@ describe('CoordsFinder export', () => {
 
     expect(config).toContain('mode = Vanilla-3')
     expect(config).toContain('[filter]\n# x y z | variant [side]')
+    expect(config).not.toContain('# Anchor block:')
     expect(config).toContain('-1 0 0 | 3')
     expect(config).toContain('0 0 0 | 1 side')
     expect(validateForExport(document)).toMatchObject({
       errors: [],
       rowCount: 2,
     })
+  })
+
+  it('rebases evidence coordinates around the selected anchor block', () => {
+    const document = documentWith([
+      evidence('offset', { x: 3, y: 1, z: 0 }, 4, 2),
+    ])
+    document.anchorFaceId = document.scene.faces.find(
+      (face) =>
+        face.blockCoordinate.x === 2 &&
+        face.blockCoordinate.y === 1 &&
+        face.blockCoordinate.z === 0,
+    )!.id
+
+    expect(confirmedUniqueEvidence(document)[0].coordinate).toEqual({
+      x: 1,
+      y: 0,
+      z: 0,
+    })
+    expect(generateCoordsFinderConfig(document)).toContain('1 0 0 | 2')
+  })
+
+  it('blocks export until an anchor block is selected', () => {
+    const document = documentWith([
+      evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),
+    ])
+    document.anchorFaceId = null
+
+    expect(validateForExport(document).errors).toContain(
+      'Select an anchor block before export.',
+    )
   })
 
   it('writes the user-selected texture algorithm to the scanner mode setting', () => {

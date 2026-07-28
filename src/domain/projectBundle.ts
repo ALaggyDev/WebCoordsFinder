@@ -6,6 +6,7 @@ const projectSchema = z
   .object({
     schemaVersion: z.literal(1),
     projectName: z.string(),
+    anchorFaceId: z.string().nullable(),
     image: z.object({
       key: z.string(),
       name: z.string(),

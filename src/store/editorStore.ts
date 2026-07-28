@@ -6,7 +6,7 @@ import {
   createEdgeExtrusionFaces,
   faceForLocalNormal,
   isAxisMappingComplete,
-  mappedVector,
+  mappedAnchorOffset,
   meshEdgeKey,
   outerEdgeForExtrusion,
   refitProjection,
@@ -125,6 +125,7 @@ export const createExampleDocument = (
   return {
     schemaVersion: 1,
     projectName: 'Example cavern',
+    anchorFaceId: null,
     image: {
       key: 'demo',
       name: 'Example cavern screenshot',
@@ -142,6 +143,7 @@ export const createExampleDocument = (
 export const createEmptyDocument = (): EditorDocument => ({
   schemaVersion: 1,
   projectName: 'Untitled project',
+  anchorFaceId: null,
   image: {
     key: '',
     name: '',
@@ -172,7 +174,13 @@ export const createInitialDocument = createExampleDocument
 
 export function normalizeEditorDocument(input: unknown): EditorDocument {
   const candidate = input as Record<string, unknown>
-  if (candidate.schemaVersion !== 1 || !candidate.scene) {
+  if (
+    candidate.schemaVersion !== 1 ||
+    typeof candidate.projectName !== 'string' ||
+    !candidate.scene ||
+    (candidate.anchorFaceId !== null &&
+      typeof candidate.anchorFaceId !== 'string')
+  ) {
     throw new Error('This project uses an unsupported document schema.')
   }
   return structuredClone(input as EditorDocument)
@@ -223,12 +231,19 @@ export function evidenceWorldCoordinate(
   document: EditorDocument,
   evidence: FaceEvidence,
 ): Point3 | undefined {
-  return mappedVector(document.scene.axisMapping, evidence.latticeCoordinate)
+  return mappedAnchorOffset(
+    document.scene,
+    document.anchorFaceId,
+    evidence.latticeCoordinate,
+  )
 }
 
 function pruneGeometry(document: EditorDocument): void {
   const faceIds = new Set(document.scene.faces.map((face) => face.id))
   document.evidence = document.evidence.filter((entry) => faceIds.has(entry.faceId))
+  if (document.anchorFaceId && !faceIds.has(document.anchorFaceId)) {
+    document.anchorFaceId = null
+  }
   if (document.scene.faces.length === 0) document.scene.observations = []
 }
 
@@ -259,6 +274,7 @@ interface EditorState {
   deleteSelectedFaces: () => void
   flipSelectedFaces: () => void
   updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
+  setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
   selectAllFaces: () => void
   clearSelection: () => void
@@ -373,6 +389,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scene.faces = []
         document.scene.observations = []
         document.evidence = []
+        document.anchorFaceId = null
       }),
       selectedEdges: [],
       selectedEvidenceIds: [],
@@ -387,6 +404,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         ...mutateDocument(state, (document) => {
           document.scene = createPlanarScene(4, 4, corners, crypto.randomUUID())
           document.evidence = []
+          document.anchorFaceId = null
           document.scanner.compassResolved = false
         }),
         selectedEdges: [],
@@ -545,6 +563,22 @@ export const useEditorStore = create<EditorState>((set) => ({
         })
       }),
     ),
+  setAnchorFace: (faceId) =>
+    set((state) => {
+      if (!state.document.scene.faces.some((face) => face.id === faceId)) {
+        return state
+      }
+      if (state.document.anchorFaceId === faceId) {
+        return { selectedEdges: [], tool: 'select' as EditorTool }
+      }
+      return {
+        ...mutateDocument(state, (document) => {
+          document.anchorFaceId = faceId
+        }),
+        selectedEdges: [],
+        tool: 'select' as EditorTool,
+      }
+    }),
   selectFace: (faceId, additive) =>
     set((state) => {
       const face = state.document.scene.faces.find((entry) => entry.id === faceId)

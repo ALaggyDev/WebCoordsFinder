@@ -39,7 +39,7 @@ export type TextureAlgorithm = (typeof textureAlgorithms)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed' | 'excluded'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
-export type EditorTool = 'select' | 'plane' | 'extrude' | 'delete'
+export type EditorTool = 'select' | 'anchor' | 'plane' | 'extrude' | 'delete'
 
 export type CandidateTransform =
   | 'identity'
@@ -160,6 +160,7 @@ export interface ScannerSettings {
 export interface EditorDocument {
   schemaVersion: 1
   projectName: string
+  anchorFaceId: string | null
   image: ImageAsset
   scene: SceneGeometry
   evidence: FaceEvidence[]

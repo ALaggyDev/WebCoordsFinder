@@ -1,5 +1,6 @@
 import {
   Box,
+  Crosshair,
   Eraser,
   MousePointer2,
   Move3d,
@@ -11,6 +12,7 @@ import { useEditorStore } from '../store/editorStore'
 
 const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; shortcut: string }> = [
   { id: 'select', label: 'Select faces or edges', icon: MousePointer2, shortcut: 'V' },
+  { id: 'anchor', label: 'Select anchor block', icon: Crosshair, shortcut: 'A' },
   { id: 'plane', label: 'Create base faces', icon: Box, shortcut: 'G' },
   { id: 'extrude', label: 'Extrude selected edges', icon: Move3d, shortcut: 'E' },
   { id: 'delete', label: 'Delete faces', icon: Eraser, shortcut: 'X' },

@@ -245,6 +245,7 @@ function App() {
       }
       const toolShortcut = {
         v: 'select',
+        a: 'anchor',
         g: 'plane',
         e: 'extrude',
         x: 'delete',

@@ -4,7 +4,7 @@ import type {
   Point3,
   ValidationResult,
 } from './types'
-import { isAxisMappingComplete, mappedVector } from './geometry'
+import { isAxisMappingComplete, mappedAnchorOffset } from './geometry'
 
 type ExportEvidence = FaceEvidence & { coordinate: Point3 }
 
@@ -22,8 +22,9 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
         entry.selectedVariant !== undefined,
     )
     .forEach((entry) => {
-      const coordinate = mappedVector(
-        document.scene.axisMapping,
+      const coordinate = mappedAnchorOffset(
+        document.scene,
+        document.anchorFaceId,
         entry.latticeCoordinate,
       )
       if (!coordinate) return
@@ -47,6 +48,12 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 
+  if (
+    !document.anchorFaceId ||
+    !document.scene.faces.some((face) => face.id === document.anchorFaceId)
+  ) {
+    errors.push('Select an anchor block before export.')
+  }
   if (
     !document.scanner.compassResolved ||
     !isAxisMappingComplete(document.scene.axisMapping)
@@ -96,7 +103,6 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
   const rows = confirmedUniqueEvidence(document)
   const lines = [
     '# Generated locally by WebCoordsFinder.',
-    `# Anchor block: ${document.projectName}`,
     '',
     `mode = ${scanner.textureAlgorithm}`,
     '',

@@ -36,6 +36,7 @@ import type {
   AbstractAxis,
   CalibrationObservation,
   FaceEdge,
+  MeshFace,
   Point2,
   SceneGeometry,
   SelectedEdge,
@@ -46,6 +47,7 @@ import { useEditorStore } from '../store/editorStore'
 const GRID = '#53e6a5'
 const SELECTED = '#70a7ff'
 const PROPOSED = '#f0b64d'
+const ANCHOR = '#ff626b'
 const CONFIRMED = '#53e6a5'
 const EXCLUDED = '#68737c'
 const EDGE = '#d6e0e5'
@@ -57,6 +59,7 @@ interface CanvasSize {
 
 interface VisualizationSettings {
   axisGizmo: boolean
+  anchorMarker: boolean
   calibrationPoints: boolean
   calibrationResiduals: boolean
 }
@@ -81,6 +84,11 @@ const visualizationOptions: Array<{
     key: 'axisGizmo',
     label: 'Global axes',
     description: 'Show the known global lattice directions.',
+  },
+  {
+    key: 'anchorMarker',
+    label: 'Anchor block',
+    description: 'Show the anchor reticle.',
   },
   {
     key: 'calibrationPoints',
@@ -237,6 +245,79 @@ function GlobalAxisGizmo({
   )
 }
 
+function AnchorGizmo({
+  scene,
+  face,
+  scale,
+}: {
+  scene: SceneGeometry
+  face: MeshFace
+  scale: number
+}) {
+  const quad = faceQuad(scene, face)
+  if (!quad) return null
+  const origin = {
+    x: quad.reduce((sum, point) => sum + point.x, 0) / quad.length,
+    y: quad.reduce((sum, point) => sum + point.y, 0) / quad.length,
+  }
+  const reticleScale = Math.min(1, 1 / scale)
+  return (
+    <Group listening={false}>
+      <Group
+        x={origin.x}
+        y={origin.y}
+        scaleX={reticleScale}
+        scaleY={reticleScale}
+      >
+        <Circle
+          radius={11.2}
+          stroke="#071014"
+          strokeWidth={3.2}
+        />
+        <Line
+          points={[-16, 0, 16, 0]}
+          stroke="#071014"
+          strokeWidth={3.2}
+        />
+        <Line
+          points={[0, -16, 0, 16]}
+          stroke="#071014"
+          strokeWidth={3.2}
+        />
+        <Line
+          points={[-16, 0, 16, 0]}
+          stroke="#edf3f5"
+          strokeWidth={1.2}
+        />
+        <Line
+          points={[0, -16, 0, 16]}
+          stroke="#edf3f5"
+          strokeWidth={1.2}
+        />
+        <Circle
+          radius={11.2}
+          stroke={ANCHOR}
+          strokeWidth={2.6}
+          dash={[5.2, 5.2]}
+        />
+        <Circle
+          radius={11.2}
+          stroke="#edf3f5"
+          strokeWidth={2.6}
+          dash={[5.2, 5.2]}
+          dashOffset={5.2}
+        />
+        <Circle
+          radius={2.4}
+          fill={ANCHOR}
+          stroke="#071014"
+          strokeWidth={1.2}
+        />
+      </Group>
+    </Group>
+  )
+}
+
 export function EditorCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
@@ -249,6 +330,7 @@ export function EditorCanvas() {
   const toggleSelectedEdge = useEditorStore((state) => state.toggleSelectedEdge)
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
   const selectFace = useEditorStore((state) => state.selectFace)
+  const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
   const deleteFace = useEditorStore((state) => state.deleteFace)
   const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
   const moveObservation = useEditorStore((state) => state.moveObservation)
@@ -263,6 +345,7 @@ export function EditorCanvas() {
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
+    anchorMarker: true,
     calibrationPoints: true,
     calibrationResiduals: true,
   })
@@ -307,6 +390,9 @@ export function EditorCanvas() {
   ])
 
   const sceneForRendering = preview?.scene ?? renderedScene
+  const anchorFace = document.anchorFaceId
+    ? sceneForRendering.faces.find((face) => face.id === document.anchorFaceId)
+    : undefined
   const meshEdges = useMemo(() => {
     const edges = new Map<string, RenderedMeshEdge>()
     renderedScene.faces.forEach((face) => {
@@ -381,7 +467,7 @@ export function EditorCanvas() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraft([])
-        if (tool === 'extrude') setTool('select')
+        if (tool === 'extrude' || tool === 'anchor') setTool('select')
         else if (tool === 'select') clearSelectedEdges()
       }
     }
@@ -443,7 +529,7 @@ export function EditorCanvas() {
   }
 
   const idleCursor =
-    tool === 'plane'
+    tool === 'plane' || tool === 'anchor'
       ? 'crosshair'
       : tool === 'extrude'
         ? 'copy'
@@ -489,7 +575,7 @@ export function EditorCanvas() {
         y={view.y}
         scaleX={view.scale}
         scaleY={view.scale}
-        draggable={tool !== 'extrude' && tool !== 'plane'}
+        draggable={tool !== 'extrude' && tool !== 'plane' && tool !== 'anchor'}
         onDragStart={(event) => {
           if (event.target === event.currentTarget) setIsDraggingCanvas(true)
         }}
@@ -564,10 +650,14 @@ export function EditorCanvas() {
                       : 'rgba(0,0,0,.001)'
                 }
                 hitStrokeWidth={8 / view.scale}
-                listening={!isPreview && (tool === 'select' || tool === 'delete')}
+                listening={
+                  !isPreview &&
+                  (tool === 'select' || tool === 'anchor' || tool === 'delete')
+                }
                 onClick={(event) => {
                   event.cancelBubble = true
                   if (tool === 'delete') deleteFace(face.id)
+                  else if (tool === 'anchor') setAnchorFace(face.id)
                   else if (tool === 'select') selectFace(face.id, event.evt.shiftKey)
                 }}
               />
@@ -596,6 +686,13 @@ export function EditorCanvas() {
               />
             )
           })}
+          {visualizations.anchorMarker && anchorFace && (
+            <AnchorGizmo
+              scene={sceneForRendering}
+              face={anchorFace}
+              scale={view.scale}
+            />
+          )}
           {visualizations.calibrationResiduals &&
             document.scene.observations.map((observation) => {
               const actual =
@@ -758,6 +855,9 @@ export function EditorCanvas() {
               ? 'Click four corners clockwise to create the base faces'
               : `${4 - draft.length} corners remaining`}
           </strong>
+        )}
+        {tool === 'anchor' && (
+          <strong>Click a block face to set it as the 0, 0, 0 anchor</strong>
         )}
         {tool === 'select' && selectedEdges.length > 0 && (
           <strong>

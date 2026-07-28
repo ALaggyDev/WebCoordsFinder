@@ -55,10 +55,11 @@ review proposed variants before they can be exported.
 
 The top navigation follows four stages:
 
-1. **Image** — open a screenshot and name the anchor/result.
+1. **Image** — open a screenshot.
 2. **Grid** — create a four-corner perspective plane, set its row and column
    counts, assign its face direction and relative origin, or hinge a connected
-   plane from an existing edge.
+   plane from an existing edge. Choose the Anchor tool and click a face to make
+   that block the `(0, 0, 0)` coordinate origin.
 3. **Faces** — use the Selection tab to assign block profiles, inspect
    perspective-correct crops, choose visible states, and request automatic
    proposals. Use the nested Auto Analyze tab to set the proposal threshold,
@@ -110,6 +111,7 @@ x y z | variant side
 Preserve these behaviors:
 
 - Only confirmed evidence with a selected variant is exported.
+- Evidence coordinates are offsets from the explicitly selected anchor block.
 - Duplicate relative coordinates are removed. If both two-state and four-state
   evidence exist for a coordinate, the stronger four-state constraint wins.
 - Normal faces use variants `0..3`.

@@ -113,6 +113,20 @@ export function mappedVector(
   return result
 }
 
+export function mappedAnchorOffset(
+  scene: SceneGeometry,
+  anchorFaceId: string | null,
+  local: Point3,
+): Point3 | undefined {
+  if (!anchorFaceId) return undefined
+  const anchor = scene.faces.find((face) => face.id === anchorFaceId)
+  if (!anchor) return undefined
+  return mappedVector(
+    scene.axisMapping,
+    subtract3(local, anchor.blockCoordinate),
+  )
+}
+
 export function faceForLocalNormal(
   mapping: AxisMapping,
   normal: Point3,
