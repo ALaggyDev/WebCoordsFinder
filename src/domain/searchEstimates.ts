@@ -79,10 +79,20 @@ export function estimateHitPrecision(document: EditorDocument): number {
   return Math.min(1, 1 / expectedHits)
 }
 
+export function minimumBitsForPrecision(
+  document: EditorDocument,
+  targetPrecision: number,
+): number {
+  const volume = estimateSearchVolume(document)
+  const precision = Math.min(1, Math.max(0, targetPrecision))
+  if (volume <= 1 || precision === 0) return 0
+  return Math.max(0, Math.ceil(Math.log2(volume * precision)))
+}
+
 export function formatEstimatedCount(value: number): string {
   if (!Number.isFinite(value)) return 'Over 1e308'
   if (value < 1) return '<1'
-  if (value >= 1e15) return value.toExponential(2)
+  if (value >= 1e6) return value.toExponential(2).replace('e+', 'e')
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: value < 10 ? 1 : 0,
   }).format(value)

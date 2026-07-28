@@ -23,6 +23,7 @@ import {
   estimateSearchTimes,
   formatEstimatedCount,
   formatSearchTime,
+  minimumBitsForPrecision,
   type SearchRuntime,
 } from '../domain/searchEstimates'
 import type { EditorDocument } from '../domain/types'
@@ -81,6 +82,10 @@ export function ExportRunDialog({
   const searchVolume = useMemo(() => estimateSearchVolume(document), [document])
   const estimatedHits = useMemo(() => estimateHitCount(document), [document])
   const hitPrecision = useMemo(() => estimateHitPrecision(document), [document])
+  const minimumBitsFor90Percent = useMemo(
+    () => minimumBitsForPrecision(document, 0.9),
+    [document],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -164,6 +169,7 @@ export function ExportRunDialog({
             <div>
               <span>Information</span>
               <strong>{constraintBits(document)} bits</strong>
+              <small>{minimumBitsFor90Percent} bits needed for 90%</small>
             </div>
             <div>
               <span>Search positions</span>
