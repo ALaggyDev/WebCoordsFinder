@@ -18,7 +18,6 @@ describe('Export / Run workspace', () => {
       <Inspector
         busy={false}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
         onOpenImage={vi.fn()}
       />,
     )
@@ -35,7 +34,6 @@ describe('Export / Run workspace', () => {
       <Inspector
         busy={false}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
         onOpenImage={vi.fn()}
       />,
     )
@@ -59,7 +57,6 @@ describe('Export / Run workspace', () => {
       <Inspector
         busy={false}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
         onOpenImage={vi.fn()}
       />,
     )

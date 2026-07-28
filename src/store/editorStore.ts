@@ -17,6 +17,7 @@ import {
   translatedExtrusionAnchors,
 } from '../domain/geometry'
 import { statesForFace } from '../domain/references'
+import type { ExampleProjectId } from '../domain/examples'
 import type {
   AbstractAxis,
   AxisMapping,
@@ -95,20 +96,8 @@ function createPlanarScene(
   }
 }
 
-export const createInitialDocument = (): EditorDocument => ({
-  schemaVersion: 1,
-  projectName: 'Anchor block',
-  image: {
-    key: 'demo',
-    name: 'Example cavern screenshot',
-    src: '/demo/demo.png',
-    width: 2560,
-    height: 1494,
-    mime: 'image/png',
-  },
-  scene: createPlanarScene(6, 4, demoCorners, 'floor-demo'),
-  evidence: [],
-  scanner: {
+function createDefaultScanner(): ScannerSettings {
+  return {
     textureAlgorithm: 'Vanilla-3',
     compassResolved: false,
     bounds: {
@@ -124,8 +113,62 @@ export const createInitialDocument = (): EditorDocument => ({
     maxBadBlocks: 0,
     printChunks: true,
     confidenceThreshold: 0.08,
+  }
+}
+
+export const createExampleDocument = (
+  exampleId: ExampleProjectId = 'cavern',
+): EditorDocument => {
+  if (exampleId !== 'cavern') {
+    throw new Error(`Unknown example project: ${exampleId}`)
+  }
+  return {
+    schemaVersion: 1,
+    projectName: 'Example cavern',
+    image: {
+      key: 'demo',
+      name: 'Example cavern screenshot',
+      src: '/demo/demo.png',
+      width: 2560,
+      height: 1494,
+      mime: 'image/png',
+    },
+    scene: createPlanarScene(6, 4, demoCorners, 'floor-demo'),
+    evidence: [],
+    scanner: createDefaultScanner(),
+  }
+}
+
+export const createEmptyDocument = (): EditorDocument => ({
+  schemaVersion: 1,
+  projectName: 'Untitled project',
+  image: {
+    key: '',
+    name: '',
+    src: '',
+    width: 0,
+    height: 0,
+    mime: '',
   },
+  scene: {
+    faces: [],
+    observations: [],
+    projection: {
+      kind: 'planar',
+      origin: planeOrigin,
+      uAxis: planeU,
+      vAxis: planeV,
+      cornerLattice: [planeOrigin, planeOrigin, planeOrigin, planeOrigin],
+      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    },
+    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+  },
+  evidence: [],
+  scanner: createDefaultScanner(),
 })
+
+// Retained as the fixture factory used by domain and component tests.
+export const createInitialDocument = createExampleDocument
 
 export function normalizeEditorDocument(input: unknown): EditorDocument {
   const candidate = input as Record<string, unknown>
@@ -233,7 +276,7 @@ interface EditorState {
   setProjectName: (name: string) => void
   undo: () => void
   redo: () => void
-  resetDemo: () => void
+  resetProject: () => void
 }
 
 function mutateDocument(
@@ -255,8 +298,8 @@ function removeFaces(document: EditorDocument, ids: Set<string>): void {
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
-  document: createInitialDocument(),
-  step: 'grid',
+  document: createEmptyDocument(),
+  step: 'image',
   faceTab: 'selection',
   tool: 'select',
   selectedEdges: [],
@@ -319,6 +362,8 @@ export const useEditorStore = create<EditorState>((set) => ({
       faceTab: 'selection',
       selectedEvidenceIds: [],
       selectedEdges: [],
+      step: document.scene.faces.length > 0 ? 'grid' : 'image',
+      tool: document.scene.faces.length > 0 ? 'select' : 'plane',
     })
   },
   replaceImage: (image) =>
@@ -666,15 +711,15 @@ export const useEditorStore = create<EditorState>((set) => ({
         future: state.future.slice(1),
       }
     }),
-  resetDemo: () =>
+  resetProject: () =>
     set({
-      document: createInitialDocument(),
+      document: createEmptyDocument(),
       past: [],
       future: [],
       faceTab: 'selection',
       selectedEdges: [],
       selectedEvidenceIds: [],
-      step: 'grid',
+      step: 'image',
       tool: 'select',
     }),
 }))

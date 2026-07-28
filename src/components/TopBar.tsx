@@ -5,9 +5,10 @@ import {
   FileImage,
   FolderOpen,
   Grid3X3,
-  ShieldCheck,
+  ImagePlus,
 } from 'lucide-react'
 import type { EditorStep } from '../domain/types'
+import type { ProjectSummary } from '../storage/db'
 import { useEditorStore } from '../store/editorStore'
 
 const steps: Array<{
@@ -22,18 +23,21 @@ const steps: Array<{
 ]
 
 interface TopBarProps {
+  activeProjectId: string | null
+  projects: ProjectSummary[]
   onOpenImage: () => void
-  onImportProject: () => void
-  onExportProject: () => void
+  onOpenProjects: () => void
 }
 
 export function TopBar({
+  activeProjectId,
+  projects,
   onOpenImage,
-  onImportProject,
-  onExportProject,
+  onOpenProjects,
 }: TopBarProps) {
   const step = useEditorStore((state) => state.step)
   const setStep = useEditorStore((state) => state.setStep)
+  const activeProject = projects.find((project) => project.id === activeProjectId)
 
   return (
     <header className="topbar">
@@ -53,6 +57,7 @@ export function TopBar({
             className={step === id ? 'workflow-step active' : 'workflow-step'}
             onClick={() => setStep(id)}
             type="button"
+            disabled={!activeProjectId}
           >
             <span className="step-index">{index + 1}</span>
             <Icon size={15} />
@@ -61,18 +66,25 @@ export function TopBar({
         ))}
       </nav>
       <div className="topbar-actions">
-        <div className="privacy-badge" title="Screenshots never leave this device">
-          <ShieldCheck size={14} />
-          Local only
-        </div>
-        <button className="icon-button" type="button" onClick={onImportProject} title="Open .wcf project">
-          <FolderOpen size={17} />
-        </button>
-        <button className="secondary-button compact" type="button" onClick={onExportProject}>
-          Save project
-        </button>
-        <button className="primary-button compact" type="button" onClick={onOpenImage}>
+        <button
+          className="primary-button compact topbar-open-image"
+          type="button"
+          onClick={onOpenImage}
+        >
+          <ImagePlus size={15} />
           Open image
+        </button>
+        <button
+          className="project-menu-trigger"
+          type="button"
+          aria-haspopup="dialog"
+          onClick={onOpenProjects}
+        >
+          <FolderOpen size={16} />
+          <span>
+            <small>Project</small>
+            <strong>{activeProject?.name ?? 'No project open'}</strong>
+          </span>
         </button>
       </div>
     </header>

@@ -1,17 +1,34 @@
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { createInitialDocument, useEditorStore } from './store/editorStore'
+import {
+  createEmptyDocument,
+  createInitialDocument,
+  useEditorStore,
+} from './store/editorStore'
 
 vi.mock('./components/EditorCanvas', () => ({ EditorCanvas: () => null }))
 vi.mock('./components/Inspector', () => ({ Inspector: () => null }))
 vi.mock('./components/ToolRail', () => ({ ToolRail: () => null }))
-vi.mock('./components/TopBar', () => ({ TopBar: () => null }))
+vi.mock('./components/TopBar', () => ({
+  TopBar: ({
+    onOpenProjects,
+  }: {
+    onOpenProjects: () => void
+  }) => (
+    <button type="button" onClick={onOpenProjects}>
+      Open project library
+    </button>
+  ),
+}))
 vi.mock('./storage/db', () => ({
-  clearLocalProject: vi.fn().mockResolvedValue(undefined),
-  loadPersistedProject: vi.fn().mockResolvedValue(undefined),
+  clearAllData: vi.fn().mockResolvedValue(undefined),
+  getActiveProjectId: vi.fn().mockReturnValue(null),
+  listProjects: vi.fn().mockResolvedValue([]),
+  loadProject: vi.fn().mockResolvedValue(null),
   persistImage: vi.fn().mockResolvedValue(undefined),
   persistProject: vi.fn().mockResolvedValue(undefined),
+  setActiveProjectId: vi.fn(),
 }))
 
 beforeEach(() => {
@@ -30,6 +47,34 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('face keyboard shortcuts', () => {
+  it('shows the start menu instead of opening the demo for a fresh visitor', async () => {
+    useEditorStore.setState({ document: createEmptyDocument(), step: 'image' })
+
+    render(<App />)
+
+    expect(await screen.findByText('Start a project')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Upload an image' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Browse examples' }),
+    ).toBeInTheDocument()
+    expect(useEditorStore.getState().document.image.src).toBe('')
+  })
+
+  it('opens examples in the centered project library', async () => {
+    render(<App />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open project library' }),
+    )
+
+    expect(
+      screen.getByRole('dialog', { name: 'Projects' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Example projects')).toBeInTheDocument()
+  })
+
   it('selects all faces with Ctrl+A', () => {
     useEditorStore.setState({ step: 'grid' })
     render(<App />)

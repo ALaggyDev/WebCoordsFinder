@@ -33,7 +33,6 @@ describe('face inspector batch selection', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
       />,
     )
 
@@ -60,7 +59,6 @@ describe('face inspector batch selection', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
       />,
     )
 
@@ -121,7 +119,6 @@ describe('face inspector batch selection', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={onAutoFill}
-        onClearProject={vi.fn()}
       />,
     )
 
@@ -160,7 +157,6 @@ describe('face inspector batch selection', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
       />,
     )
 
@@ -195,7 +191,6 @@ describe('geometry deletion', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
       />,
     )
 
@@ -237,7 +232,6 @@ describe('Auto Analyze queue', () => {
         busy={false}
         onOpenImage={vi.fn()}
         onAutoFill={vi.fn()}
-        onClearProject={vi.fn()}
       />,
     )
 

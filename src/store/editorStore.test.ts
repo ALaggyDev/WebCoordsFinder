@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { projectScenePoint, selectedEdgeGeometry } from '../domain/geometry'
 import { createInitialDocument, useEditorStore } from './editorStore'
 
-afterEach(() => {
+beforeEach(() => {
   useEditorStore.setState({
     document: createInitialDocument(),
     step: 'grid',

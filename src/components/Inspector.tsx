@@ -52,7 +52,6 @@ interface InspectorProps {
   busy: boolean
   onOpenImage: () => void
   onAutoFill: (evidenceIds?: string[]) => void
-  onClearProject: () => void
 }
 
 const axisOptions: Array<{ value: WorldAxisLabel; label: string }> = [
@@ -808,11 +807,9 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
 
 function ImageInspector({
   onOpenImage,
-  onClearProject,
-}: Pick<InspectorProps, 'onOpenImage' | 'onClearProject'>) {
+}: Pick<InspectorProps, 'onOpenImage'>) {
   const document = useEditorStore((state) => state.document)
   const setProjectName = useEditorStore((state) => state.setProjectName)
-  const resetDemo = useEditorStore((state) => state.resetDemo)
 
   return (
     <>
@@ -836,15 +833,6 @@ function ImageInspector({
         <div><Check size={15} /><span>Processed in this browser</span></div>
         <div><Check size={15} /><span>Autosaved on this device</span></div>
         <div><Check size={15} /><span>No network upload</span></div>
-      </div>
-      <div className="subsection">
-        <h3>Project maintenance</h3>
-        <div className="inspector-actions">
-          <button className="secondary-button" type="button" onClick={resetDemo}>Load example</button>
-          <button className="danger-button" type="button" onClick={onClearProject}>
-            <Trash2 size={14} /> Clear local data
-          </button>
-        </div>
       </div>
     </>
   )
@@ -990,7 +978,7 @@ export function Inspector(props: InspectorProps) {
   return (
     <aside className="inspector">
       <div className="inspector-scroll">
-        {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} onClearProject={props.onClearProject} />}
+        {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} />}
         {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
