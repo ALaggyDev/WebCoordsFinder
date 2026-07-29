@@ -7,6 +7,8 @@ import {
   type SearchDirection,
 } from './types'
 
+// Bundles accept the current schema only. Passthrough fields keep validation
+// focused on invariants owned here without becoming a migration mechanism.
 const searchDirectionSchema = z.number().refine(
   (value): value is SearchDirection =>
     searchDirections.includes(value as SearchDirection),
@@ -85,6 +87,8 @@ export async function buildProjectBundle(
   imageBlob?: Blob,
 ): Promise<Blob> {
   const safeDocument = structuredClone(document)
+  // Object URLs are browser-session handles; the portable image bytes are
+  // stored as a sibling archive entry instead.
   safeDocument.image.src = ''
   const files: Record<string, Uint8Array> = {
     'project.json': strToU8(JSON.stringify(safeDocument, null, 2)),
@@ -103,6 +107,8 @@ export async function readProjectBundle(file: File): Promise<{
   document: EditorDocument
   imageBlob?: Blob
 }> {
+  // Validate project.json before exposing it to the editor, then recover the
+  // optional image using the archive entry's extension as its MIME hint.
   const files = unzipSync(new Uint8Array(await file.arrayBuffer()))
   const projectFile = files['project.json']
   if (!projectFile) throw new Error('This bundle does not contain project.json.')
@@ -129,5 +135,6 @@ export function downloadBlob(blob: Blob, filename: string): void {
   anchor.href = url
   anchor.download = filename
   anchor.click()
+  // Revocation is deferred until the synthetic click has consumed the URL.
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }

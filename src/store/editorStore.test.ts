@@ -1,3 +1,5 @@
+// Store tests assert both document results and transaction semantics: geometry,
+// evidence, history, and runtime checkpoints must evolve together correctly.
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   projectScenePoint,
@@ -27,6 +29,8 @@ beforeEach(() => {
 })
 
 describe('unit-face geometry', () => {
+  // Base construction and mesh selection establish the canonical unit-face
+  // representation used by every later action.
   it('stores the initial 6x4 base as 24 independent faces', () => {
     const scene = useEditorStore.getState().document.scene
     expect(scene.faces).toHaveLength(24)
@@ -206,6 +210,8 @@ describe('unit-face geometry', () => {
     expect(scene.observations).toHaveLength(0)
   })
 
+  // Extrusion tests cover the staged transition from a planar homography to a
+  // non-coplanar camera without recalibrating already resolved scenes.
   it('uses two rigidly translated anchors to create the six-point camera', () => {
     const face = useEditorStore.getState().document.scene.faces[0]
     useEditorStore.getState().toggleSelectedEdge({
@@ -288,6 +294,8 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().step).toBe('grid')
   })
 
+  // Evidence actions deliberately create or invalidate derived state as
+  // selection, axis mappings, and block profiles change.
   it('sets a clicked face as the anchor without creating evidence', () => {
     const face = useEditorStore.getState().document.scene.faces[5]
     useEditorStore.getState().setTool('anchor')
@@ -397,6 +405,7 @@ describe('unit-face geometry', () => {
     )
   })
 
+  // Search progress belongs to the project but remains outside edit history.
   it('persists search checkpoints without adding history and preserves them through undo', () => {
     const checkpoint: WebSearchCheckpoint = {
       engineVersion: 2,

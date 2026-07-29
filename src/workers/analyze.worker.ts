@@ -4,6 +4,8 @@ import {
 } from '../domain/imageAnalysis'
 import type { CandidateTransform } from '../domain/types'
 
+// Pixel scoring runs off the main thread; the caller owns image decoding and
+// perspective unwarping so this worker receives only typed pixel buffers.
 interface AnalyzeRequest {
   requestId: string
   sample: Uint8ClampedArray
@@ -16,6 +18,8 @@ interface AnalyzeRequest {
 self.onmessage = (event: MessageEvent<AnalyzeRequest>) => {
   const { requestId, sample, reference, size, transforms, stateCount } = event.data
   const rawScores = transforms.map((transform, variant) => ({
+    // Side faces expose two visible states even when the model registry lists
+    // four transforms, so equivalent transforms collapse modulo two.
     variant: stateCount === 2 ? variant % 2 : variant,
     score: normalizedGradientScore(
       sample,
@@ -30,6 +34,7 @@ self.onmessage = (event: MessageEvent<AnalyzeRequest>) => {
   const scores = [...uniqueScores.entries()]
     .map(([variant, score]) => ({ variant, score }))
     .sort((a, b) => b.score - a.score)
+  // Confidence is a separation margin, not the absolute similarity score.
   const confidence = scores.length > 1 ? scores[0].score - scores[1].score : 0
   self.postMessage({ requestId, scores, confidence })
 }

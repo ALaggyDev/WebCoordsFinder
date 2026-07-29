@@ -52,6 +52,11 @@ import {
 import { useEditorStore } from '../store/editorStore'
 import './ExportRunDialog.css'
 
+/*
+ * This portal owns the browser-search worker lifecycle. React state drives the
+ * UI, refs provide exact current values to asynchronous callbacks, and compact
+ * checkpoints are persisted through the editor document without undo entries.
+ */
 interface ExportRunDialogProps {
   document: EditorDocument
   open: boolean
@@ -130,6 +135,8 @@ export function ExportRunDialog({
   const [webSearch, setWebSearch] = useState(() =>
     restoreWebSearchCheckpoint(savedCheckpoint),
   )
+  // Worker callbacks can outlive the render that installed them; mirror state
+  // in a ref to merge progress and result batches without stale closures.
   const webSearchRef = useRef(webSearch)
   const requestKeyRef = useRef(savedCheckpoint?.requestKey ?? null)
   const lastCheckpointUpdateRef = useRef(0)
@@ -148,6 +155,7 @@ export function ExportRunDialog({
       const request = createWebSearchRequest(document)
       return { request, requestKey: webSearchRequestKey(request) }
     } catch {
+      // Detailed readiness errors are already rendered from validateForExport.
       return undefined
     }
   }, [document])
@@ -167,6 +175,8 @@ export function ExportRunDialog({
       webSearch.phase,
     )
   const checkpointIsStale = Boolean(
+    // Preserve stale results for inspection, but never resume them against a
+    // configuration with a different deterministic request key.
     savedCheckpoint &&
       (!currentSearch || savedCheckpoint.requestKey !== currentSearch.requestKey),
   )
@@ -201,6 +211,8 @@ export function ExportRunDialog({
       ) {
         return
       }
+      // Progress events arrive frequently; periodic snapshots protect IndexedDB
+      // while terminal and result milestones can still force an immediate save.
       lastCheckpointUpdateRef.current = now
       setWebSearchCheckpoint(createWebSearchCheckpoint(requestKey, next, now))
     },
@@ -251,6 +263,8 @@ export function ExportRunDialog({
           results:
             message.results.length === 0
               ? current.results
+              // Keep display/storage bounded while the worker's exact total
+              // match counter continues beyond the captured rows.
               : [...current.results, ...message.results].slice(
                   0,
                   MAX_WEB_SEARCH_RESULTS,
@@ -267,6 +281,8 @@ export function ExportRunDialog({
         }
         applyWebSearchState(next)
         const resultMilestone =
+          // Persist the first visible result and the moment the capture cap is
+          // reached, even if the normal checkpoint interval has not elapsed.
           (current.results.length === 0 && next.results.length > 0) ||
           (current.results.length < MAX_WEB_SEARCH_RESULTS &&
             next.results.length === MAX_WEB_SEARCH_RESULTS)
@@ -323,6 +339,8 @@ export function ExportRunDialog({
     if (!worker || !requestId) return
     const command: WebSearchWorkerCommand = { type, requestId }
     worker.postMessage(command)
+    // Transitional phases disable repeated commands until the worker reports
+    // the authoritative paused/stopped state.
     let next: WebSearchViewState
     if (type === 'pause') {
       next = { ...webSearchRef.current, phase: 'pausing' }
@@ -351,6 +369,7 @@ export function ExportRunDialog({
     }
     globalThis.document.addEventListener('keydown', onKeyDown)
     globalThis.document.body.classList.add('export-run-dialog-open')
+    // Move focus into the modal and restore it to the invoking control later.
     closeButtonRef.current?.focus()
 
     return () => {
@@ -363,6 +382,7 @@ export function ExportRunDialog({
   useEffect(() => {
     if (open) return
     if (workerRef.current) {
+      // Closing the dialog stops CPU use but persists a resumable cursor.
       const next: WebSearchViewState = {
         ...webSearchRef.current,
         phase: 'stopped',

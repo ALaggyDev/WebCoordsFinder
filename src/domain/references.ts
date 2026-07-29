@@ -1,5 +1,7 @@
 import type { BlockProfile, FaceDirection } from './types'
 
+// Reference paths mirror the checked-in Minecraft asset tree. Profiles name
+// concrete face textures explicitly so analysis never guesses model lookups.
 const textureRoot = '/textures/minecraft/1.21.11/block'
 
 function texture(name: string): string {
@@ -7,6 +9,8 @@ function texture(name: string): string {
 }
 
 const rotationalFaces: Partial<Record<FaceDirection, 4>> = { up: 4, down: 4 }
+// Minecraft exposes four model states, but opposite rotations of these cube
+// side textures are visually indistinguishable and fold to two constraints.
 const mirroredCubeFaces: Partial<Record<FaceDirection, 2 | 4>> = {
   up: 4,
   down: 4,
@@ -206,6 +210,8 @@ export function sharedStatesForFaces(
   blockId: string,
   faces: FaceDirection[],
 ): 2 | 4 | undefined {
+  // Partial compass mappings may leave several world faces possible. Batch
+  // editing is safe only when every completion has the same state cardinality.
   const states = faces.map((face) => statesForFace(blockId, face))
   if (
     states.length === 0 ||
@@ -228,6 +234,8 @@ export function sharedReferenceTextureForFaces(
   blockId: string,
   faces: FaceDirection[],
 ): string | undefined {
+  // An unresolved direction can still be analyzed when every possible face
+  // resolves to the exact same bundled texture.
   const references = faces.map((face) =>
     referenceTextureForFace(blockId, face),
   )

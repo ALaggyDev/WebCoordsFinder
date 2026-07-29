@@ -8,6 +8,8 @@ import type {
 import { searchDirections } from './types'
 import { isAxisMappingComplete, mappedAnchorOffset } from './geometry'
 
+// Export rows are derived values: they are anchor-relative and mapped from the
+// screenshot-local lattice into the user-confirmed world basis.
 type ExportEvidence = FaceEvidence & { coordinate: Point3 }
 
 function coordinateKey(evidence: ExportEvidence): string {
@@ -50,6 +52,8 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
       const mapped = { ...entry, coordinate }
       const key = coordinateKey(mapped)
       const existing = unique.get(key)
+      // Perpendicular observations can refer to one block. Four-state evidence
+      // carries more information and therefore wins a coordinate collision.
       if (!existing || entry.stateCount > existing.stateCount) {
         unique.set(key, mapped)
       }
@@ -120,6 +124,8 @@ export function validateForExport(document: EditorDocument): ValidationResult {
         return
       }
       const rotated = rotateXzOffset(x, z, direction as SearchDirection)
+      // CoordsFinder stores filter offsets as signed bytes after applying each
+      // requested compass rotation, so all rotated forms must fit.
       if (
         rotated.x < -128 ||
         rotated.x > 127 ||
@@ -196,6 +202,8 @@ export function approximateCandidateCount(document: EditorDocument): string {
   ]
   let volume = sizes[0] * sizes[1] * sizes[2]
   const rows = confirmedUniqueEvidence(document)
+  // This is an independence estimate for display, not a promise about actual
+  // collisions in Minecraft's coordinate hash.
   rows.forEach((entry) => {
     volume /= BigInt(entry.stateCount)
   })

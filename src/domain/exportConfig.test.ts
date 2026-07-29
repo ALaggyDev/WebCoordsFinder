@@ -1,3 +1,5 @@
+// Export tests pin the scanner text contract and every validation invariant at
+// the boundary between reviewed editor evidence and CoordsFinder.
 import { describe, expect, it } from 'vitest'
 import { createInitialDocument } from '../store/editorStore'
 import { blockCoordinateForFace } from './geometry'

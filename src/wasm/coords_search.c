@@ -1,5 +1,10 @@
 #include <stdint.h>
 
+/*
+ * Freestanding, allocation-free scanner compiled to WebAssembly. Its integer
+ * overflow and random-number behavior intentionally mirrors native
+ * CoordsFinder rather than the host browser's number semantics.
+ */
 #define EXPORT(name) __attribute__((export_name(name)))
 
 enum {
@@ -59,6 +64,7 @@ static const uint64_t JAVA_MULTIPLIER = 0x5DEECE66Dull;
 static const uint64_t JAVA_MASK = (1ull << 48) - 1ull;
 static const uint64_t SODIUM_PHI = 0x9E3779B97F4A7C15ull;
 
+/* Explicit shifts and wrapping helpers make Java/C overflow parity visible. */
 static uint64_t unsigned_shift_right(uint64_t value, uint32_t distance)
 {
     return value >> distance;
@@ -220,6 +226,10 @@ static uint32_t texture_variant(
     }
 }
 
+/*
+ * Cursor order is X, then Y, then Z, then direction. search_restore relies on
+ * this exact ordering to recover a cursor from the processed-position count.
+ */
 static void advance_cursor(void)
 {
     if (cursor_x != search_x_end) {
@@ -263,6 +273,7 @@ int32_t search_configure(
     int32_t filter_count,
     int32_t direction_count)
 {
+    /* Numeric error codes keep the JS/WASM ABI independent of linear memory. */
     if (mode < MODE_VANILLA_1 || mode > MODE_SODIUM_2) return 1;
     if (x_start > x_end || y_start > y_end || z_start > z_end) return 2;
     if (max_bad_blocks < 0) return 3;
@@ -381,6 +392,10 @@ int32_t search_set_filter(
         }
 
         Filter* filter = &directional_filters[direction_index][index];
+        /*
+         * Four-state variants rotate with the search direction. Folded side
+         * variants remain the same two-state observation after X/Z rotation.
+         */
         filter->x = (int8_t)directional_x;
         filter->y = (int8_t)y;
         filter->z = (int8_t)directional_z;
@@ -453,6 +468,7 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
 
         if (bad_blocks <= search_max_bad_blocks) {
             matching_positions += 1;
+            /* Count every match exactly even after the UI capture cap fills. */
             if (batch_result_count < capture_limit) {
                 SearchResult* result = &batch_results[batch_result_count];
                 result->x = cursor_x;

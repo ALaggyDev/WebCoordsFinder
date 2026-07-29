@@ -50,6 +50,11 @@ import type {
 import { useCanvasImage } from '../hooks/useCanvasImage'
 import { useEditorStore } from '../store/editorStore'
 
+/*
+ * Konva renders image-space geometry while the domain layer remains in the
+ * A/B/C lattice. Drafts, hover previews, and active drags stay transient here;
+ * completed gestures commit once through the editor store.
+ */
 const GRID = '#53e6a5'
 const SELECTED = '#70a7ff'
 const PROPOSED = '#f0b64d'
@@ -162,6 +167,7 @@ function makeExtrusionPreview(
     projectionInfo(scene).resolvedAxes === 3 ||
     !extrusion.createsAxis
   ) {
+    // Existing cameras and in-plane extensions need no provisional anchors.
     return {
       scene: previewScene,
       blocks: extrusion.blocks,
@@ -196,6 +202,8 @@ function makeExtrusionPreview(
     ...anchors,
   ]
   try {
+    // Refit a cloned scene so the pointer preview follows the camera that would
+    // result from committing this first out-of-plane extrusion.
     previewScene.projection = refitProjection(previewScene)
     faces.forEach((face) => {
       face.normal = cameraFacingNormal(previewScene, face)
@@ -303,6 +311,8 @@ function AnchorGizmo({
     x: quad.reduce((sum, point) => sum + point.x, 0) / quad.length,
     y: quad.reduce((sum, point) => sum + point.y, 0) / quad.length,
   }
+  // Below 100% zoom the marker shrinks with the scene; above 100% it stops
+  // growing so it does not obscure the selected face.
   const reticleScale = Math.min(1, 1 / scale)
   return (
     <Group listening={false}>
@@ -443,6 +453,8 @@ export function EditorCanvas() {
 
   const renderedScene = useMemo(() => {
     if (!draggedObservation) return document.scene
+    // Calibration handles render against a cloned, continuously refitted scene.
+    // The store receives only the final pointer position on drag end.
     const scene = structuredClone(document.scene)
     const observation = draggedObservation.id
       ? scene.observations.find((entry) => entry.id === draggedObservation.id)
@@ -503,6 +515,8 @@ export function EditorCanvas() {
       faceEdges.forEach((edge) => {
         const geometry = faceEdgeGeometry(face, edge)
         const key = meshEdgeKey(geometry.start, geometry.end)
+        // Adjacent faces share one selectable mesh edge, regardless of which
+        // face contributed it first.
         if (!edges.has(key)) {
           edges.set(key, { key, selection: { faceId: face.id, edge } })
         }
@@ -541,6 +555,8 @@ export function EditorCanvas() {
   const draftGridLines = useMemo(() => {
     if (draft.length !== 4 || !draftGridSize) return []
     try {
+      // The same projective mapping used for committed faces previews every
+      // requested row and column inside the four drafted corners.
       const homography = fitHomography(
         [
           { x: 0, y: 0 },
@@ -597,6 +613,8 @@ export function EditorCanvas() {
 
   useEffect(() => {
     if (!containerRef.current) return
+    // ResizeObserver keeps the canvas aligned with the CSS grid without relying
+    // on window size as a proxy for the actual workspace.
     const observer = new ResizeObserver(([entry]) => {
       setSize({
         width: Math.max(320, entry.contentRect.width),
@@ -609,6 +627,8 @@ export function EditorCanvas() {
 
   useEffect(() => {
     if (!image || !size.width || !size.height) return
+    // Opening or switching projects recenters the full screenshot with an
+    // initial margin while preserving a useful cap for small images.
     const scale = Math.min(
       (size.width - 80) / image.naturalWidth,
       (size.height - 80) / image.naturalHeight,
@@ -643,6 +663,8 @@ export function EditorCanvas() {
     ) => {
       if (!input) return () => {}
       const onInputWheel = (event: WheelEvent) => {
+        // A non-passive native listener is required to keep number-field
+        // scrolling from zooming the Konva stage underneath the popup.
         event.preventDefault()
         event.stopPropagation()
         const delta = event.deltaY < 0 ? -1 : 1
@@ -677,6 +699,8 @@ export function EditorCanvas() {
   const pointerInImage = (): Point2 | null => {
     const pointer = stageRef.current?.getPointerPosition()
     if (!pointer) return null
+    // Stage pointer coordinates are viewport pixels; undo pan and zoom before
+    // passing observations to lattice projection code.
     return {
       x: (pointer.x - view.x) / view.scale,
       y: (pointer.y - view.y) / view.scale,
@@ -761,6 +785,8 @@ export function EditorCanvas() {
   }
 
   const onStageClick = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    // After the fourth corner, the next unobstructed canvas click confirms the
+    // visible grid-size dialog as a deliberate second step.
     if (draft.length === 4 && draftGridSize) {
       confirmDraftGrid()
       return
@@ -805,6 +831,7 @@ export function EditorCanvas() {
       x: (pointer.x - view.x) / oldScale,
       y: (pointer.y - view.y) / oldScale,
     }
+    // Recompute translation so the image point beneath the cursor stays fixed.
     setView({
       scale: nextScale,
       x: pointer.x - anchor.x * nextScale,
@@ -1043,6 +1070,8 @@ export function EditorCanvas() {
                 }
                 onDragEnd={(event) => {
                   const point = { x: event.target.x(), y: event.target.y() }
+                  // Commit once at gesture end; onDragMove updated only the
+                  // transient renderedScene above.
                   if (distance(observation.image, point) > 0.01) {
                     moveObservation(observation.id, point)
                   }

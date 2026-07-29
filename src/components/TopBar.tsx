@@ -11,6 +11,8 @@ import type { EditorStep } from '../domain/types'
 import type { ProjectSummary } from '../storage/db'
 import { useEditorStore } from '../store/editorStore'
 
+// Workflow navigation is intentionally non-linear once a project is open; each
+// inspector validates its own prerequisites instead of locking later stages.
 const steps: Array<{
   id: EditorStep
   label: string

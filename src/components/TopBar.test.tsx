@@ -1,3 +1,5 @@
+// Top-bar tests protect the distinction between opening a new image and opening
+// the local project library.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEditorStore } from '../store/editorStore'

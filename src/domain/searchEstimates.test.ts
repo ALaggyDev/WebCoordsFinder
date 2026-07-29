@@ -1,3 +1,5 @@
+// Estimate tests pin the intentionally approximate UI model and its compact
+// formatting separately from measured worker throughput.
 import { describe, expect, it } from 'vitest'
 import { createInitialDocument } from '../store/editorStore'
 import type { FaceEvidence } from './types'

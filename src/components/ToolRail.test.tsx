@@ -1,3 +1,5 @@
+// Tool-rail coverage focuses on enablement and mode preservation; shortcut
+// dispatch itself is exercised at the App boundary.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createInitialDocument, useEditorStore } from '../store/editorStore'

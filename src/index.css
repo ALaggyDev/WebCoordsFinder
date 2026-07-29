@@ -1,3 +1,4 @@
+/* Global tokens and browser resets shared by the fixed desktop workbench. */
 :root {
   font-family: Inter, 'Segoe UI Variable', 'Segoe UI', sans-serif;
   color: #e8eef1;
@@ -29,6 +30,7 @@
 html,
 body,
 #root {
+  /* The MVP targets a desktop canvas and intentionally avoids page scrolling. */
   width: 100%;
   min-width: 860px;
   height: 100%;

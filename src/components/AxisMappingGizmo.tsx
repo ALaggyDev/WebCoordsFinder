@@ -15,6 +15,10 @@ import type {
   WorldAxisLabel,
 } from '../domain/types'
 
+/*
+ * The gizmo edits a right-handed mapping between projected A/B/C directions
+ * and signed Minecraft axes. Two signed choices uniquely derive the third.
+ */
 const axes: AbstractAxis[] = ['a', 'b', 'c']
 
 const axisOptions: Array<{ value: WorldAxisLabel; label: string }> = [
@@ -61,6 +65,8 @@ function displayDirections(
   const known = axes.filter((axis) => result[axis])
 
   if (known.length === 2) {
+    // A planar calibration cannot project its normal. Synthesize a stable
+    // display-only direction until the camera fit resolves all three axes.
     const missing = axes.find((axis) => !result[axis])!
     const first = result[known[0]]!
     const second = result[known[1]]!
@@ -139,6 +145,7 @@ export function AxisMappingGizmo({
     const selected = signedAxes(mapping)
     const completions = validAxisMappingCompletions(mapping)
     if (selected.length !== 2 || completions.length !== 1) return
+    // Complete the mapping as soon as handedness leaves one valid choice.
     setAnchoredAxis((current) => current ?? selected[0])
     onChange(completions[0])
   }, [mapping, onChange])
@@ -150,6 +157,8 @@ export function AxisMappingGizmo({
       setAnchoredAxis(axis)
     }
 
+    // Prefer the explicitly pinned axis, then the last edit, so changing a
+    // second axis deterministically recalculates the remaining one.
     const protectedAxis =
       nextAnchor && nextAnchor !== axis && isSigned(mapping[nextAnchor])
         ? nextAnchor

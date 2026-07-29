@@ -1,3 +1,5 @@
+// Shared persisted and worker-facing contracts live here so geometry, storage,
+// analysis, and UI code agree on the same current-format document.
 export type Point2 = { x: number; y: number }
 export type Point3 = { x: number; y: number; z: number }
 export type Matrix3x4 = [
@@ -82,6 +84,7 @@ export interface CalibrationObservation {
 
 export interface PlanarProjection {
   kind: 'planar'
+  // A homography resolves only the two lattice axes spanned by this plane.
   origin: Point3
   uAxis: Point3
   vAxis: Point3
@@ -101,6 +104,7 @@ export interface PlanarProjection {
 
 export interface CameraProjection {
   kind: 'camera'
+  // Row-major 3x4 projective camera matrix with its scale fixed by fitting.
   matrix: Matrix3x4
   rmsError: number
   maxError: number
@@ -109,6 +113,8 @@ export interface CameraProjection {
 export type SceneProjection = PlanarProjection | CameraProjection
 
 export interface AxisMapping {
+  // A/B/C are screenshot-local lattice axes; signed labels map them to world
+  // X/Y/Z without silently inferring the user's compass orientation.
   a: WorldAxisLabel
   b: WorldAxisLabel
   c: WorldAxisLabel
@@ -166,6 +172,7 @@ export type PersistedWebSearchPhase =
 
 export interface WebSearchCheckpoint {
   engineVersion: 2
+  // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase
   processed: string
@@ -187,6 +194,7 @@ export interface ScannerSettings {
   maxBadBlocks: number
   printChunks: boolean
   confidenceThreshold: number
+  // Search progress is document state but intentionally bypasses undo history.
   webSearch: WebSearchCheckpoint | null
 }
 

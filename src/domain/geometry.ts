@@ -16,6 +16,11 @@ import type {
   WorldAxisLabel,
 } from './types'
 
+/*
+ * Geometry is stored in one screenshot-local A/B/C lattice. Projection code
+ * maps that lattice into image space, while AxisMapping is the separate,
+ * user-confirmed conversion from A/B/C to Minecraft world X/Y/Z.
+ */
 export type Homography = [
   number,
   number,
@@ -147,6 +152,8 @@ export function updatedAxisMapping(
   const next: AxisMapping = { ...mapping, [axis]: label }
   const worldAxis = worldAxisPart(label)
   if (worldAxis) {
+    // A world axis may be assigned once only; editing one abstract axis clears
+    // a conflicting assignment rather than creating an impossible basis.
     for (const other of ['a', 'b', 'c'] as const) {
       if (
         other !== axis &&
@@ -156,6 +163,7 @@ export function updatedAxisMapping(
       }
     }
   }
+  // Preserve the last valid mapping when handedness leaves no completion.
   return validAxisMappingCompletions(next).length > 0 ? next : mapping
 }
 
@@ -193,6 +201,8 @@ export function mappedAnchorOffset(
   if (!anchorFaceId) return undefined
   const anchor = scene.faces.find((face) => face.id === anchorFaceId)
   if (!anchor) return undefined
+  // Anchoring is defined on the owning block, not the canonical minimum
+  // lattice corner used to store the selected face square.
   return mappedVector(
     scene.axisMapping,
     subtract3(local, blockCoordinateForFace(anchor)),
@@ -252,6 +262,8 @@ export function solveLinearSystem(matrix: number[][], values: number[]): number[
   const augmented = matrix.map((row, index) => [...row, values[index]])
 
   for (let column = 0; column < n; column += 1) {
+    // Partial pivoting avoids magnifying error when the diagonal entry is
+    // small but another row provides a stable pivot.
     let pivot = column
     for (let row = column + 1; row < n; row += 1) {
       if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) {
@@ -344,6 +356,8 @@ function normalizationForPoints(
   if (meanDistance < EPSILON) {
     throw new Error('The selected calibration points are degenerate.')
   }
+  // Hartley normalization centers points and makes their mean radius sqrt(2),
+  // improving the conditioning of the homography least-squares fit.
   const scale = Math.SQRT2 / meanDistance
   return {
     points: points.map((point) => ({
@@ -406,6 +420,8 @@ export function fitHomography(
   const values: number[] = []
   normalizedSource.points.forEach((point, index) => {
     const target = normalizedDestination.points[index]
+    // Least-squares rows use sqrt(weight) so the squared residual receives the
+    // original observation weight.
     const weight = Math.sqrt(Math.max(0.05, weights[index]))
     rows.push([
       point.x * weight,
@@ -476,6 +492,8 @@ export function localAxesForFace(face: MeshFace): {
   uAxis: Point3
   vAxis: Point3
 } {
+  // Construction history is deliberately absent from MeshFace. Canonical
+  // local axes are derived from the face plane whenever corners are needed.
   if (face.normal.x !== 0) {
     return {
       uAxis: { x: 0, y: 1, z: 0 },
@@ -509,6 +527,7 @@ export function cameraCenter(scene: SceneGeometry): Point3 | undefined {
   if (scene.projection.kind !== 'camera') return undefined
   const matrix = scene.projection.matrix
   try {
+    // The camera center is the finite null point of the 3x4 projection matrix.
     const [x, y, z] = solveLinearSystem(
       [
         [matrix[0], matrix[1], matrix[2]],
@@ -564,6 +583,8 @@ export function planarProjectionForPlane(
   cornerLattice: [Point3, Point3, Point3, Point3],
   observations: CalibrationObservation[],
 ): PlanarProjection {
+  // Observations off this plane cannot constrain a homography and are retained
+  // only for a later promotion to the full camera model.
   const planarObservations = observations.flatMap((observation) => {
     const local = localCoordinatesOnPlane(
       origin,
@@ -671,6 +692,8 @@ function solveLeastSquares(rows: number[][], values: number[]): number[] {
     normal.reduce((sum, row, index) => sum + Math.abs(row[index]), 0) /
     Math.max(1, size)
   const ridge = Math.max(1e-10, diagonalScale * 1e-10)
+  // A tiny scale-relative ridge stabilizes nearly singular calibration poses
+  // without materially moving a well-conditioned solution.
   for (let index = 0; index < size; index += 1) normal[index][index] += ridge
   return solveLinearSystem(normal, rhs)
 }
@@ -709,6 +732,8 @@ export function fitCameraProjection(
   })
 
   const solved = solveLeastSquares(rows, values)
+  // Projective scale is arbitrary; fixing the final coefficient to one leaves
+  // eleven unknowns that the paired image equations can fit linearly.
   const matrix = [...solved, 1] as Matrix3x4
   const errors = observations.map((observation) => {
     const predicted = projectCamera(matrix, observation.lattice)
@@ -746,6 +771,8 @@ export function refitProjection(
     scene.observations.length >= 6 &&
     outOfPlaneObservations.length >= 2
   ) {
+    // Two non-coplanar anchors are required before promoting the stable planar
+    // model; one stray point should not invent a third resolved axis.
     try {
       return fitCameraProjection(scene.observations)
     } catch {
@@ -787,6 +814,8 @@ const MIN_TRAPEZOID_EDGE_RATIO = 1.1
 export function inferInitialFaceNormal(
   corners: [Point2, Point2, Point2, Point2],
 ): Point3 {
+  // A single quadrilateral cannot determine a full camera. Use trapezoid
+  // convergence when strong enough, with winding as the reversible fallback.
   const signedArea = corners.reduce((sum, corner, index) => {
     const next = corners[(index + 1) % corners.length]
     return sum + corner.x * next.y - next.x * corner.y
@@ -884,6 +913,8 @@ export function flatConnectedFaceIds(
 
   const connected = new Set<string>()
   const pending = [seed]
+  // Traverse shared mesh edges but stop at hinges. Parallel and antiparallel
+  // normals belong to the same flat surface for a bulk visible-side flip.
   while (pending.length > 0) {
     const face = pending.pop()!
     if (connected.has(face.id)) continue
@@ -932,6 +963,8 @@ export function selectedEdgeEndpoints(
     }
   })
   const endpoints = [...counts.values()]
+    // Chained selections expose two odd-degree endpoints; a loop falls back to
+    // the most recent edge because it has no unique outer endpoints.
     .filter((entry) => entry.count === 1)
     .map((entry) => entry.point)
   return endpoints.length >= 2
@@ -985,6 +1018,9 @@ export function chooseEdgeExtrusion(
   if (geometries.length === 0) return undefined
   const referenceGeometry = geometries[geometries.length - 1]
   if (scene.projection.kind !== 'camera') {
+    // Under a homography, only in-plane rays are measurable. A pointer close
+    // to one snaps to an integer planar extension; moving away requests the
+    // first out-of-plane axis and a pair of calibration anchors.
     const referenceSelection = selections[selections.length - 1]
     const face = scene.faces.find(
       (entry) => entry.id === referenceSelection.faceId,
@@ -1065,6 +1101,8 @@ export function chooseEdgeExtrusion(
     }
     return { axis: face.normal, blocks: 1, createsAxis: true }
   }
+  // Once a camera exists, every perpendicular lattice direction can be
+  // projected and compared directly with the pointer.
   const candidates = extrusionDirections.filter((axis) =>
     geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
   )
@@ -1103,6 +1141,8 @@ export function translatedExtrusionAnchors(
   if (!endpoints) return undefined
   const projected = endpoints.map((point) => projectScenePoint(scene, point))
   if (!projected[0] || !projected[1]) return undefined
+  // Anchor the nearer endpoint at the pointer and translate the other by the
+  // same screen-space delta, preserving the observed edge as a rigid segment.
   if (distance(pointer, projected[1]) < distance(pointer, projected[0])) {
     endpoints.reverse()
     projected.reverse()
@@ -1152,6 +1192,8 @@ export function createEdgeExtrusionFaces(
       ]
       const face: MeshFace = {
         id: makeId(),
+        // Taking component minima normalizes negative extrusions to the
+        // adjacent unit cell while keeping MeshFace storage canonical.
         blockCoordinate: {
           x: Math.min(...corners.map((corner) => corner.x)),
           y: Math.min(...corners.map((corner) => corner.y)),
@@ -1229,6 +1271,8 @@ export function projectedAbstractAxesAtImagePoint(
     const orientation = referenceDepth < 0 ? -1 : 1
 
     for (const [index, axis] of (['a', 'b', 'c'] as const).entries()) {
+      // Subtracting imagePoint * vanishingW yields the local screen direction
+      // toward each projective vanishing point without dividing near infinity.
       const vanishingX = matrix[index]
       const vanishingY = matrix[4 + index]
       const vanishingW = matrix[8 + index]
@@ -1299,6 +1343,8 @@ export function faceNormalIndicator(
     const side = dot3(face.normal, planeNormal)
     if (Math.abs(side) <= EPSILON) return undefined
     const sign = Math.sign(side)
+    // A homography cannot project the plane normal. Use a reversible diagonal
+    // indicator solely to distinguish the two visible sides until 3D is fit.
     return {
       origin,
       direction: {
@@ -1374,6 +1420,9 @@ export function worldAlignedFaceCorners(
     face === 'down'
       ? axesForFaceRotation(face, 2)
       : defaultAxesForFace(face)
+  // Canonical world ordering makes crops independent of the edge and direction
+  // from which a face was constructed. Bottom faces need a half-turn so their
+  // displayed orientation matches the external view convention.
   const uAxis = localVectorForWorld(scene.axisMapping, target.uAxis)
   const vAxis = localVectorForWorld(scene.axisMapping, target.vAxis)
   return uAxis && vAxis

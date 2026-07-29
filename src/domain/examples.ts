@@ -1,3 +1,5 @@
+// Examples are catalog entries rather than startup state: importing one
+// creates an ordinary, independently saved local project.
 export const exampleProjects = [
   {
     id: 'cavern',

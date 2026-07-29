@@ -1,3 +1,5 @@
+// Integration coverage for project startup/import behavior and global keyboard
+// shortcuts, with browser persistence isolated behind hoisted mocks.
 import {
   cleanup,
   fireEvent,

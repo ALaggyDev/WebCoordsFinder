@@ -52,6 +52,8 @@ import { useEditorStore } from '../store/editorStore'
 import { AxisMappingGizmo } from './AxisMappingGizmo'
 import { ExportRunDialog } from './ExportRunDialog'
 
+// The right-hand inspector mirrors the four workflow stages. It derives UI
+// state from the document while delegating all persisted mutations to Zustand.
 interface InspectorProps {
   busy: boolean
   onOpenImage: () => void
@@ -284,6 +286,8 @@ function FaceInspector({
       return
     }
     if (!evidenceFace || !worldOrientationKnown) {
+      // Do not guess a rotation or reflection while the local-to-world mapping
+      // still admits more than one canonical crop orientation.
       setCropUrl('')
       setCropStatus('unresolved')
       return
@@ -302,6 +306,7 @@ function FaceInspector({
       112,
     )
       .then((crop) => {
+        // Selection may change while canvas extraction is in flight.
         if (active) {
           setCropUrl(imageDataUrl(crop))
           setCropStatus('ready')
@@ -373,6 +378,8 @@ function FaceInspector({
   const autoAnalyzeIds = selectedEvidence
     .filter(
       (entry) =>
+        // Confirmed and already proposed evidence is never overwritten by a
+        // bulk analysis request from the selection workspace.
         entry.reviewStatus === 'unlabeled' &&
         (() => {
           const face = faceForLocalNormal(
@@ -478,6 +485,8 @@ function FaceInspector({
               value={candidate.id}
               disabled={selectedEvidence.some(
                 (entry) => {
+                  // Batch choices must be valid for every possible world face
+                  // represented by the current partial axis mapping.
                   const faces = possibleFacesForLocalNormal(
                     document.scene.axisMapping,
                     entry.localNormal,
@@ -663,6 +672,8 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
               ) ??
               b.latticeCoordinate
             return (
+              // Put the clearest proposals first, then use stable spatial
+              // ordering so equal-confidence rows do not jump around.
               (b.confidence ?? -1) - (a.confidence ?? -1) ||
               aCoordinate.y - bCoordinate.y ||
               aCoordinate.z - bCoordinate.z ||
@@ -911,6 +922,8 @@ function ExportInspector() {
                   checked={checked}
                   disabled={direction === 0}
                   onChange={(event) => {
+                    // Zero degrees represents the selected mapping and remains
+                    // mandatory; extra quarter-turns cover compass ambiguity.
                     const directions = searchDirections.filter(
                       (candidate) =>
                         candidate === 0 ||

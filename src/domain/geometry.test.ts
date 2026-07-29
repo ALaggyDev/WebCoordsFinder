@@ -1,3 +1,5 @@
+// Geometry tests use explicit lattice/image fixtures to pin projective fitting,
+// mesh construction, crop orientation, and right-handed axis completion.
 import { describe, expect, it } from 'vitest'
 import {
   blockCoordinateForFace,
@@ -49,6 +51,7 @@ const planeU = { x: 1, y: 0, z: 0 }
 const planeV = { x: 0, y: 1, z: 0 }
 
 describe('global perspective geometry', () => {
+  // Coordinate ownership and planar projection form the base representation.
   it.each([
     [
       [
@@ -298,6 +301,8 @@ describe('global perspective geometry', () => {
     })
   })
 
+  // Calibration fitting must use redundant observations without inventing a
+  // third axis until the anchors actually leave the source plane.
   it('fits a homography from more than four planar observations', () => {
     const expected = computeHomography(
       [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }],
@@ -479,6 +484,8 @@ describe('global perspective geometry', () => {
     },
   )
 
+  // Extrusion selection covers planar snapping, camera snapping, negative
+  // normalization, and the most-recent-edge reference rule.
   it('preserves a manually flipped source normal during planar extension', () => {
     const flipped = { ...face, normal: { x: 0, y: 0, z: -1 } }
     const scene: SceneGeometry = {
@@ -750,6 +757,8 @@ describe('global perspective geometry', () => {
     ])
   })
 
+  // Partial mappings remain useful for UI hints, but only one right-handed
+  // completion is considered a resolved world orientation.
   it('keeps partial and complete world-axis mappings distinct', () => {
     const partial = { a: 'x+' as const, b: 'unknown' as const, c: 'y+' as const }
     expect(isAxisMappingComplete(partial)).toBe(false)

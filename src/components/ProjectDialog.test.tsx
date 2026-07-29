@@ -1,3 +1,5 @@
+// Dialog tests treat saved projects and bundled examples as separate catalogs
+// that dispatch actions back to the persistence-owning App component.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectDialog } from './ProjectDialog'

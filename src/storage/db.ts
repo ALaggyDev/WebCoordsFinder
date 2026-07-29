@@ -1,6 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { EditorDocument } from '../domain/types'
 
+// Project JSON and image bytes have separate lifecycles: documents reference
+// arbitrary asset keys while blobs remain in the shared IndexedDB asset table.
 interface ProjectRecord {
   id: string
   createdAt?: number
@@ -43,6 +45,7 @@ class WebCoordsDatabase extends Dexie {
     this.version(2).stores({
       projects: 'id, updatedAt',
       assets: 'key',
+      // Version 2 removed the obsolete user-supplied reference texture table.
       references: null,
     })
   }
@@ -68,6 +71,8 @@ export async function persistProject(
   const existing = await db.projects.get(id)
   const now = Date.now()
   const safeDocument = structuredClone(document)
+  // Blob URLs are valid only in the current page; loadProject reconstructs one
+  // from the persisted asset when the project is opened again.
   if (safeDocument.image.src.startsWith('blob:')) safeDocument.image.src = ''
   const record: ProjectRecord = {
     id,
@@ -118,6 +123,8 @@ export function setActiveProjectId(id: string | null): void {
 }
 
 export async function clearAllData(): Promise<void> {
+  // Clear both tables atomically so no project can survive without its image,
+  // and no orphan image remains after a successful reset.
   await db.transaction('rw', db.projects, db.assets, async () => {
     await db.projects.clear()
     await db.assets.clear()

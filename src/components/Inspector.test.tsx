@@ -1,3 +1,5 @@
+// Inspector tests cover selection batches, unresolved world orientation, and
+// the boundary between automatic proposals and user-confirmed evidence.
 import {
   cleanup,
   fireEvent,

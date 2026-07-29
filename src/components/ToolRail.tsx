@@ -10,6 +10,8 @@ import {
 import type { EditorTool } from '../domain/types'
 import { useEditorStore } from '../store/editorStore'
 
+// Tool definitions share the visible shortcut labels; global key handling
+// lives in App so shortcuts also work when the canvas lacks focus.
 const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; shortcut: string }> = [
   { id: 'select', label: 'Select faces or edges', icon: MousePointer2, shortcut: 'V' },
   { id: 'anchor', label: 'Select anchor block', icon: Crosshair, shortcut: 'A' },
@@ -43,6 +45,8 @@ export function ToolRail() {
             className={tool === id ? 'tool-button active' : 'tool-button'}
             onClick={() => setTool(id)}
             disabled={
+              // Only one base grid is allowed, and extrusion needs an explicit
+              // connected edge selection.
               (id === 'plane' && hasGeometry) ||
               (id === 'extrude' && !hasSelectedEdges)
             }

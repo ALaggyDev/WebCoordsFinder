@@ -1,6 +1,8 @@
 import type { EditorDocument } from './types'
 import { confirmedUniqueEvidence } from './exportConfig'
 
+// These estimates communicate relative scale in the UI; only the browser
+// worker reports measured throughput, while native rates remain placeholders.
 export type SearchRuntime = 'web' | 'cpu' | 'cuda'
 
 export interface SearchTimeEstimate {
@@ -50,6 +52,8 @@ export function estimateHitCount(document: EditorDocument): number {
     (_, index) => (index === 0 ? 1 : 0),
   )
 
+  // Dynamic programming accumulates the probability of exactly N mismatches
+  // without enumerating all combinations of accepted bad blocks.
   constraints.forEach((constraint, constraintIndex) => {
     const matchProbability = 1 / constraint.stateCount
     const next = Array.from({ length: tolerance + 1 }, () => 0)
@@ -86,6 +90,7 @@ export function minimumBitsForPrecision(
   const volume = estimateSearchVolume(document)
   const precision = Math.min(1, Math.max(0, targetPrecision))
   if (volume <= 1 || precision === 0) return 0
+  // With ideal independent evidence, b bits leave volume / 2^b candidates.
   return Math.max(0, Math.ceil(Math.log2(volume * precision)))
 }
 

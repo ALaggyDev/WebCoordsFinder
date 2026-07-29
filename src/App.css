@@ -1,3 +1,4 @@
+/* Application frame and top-level workflow navigation. */
 .app {
   width: 100%;
   height: 100%;
@@ -179,6 +180,7 @@
   border-color: rgba(83, 230, 165, 0.17);
 }
 
+/* Empty and active workspace layouts share the same three-column geometry. */
 .workspace {
   min-height: 0;
   display: grid;
@@ -277,6 +279,7 @@
   padding: 24px;
 }
 
+/* Canvas tool rail and viewport overlays. */
 .tool-rail {
   padding: 10px 7px;
   display: flex;
@@ -601,6 +604,7 @@ button:disabled {
   filter: brightness(1.08);
 }
 
+/* Stage-specific inspector structure and reusable form controls. */
 .inspector {
   min-width: 0;
   min-height: 0;
@@ -741,6 +745,7 @@ button:disabled {
   line-height: 1.45;
 }
 
+/* Axis mapping nodes are positioned over the projected-direction SVG. */
 .axis-mapping-gizmo {
   position: relative;
   height: 190px;
@@ -910,6 +915,7 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+/* Face selection and Auto Analyze workspaces. */
 .faces-workspace {
   min-height: 100%;
   display: flex;
@@ -1424,6 +1430,7 @@ button:disabled {
   font-size: 10px;
 }
 
+/* Image and export-stage summaries. */
 .image-summary {
   margin-bottom: 16px;
   padding: 8px;
@@ -1646,6 +1653,7 @@ button:disabled {
   animation: spin 0.85s linear infinite;
 }
 
+/* Transient notifications remain above the canvas but below modal dialogs. */
 .toast {
   position: fixed;
   left: 50%;
@@ -1681,6 +1689,7 @@ button:disabled {
   cursor: pointer;
 }
 
+/* Local project library. */
 .project-dialog-backdrop {
   position: fixed;
   z-index: 110;
@@ -1986,6 +1995,7 @@ button:disabled {
   font-size: 8px;
 }
 
+/* Destructive clear-all confirmation. */
 .modal-backdrop {
   position: fixed;
   z-index: 120;
@@ -2049,6 +2059,7 @@ button:disabled {
   to { transform: rotate(360deg); }
 }
 
+/* Preserve usable inspector and canvas widths on narrower desktop windows. */
 @media (max-width: 1120px) {
   .topbar {
     grid-template-columns: 210px 1fr auto;

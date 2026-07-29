@@ -46,6 +46,11 @@ import type {
   WorldAxisLabel,
 } from '../domain/types'
 
+/*
+ * The Zustand store owns persisted editor mutations and their undo history.
+ * Canvas-only previews stay in component state and commit here once at the end
+ * of a gesture, keeping each user action to one undoable document snapshot.
+ */
 const demoCorners: [Point2, Point2, Point2, Point2] = [
   { x: 0, y: 644 },
   { x: 1058, y: 574 },
@@ -109,6 +114,8 @@ function createPlanarScene(
 }
 
 function createDefaultScanner(): ScannerSettings {
+  // Defaults target current CoordsFinder behavior while leaving compass
+  // orientation unresolved until the user supplies a valid world mapping.
   return {
     textureAlgorithm: 'Vanilla-3',
     directions: [0],
@@ -207,6 +214,9 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   const scene = candidate.scene as Record<string, unknown> | undefined
   const directions = scanner?.directions
   if (
+    // The application intentionally supports the current schema in place; this
+    // guard rejects stale axis labels and malformed direction sets rather than
+    // silently migrating them.
     candidate.schemaVersion !== 1 ||
     typeof candidate.projectName !== 'string' ||
     !scene ||
@@ -237,6 +247,7 @@ interface AnalysisResult {
 function syncProposalToThreshold(entry: FaceEvidence, threshold: number): void {
   if (!entry.scores?.length) return
   const qualifies = (entry.confidence ?? 0) >= threshold
+  // Automatic analysis remains a proposal until explicit confirmation.
   entry.selectedVariant = qualifies ? entry.scores[0].variant : undefined
   entry.reviewStatus = qualifies ? 'proposed' : 'unlabeled'
 }
@@ -263,6 +274,8 @@ function evidenceStateCount(
   document: EditorDocument,
   evidence: FaceEvidence,
 ): 2 | 4 | undefined {
+  // A partial axis mapping may represent several world faces; evidence remains
+  // editable only when those possibilities agree on two- versus four-state.
   return sharedStatesForFaces(evidence.blockId, evidenceFaces(document, evidence))
 }
 
@@ -297,6 +310,7 @@ function pruneGeometry(document: EditorDocument): void {
   const faceIds = new Set(document.scene.faces.map((face) => face.id))
   document.evidence = document.evidence.filter((entry) => faceIds.has(entry.faceId))
   if (document.anchorFaceId && !faceIds.has(document.anchorFaceId)) {
+    // An anchor cannot outlive the face that identifies its owning block.
     document.anchorFaceId = null
   }
   if (document.scene.faces.length === 0) document.scene.observations = []
@@ -364,6 +378,7 @@ function mutateDocument(
   mutator(next)
   return {
     document: next,
+    // Bound memory use while retaining a useful editing history.
     past: [...state.past.slice(-59), state.document],
     future: [],
   }
@@ -380,6 +395,8 @@ function applyAxisMapping(
 ): void {
   document.scene.axisMapping = mapping
   document.scanner.compassResolved = isAxisMappingComplete(mapping)
+  // World direction determines face support, crop orientation, and variant
+  // meaning. Any mapping change invalidates all derived analysis together.
   document.evidence.forEach((entry) => {
     entry.stateCount = evidenceStateCount(document, entry) ?? 4
     entry.selectedVariant = undefined
@@ -429,6 +446,8 @@ export const useEditorStore = create<EditorState>((set) => ({
             )
           )
         })
+      // Extrusion selections form one connected chain. Starting on a separate
+      // component replaces the chain instead of creating ambiguous endpoints.
       return {
         selectedEdges: connected ? [...state.selectedEdges, edge] : [edge],
       }
@@ -454,6 +473,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       faceTab: 'selection',
       selectedEvidenceIds: [],
       selectedEdges: [],
+      // Restored projects reopen at the earliest meaningful workflow stage.
       step: document.scene.faces.length > 0 ? 'grid' : 'image',
       tool: document.scene.faces.length > 0 ? 'select' : 'plane',
     })
@@ -462,6 +482,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       ...mutateDocument(state, (document) => {
         document.image = image
+        // Geometry and evidence are image-space observations and cannot be
+        // carried onto a different screenshot.
         document.scene.faces = []
         document.scene.observations = []
         document.evidence = []
@@ -495,6 +517,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   moveObservation: (id, point) =>
     set((state) =>
       mutateDocument(state, (document) => {
+        // The canvas renders transient drag positions; this call occurs once
+        // on drag end and records the final calibration as one history entry.
         const observation = document.scene.observations.find((entry) => entry.id === id)
         if (!observation) return
         observation.image = point
@@ -562,6 +586,8 @@ export const useEditorStore = create<EditorState>((set) => ({
             projectionInfo(document.scene).resolvedAxes < 3 &&
             planarAnchors
           ) {
+            // The first out-of-plane extrusion contributes two translated edge
+            // endpoints, enough to promote the planar fit to a 3D camera.
             planarAnchors.endpoints.forEach((endpoint, index) => {
               document.scene.observations.push({
                 id: crypto.randomUUID(),
@@ -616,6 +642,8 @@ export const useEditorStore = create<EditorState>((set) => ({
             selectedId,
           )
           document.scene.faces
+            // Flip the entire coplanar component so adjacent unit faces retain
+            // a consistent visible side.
             .filter((face) => connectedIds.has(face.id))
             .forEach((face) => {
               face.normal = targetNormal
@@ -686,6 +714,8 @@ export const useEditorStore = create<EditorState>((set) => ({
       const face = state.document.scene.faces.find((entry) => entry.id === faceId)
       if (!face) return state
       const exists = state.document.evidence.some((entry) => entry.id === faceId)
+      // Geometry selection lazily creates evidence; merely drawing faces does
+      // not populate the export filter.
       const documentPatch = exists
         ? {}
         : mutateDocument(state, (document) => {
@@ -825,6 +855,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     ),
   setWebSearchCheckpoint: (webSearch) =>
     set((state) => ({
+      // Progress updates are frequent runtime state, not user edits. Keep them
+      // out of the document undo stack.
       document: {
         ...state.document,
         scanner: {
@@ -844,6 +876,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       const previous = state.past.at(-1)
       if (!previous) return state
       const document = structuredClone(previous)
+      // Undoing geometry or settings must not rewind a long-running search.
       document.scanner.webSearch = state.document.scanner.webSearch
       return {
         document,
@@ -856,6 +889,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       const next = state.future[0]
       if (!next) return state
       const document = structuredClone(next)
+      // Search checkpoints follow runtime progress across both history paths.
       document.scanner.webSearch = state.document.scanner.webSearch
       return {
         document,

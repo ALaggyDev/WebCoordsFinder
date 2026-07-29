@@ -16,6 +16,8 @@ import {
 } from '../domain/examples'
 import type { ProjectSummary } from '../storage/db'
 
+// The dialog presents saved and example projects without owning persistence;
+// App performs each action and supplies refreshed summaries and preview URLs.
 interface ProjectDialogProps {
   activeProjectId: string | null
   open: boolean
@@ -64,6 +66,8 @@ export function ProjectDialog({
   if (!open) return null
 
   const runAction = (action: () => void) => {
+    // Close first so file pickers and project switches never leave a stale
+    // modal over the newly active workspace.
     onClose()
     action()
   }

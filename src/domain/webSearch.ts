@@ -8,6 +8,8 @@ import type {
   WebSearchResult,
 } from './types'
 
+// The web-search protocol keeps exact counters as BigInt in memory and as
+// decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
 export const WEB_SEARCH_ENGINE_VERSION = 2
 
@@ -115,6 +117,7 @@ export function createWebSearchRequest(
     (BigInt(zEnd) - BigInt(zStart) + 1n)
   const directionalVolume =
     volume * BigInt(document.scanner.directions.length)
+  // The freestanding WASM engine exposes unsigned 64-bit progress counters.
   if (directionalVolume > uint64Maximum) {
     throw new Error('The web search volume exceeds the WASM scanner limit.')
   }
@@ -140,6 +143,7 @@ export function createWebSearchRequest(
 }
 
 export function webSearchRequestKey(request: WebSearchRequest): string {
+  // Any input or engine-semantic change invalidates checkpoint resumption.
   return JSON.stringify([WEB_SEARCH_ENGINE_VERSION, request])
 }
 
@@ -176,6 +180,8 @@ export function restoreWebSearchCheckpoint(
 ): WebSearchViewState {
   if (!checkpoint) return initialWebSearchState
   return {
+    // A worker cannot survive a reload, so an in-flight persisted search
+    // reopens as paused and requires an explicit resume.
     phase: checkpoint.phase === 'running' ? 'paused' : checkpoint.phase,
     processed: BigInt(checkpoint.processed),
     total: BigInt(checkpoint.total),
@@ -191,6 +197,7 @@ function persistedPhase(phase: WebSearchPhase): PersistedWebSearchPhase {
     return phase
   }
   if (phase === 'stopped' || phase === 'stopping') return 'stopped'
+  // Loading and transient pause requests both represent resumable work.
   return 'running'
 }
 

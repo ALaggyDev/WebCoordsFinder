@@ -7,6 +7,8 @@ import {
 } from '../domain/webSearch'
 import type { SearchDirection } from '../domain/types'
 
+// This worker owns one mutable WASM scanner instance. Request IDs prevent late
+// messages from a replaced search from mutating the dialog's current state.
 interface SearchExports extends WebAssembly.Exports {
   search_configure: (
     mode: number,
@@ -68,6 +70,8 @@ async function loadSearchExports(): Promise<SearchExports> {
 
       let instance: WebAssembly.Instance
       try {
+        // Some development servers return the correct WASM MIME type, while
+        // static hosts may require the ArrayBuffer fallback.
         const result = await WebAssembly.instantiateStreaming(response.clone())
         instance = result.instance
       } catch {
@@ -139,6 +143,8 @@ function runBatch() {
   const scanned = module.search_scan_batch(batchSize, captureLimit)
   const elapsed = Math.max(0.01, performance.now() - startedAt)
   const instantaneousRate = (scanned * 1_000) / elapsed
+  // Smooth the displayed rate and adapt work chunks toward short tasks so
+  // pause/stop commands remain responsive.
   checksPerSecond =
     checksPerSecond === 0
       ? instantaneousRate
@@ -154,6 +160,8 @@ function runBatch() {
   const results = collectResults(module)
   const now = performance.now()
   if (
+    // Result-bearing messages are immediate; empty progress updates are
+    // throttled to avoid flooding React with worker events.
     results.length > 0 ||
     now - lastProgressAt >= progressIntervalMilliseconds ||
     module.search_is_finished()
@@ -226,6 +234,8 @@ async function startSearch(
     })
 
     if (command.checkpoint) {
+      // The C scanner reconstructs its cursor from exact processed and match
+      // counters; captured result rows remain owned by the UI checkpoint.
       const restoreError = module.search_restore(
         command.checkpoint.processed,
         command.checkpoint.matchCount,

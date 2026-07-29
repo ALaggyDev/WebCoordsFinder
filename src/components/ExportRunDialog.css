@@ -1,3 +1,4 @@
+/* Full-viewport portal layer; centering must not inherit workspace columns. */
 body.export-run-dialog-open {
   overflow: hidden;
 }
@@ -94,6 +95,7 @@ body.export-run-dialog-open {
   border-color: rgba(240, 182, 77, 0.18);
 }
 
+/* Readiness metrics and placeholder runtime comparison. */
 .export-run-metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -235,6 +237,7 @@ body.export-run-dialog-open {
   line-height: 1.55;
 }
 
+/* Resumable browser-search progress, controls, and bounded result table. */
 .web-search-progress {
   padding-top: 10px;
   display: grid;
@@ -429,6 +432,7 @@ body.export-run-dialog-open {
   border-bottom: 0;
 }
 
+/* Native CoordsFinder handoff and shared inspector helpers. */
 .export-run-config-preview {
   border-top: 1px solid var(--border-soft);
 }
@@ -488,6 +492,7 @@ body.export-run-dialog-open {
   margin: 0 0 10px;
 }
 
+/* The desktop-first dialog collapses cards rather than introducing page scroll. */
 @media (max-width: 760px) {
   .export-run-backdrop {
     padding: 14px;

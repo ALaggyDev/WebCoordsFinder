@@ -1,3 +1,5 @@
+// Export/Run tests pin modal workflow, search readiness, and checkpoint
+// restoration without starting the real background scanner.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {

@@ -1,5 +1,7 @@
 /// <reference types="node" />
 
+// Reference tests verify both registry metadata and the checked-in texture
+// files that automatic analysis depends on at runtime.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'

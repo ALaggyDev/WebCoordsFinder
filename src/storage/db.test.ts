@@ -1,3 +1,5 @@
+// Persistence tests exercise the project-record/image-asset split against fake
+// IndexedDB rather than substituting an in-memory repository.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createEmptyDocument } from '../store/editorStore'
 import {

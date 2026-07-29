@@ -7,6 +7,8 @@ import {
   projectPoint,
 } from './geometry'
 
+// Decoding is shared across crops and candidates; caching the promise also
+// coalesces concurrent requests for the same bundled reference image.
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 
 export function loadImage(source: string): Promise<HTMLImageElement> {
@@ -81,6 +83,8 @@ export async function warpQuad(
   )
   const result = new ImageData(size, size)
 
+  // Sample pixel centers through the inverse mapping to avoid gaps that a
+  // forward rasterization of the perspective quad would leave behind.
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const sourcePoint = projectPoint(transform, { x: x + 0.5, y: y + 0.5 })
@@ -129,6 +133,8 @@ export function transformPixels(
   transform: CandidateTransform,
 ): Uint8ClampedArray {
   const output = new Uint8ClampedArray(source.length)
+  // The switch maps each output pixel back to its source, keeping every
+  // transform exact and avoiding interpolation of the reference texture.
   const copy = (targetX: number, targetY: number, sourceX: number, sourceY: number) => {
     const sourceOffset = (sourceY * size + sourceX) * 4
     const targetOffset = (targetY * size + targetX) * 4
@@ -172,6 +178,8 @@ export function normalizedGradientScore(
   reference: Uint8ClampedArray,
   size: number,
 ): number {
+  // Ignore crop borders where homography and screenshot background artifacts
+  // dominate, then compare gradients so lighting shifts matter less.
   const border = Math.max(2, Math.round(size * 0.08))
   const sampleValues: number[] = []
   const referenceValues: number[] = []
@@ -210,6 +218,7 @@ export function normalizedGradientScore(
     referenceEnergy += referenceCentered ** 2
   })
   const denominator = Math.sqrt(sampleEnergy * referenceEnergy)
+  // Constant images have no directional information and cannot be matched.
   if (denominator < 1e-8) return 0
   return Math.max(-1, Math.min(1, numerator / denominator))
 }

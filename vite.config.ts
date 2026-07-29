@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Keep the PWA shell fully local, including the bundled texture atlas and
+// scanner WASM used after the application has been installed.
 export default defineConfig({
   plugins: [
     react(),
@@ -27,6 +29,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webp,wasm}'],
+        // The bundled demo is intentionally larger than Workbox's default
+        // limit and must remain available to an offline installation.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
     }),

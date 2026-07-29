@@ -54,6 +54,11 @@ import {
   useEditorStore,
 } from './store/editorStore'
 
+/*
+ * App coordinates browser-owned resources around the editor store: project
+ * hydration/autosave, object URL lifetimes, global shortcuts, imports/exports,
+ * and background texture analysis.
+ */
 type ToastKind = 'success' | 'warning' | 'info'
 
 interface ToastState {
@@ -70,6 +75,8 @@ interface WorkerResponse {
 function restoreStoredDocument(saved: StoredProject) {
   const restored = normalizeEditorDocument(saved.document)
   if (saved.imageBlob) {
+    // Persisted documents omit session-scoped blob URLs, so opening a project
+    // creates a fresh URL from its separately stored image asset.
     restored.image.src = URL.createObjectURL(saved.imageBlob)
     restored.image.mime = saved.imageBlob.type || restored.image.mime
   } else if (!restored.image.src) {
@@ -140,6 +147,8 @@ function App() {
         if (!active) return
         setProjects(savedProjects)
         const rememberedId = getActiveProjectId()
+        // Prefer the remembered project, then fall back to the most recently
+        // updated project returned by listProjects.
         const projectToOpen =
           savedProjects.find((project) => project.id === rememberedId) ??
           savedProjects[0]
@@ -165,6 +174,8 @@ function App() {
 
   useEffect(() => {
     if (!hydrated || !activeProjectId) return
+    // Debounce document writes so rapid form edits collapse into one IndexedDB
+    // update.
     const timeout = window.setTimeout(() => {
       persistProject(activeProjectId, document)
         .then((summary) =>
@@ -192,6 +203,8 @@ function App() {
             if (!saved) return [projectId, undefined] as const
             if (saved.imageBlob) {
               const source = URL.createObjectURL(saved.imageBlob)
+              // Track each preview URL within this effect generation so a
+              // project-list refresh can revoke it safely.
               generatedUrls.push(source)
               return [projectId, source] as const
             }
@@ -218,6 +231,7 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
+      // Preserve native selection and editing shortcuts inside form controls.
       if (
         target instanceof HTMLInputElement ||
         target instanceof HTMLSelectElement ||
@@ -293,6 +307,8 @@ function App() {
     image.src = source
     try {
       await image.decode()
+      // Save the outgoing project before creating the independent project and
+      // image records for this screenshot.
       const currentSummary = activeProjectId
         ? await persistProject(activeProjectId, document)
         : undefined
@@ -410,6 +426,8 @@ function App() {
     if (projectId === activeProjectId) return
     try {
       if (activeProjectId) {
+        // Flush pending edits before changing which project the active marker
+        // and autosave effect refer to.
         const currentSummary = await persistProject(activeProjectId, document)
         setProjects((current) => [
           currentSummary,
@@ -459,6 +477,8 @@ function App() {
           entry.localNormal,
         )
         return (
+          // Canonical crop ordering requires a resolved world orientation; a
+          // supported reference alone is not enough.
           meshFace &&
           faceHasWorldOrientation(state.document.scene, meshFace) &&
           face &&
@@ -476,6 +496,8 @@ function App() {
 
     setBusy(true)
     try {
+      // Image extraction stays on the main thread for DOM canvas access. The
+      // CPU-heavy transform scoring runs in a short-lived worker.
       const worker = new Worker(new URL('./workers/analyze.worker.ts', import.meta.url), {
         type: 'module',
       })
@@ -505,6 +527,7 @@ function App() {
           : undefined
         if (!meshFace || !profile || !referenceUrl || !quad) return null
         const [sample, reference] = await Promise.all([
+          // Both paths use the same square resolution before gradient scoring.
           warpQuad(state.document.image.src, quad, 96),
           imageToPixels(referenceUrl, 96),
         ])
