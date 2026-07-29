@@ -927,7 +927,6 @@ button:disabled {
 
 .status-dot.confirmed { color: var(--accent); }
 .status-dot.proposed { color: var(--amber); }
-.status-dot.excluded { color: var(--faint); }
 
 .face-preview-row {
   margin-bottom: 14px;

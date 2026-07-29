@@ -698,6 +698,47 @@ export function meshEdgeKey(start: Point3, end: Point3): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`
 }
 
+export function flatConnectedFaceIds(
+  faces: MeshFace[],
+  seedFaceId: string,
+): Set<string> {
+  const seed = faces.find((face) => face.id === seedFaceId)
+  if (!seed) return new Set()
+
+  const facesByEdge = new Map<string, MeshFace[]>()
+  faces.forEach((face) => {
+    for (const edge of ['top', 'right', 'bottom', 'left'] as const) {
+      const geometry = faceEdgeGeometry(face, edge)
+      const key = meshEdgeKey(geometry.start, geometry.end)
+      facesByEdge.set(key, [...(facesByEdge.get(key) ?? []), face])
+    }
+  })
+
+  const connected = new Set<string>()
+  const pending = [seed]
+  while (pending.length > 0) {
+    const face = pending.pop()!
+    if (connected.has(face.id)) continue
+    connected.add(face.id)
+
+    for (const edge of ['top', 'right', 'bottom', 'left'] as const) {
+      const geometry = faceEdgeGeometry(face, edge)
+      const neighbors =
+        facesByEdge.get(meshEdgeKey(geometry.start, geometry.end)) ?? []
+      neighbors.forEach((neighbor) => {
+        if (
+          !connected.has(neighbor.id) &&
+          Math.abs(dot3(face.normal, neighbor.normal)) > 1 - EPSILON
+        ) {
+          pending.push(neighbor)
+        }
+      })
+    }
+  }
+
+  return connected
+}
+
 export function selectedEdgeGeometry(
   scene: SceneGeometry,
   selection: SelectedEdge,
@@ -984,6 +1025,62 @@ export function projectedAbstractAxes(
     }
   }
   return result
+}
+
+export interface FaceNormalIndicator {
+  origin: Point2
+  direction: Point2
+  planarFallback: boolean
+}
+
+export function faceNormalIndicator(
+  scene: SceneGeometry,
+  face: MeshFace,
+): FaceNormalIndicator | undefined {
+  const center = scale3(
+    faceCornersLattice(face).reduce(
+      (sum, point) => add3(sum, point),
+      { x: 0, y: 0, z: 0 },
+    ),
+    0.25,
+  )
+  const origin = projectScenePoint(scene, center)
+  if (!origin) return undefined
+
+  if (scene.projection.kind === 'planar') {
+    const planeNormal = cross3(
+      scene.projection.uAxis,
+      scene.projection.vAxis,
+    )
+    const side = dot3(face.normal, planeNormal)
+    if (Math.abs(side) <= EPSILON) return undefined
+    const sign = Math.sign(side)
+    return {
+      origin,
+      direction: {
+        x: Math.SQRT1_2 * sign,
+        y: -Math.SQRT1_2 * sign,
+      },
+      planarFallback: true,
+    }
+  }
+
+  const endpoint = projectScenePoint(scene, add3(center, face.normal))
+  if (!endpoint) return undefined
+  const delta = {
+    x: endpoint.x - origin.x,
+    y: endpoint.y - origin.y,
+  }
+  const length = Math.hypot(delta.x, delta.y)
+  if (length <= EPSILON) return undefined
+  return {
+    origin,
+    direction: {
+      x: delta.x / length,
+      y: delta.y / length,
+    },
+    planarFallback: false,
+  }
 }
 
 function localVectorForWorld(

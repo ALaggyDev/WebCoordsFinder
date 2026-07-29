@@ -8,6 +8,7 @@ import {
   Download,
   Eye,
   FileImage,
+  FlipHorizontal2,
   Grid3X3,
   Link2,
   LoaderCircle,
@@ -16,7 +17,6 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react'
 import {
   generateCoordsFinderConfig,
@@ -136,7 +136,6 @@ function GeometryInspector() {
   const deleteSelectedFaces = useEditorStore(
     (state) => state.deleteSelectedFaces,
   )
-  const flipSelectedFaces = useEditorStore((state) => state.flipSelectedFaces)
   const updateAxisMapping = useEditorStore((state) => state.updateAxisMapping)
   const setTool = useEditorStore((state) => state.setTool)
   const tool = useEditorStore((state) => state.tool)
@@ -242,14 +241,6 @@ function GeometryInspector() {
           onClick={() => setTool('extrude')}
         >
           <Link2 size={15} /> Extrude selected edges (E)
-        </button>
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={selectedFaceCount === 0}
-          onClick={flipSelectedFaces}
-        >
-          Flip visible side
         </button>
         <button
           type="button"
@@ -368,7 +359,6 @@ function FaceInspector({
           multiple={false}
           autoAnalyzeIds={[]}
           proposedIds={[]}
-          excludedIds={[]}
           anySelectedHaveVariant={false}
           onAutoFill={onAutoFill}
         />
@@ -421,10 +411,6 @@ function FaceInspector({
   const proposedIds = selectedEvidence
     .filter((entry) => entry.reviewStatus === 'proposed')
     .map((entry) => entry.id)
-  const excludedIds = selectedEvidence
-    .filter((entry) => entry.reviewStatus === 'excluded')
-    .map((entry) => entry.id)
-
   return (
     <>
       <SectionTitle
@@ -577,7 +563,6 @@ function FaceInspector({
         multiple={multiple}
         autoAnalyzeIds={autoAnalyzeIds}
         proposedIds={proposedIds}
-        excludedIds={excludedIds}
         anySelectedHaveVariant={anySelectedHaveVariant}
         onAutoFill={onAutoFill}
       />
@@ -591,7 +576,6 @@ function FaceSelectionActions({
   multiple,
   autoAnalyzeIds,
   proposedIds,
-  excludedIds,
   anySelectedHaveVariant,
   onAutoFill,
 }: {
@@ -600,13 +584,12 @@ function FaceSelectionActions({
   multiple: boolean
   autoAnalyzeIds: string[]
   proposedIds: string[]
-  excludedIds: string[]
   anySelectedHaveVariant: boolean
   onAutoFill: (evidenceIds?: string[]) => void
 }) {
   const setEvidenceStatus = useEditorStore((state) => state.setEvidenceStatus)
+  const flipSelectedFaces = useEditorStore((state) => state.flipSelectedFaces)
   const hasSelection = selectedIds.length > 0
-  const includesExcludedFaces = excludedIds.length > 0
 
   return (
     <div className="face-selection-actions" aria-label="Face selection actions">
@@ -614,15 +597,10 @@ function FaceSelectionActions({
         <button
           type="button"
           className="secondary-button"
-          onClick={() =>
-            setEvidenceStatus(
-              includesExcludedFaces ? excludedIds : selectedIds,
-              includesExcludedFaces ? 'unlabeled' : 'excluded',
-            )}
+          onClick={flipSelectedFaces}
           disabled={!hasSelection}
         >
-          {includesExcludedFaces ? <Eye size={15} /> : <X size={15} />}
-          {includesExcludedFaces ? 'Include' : 'Exclude'}
+          <FlipHorizontal2 size={15} /> Flip visible side
         </button>
         <button
           type="button"
@@ -677,7 +655,6 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
       document.evidence
         .filter(
           (entry) =>
-            entry.reviewStatus !== 'excluded' &&
             entry.scores !== undefined &&
             entry.scores.length > 0,
         )
@@ -714,7 +691,7 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
           result[entry.reviewStatus] += 1
           return result
         },
-        { unlabeled: 0, proposed: 0, confirmed: 0, excluded: 0 },
+        { unlabeled: 0, proposed: 0, confirmed: 0 },
       ),
     [reviewItems],
   )
@@ -811,7 +788,6 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
     (state) =>
       state.document.evidence.filter(
         (entry) =>
-          entry.reviewStatus !== 'excluded' &&
           entry.scores !== undefined &&
           entry.scores.length > 0,
       ).length,

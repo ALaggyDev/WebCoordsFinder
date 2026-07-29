@@ -4,6 +4,7 @@ import {
   computeHomography,
   createEdgeExtrusionFaces,
   faceForLocalNormal,
+  faceNormalIndicator,
   faceQuad,
   faceVertex,
   fitCameraProjection,
@@ -93,6 +94,57 @@ describe('global perspective geometry', () => {
     expectPointClose(leftQuad[1], rightQuad[0])
     expectPointClose(leftQuad[2], rightQuad[3])
     expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
+  })
+
+  it('uses a reversible screen-space normal indicator until a camera is fitted', () => {
+    const planarScene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: { x: 0, y: 0, z: 0 },
+        uAxis: planeU,
+        vAxis: planeV,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 1, y: 1, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const front = faceNormalIndicator(planarScene, face)!
+    const back = faceNormalIndicator(planarScene, {
+      ...face,
+      normal: { x: 0, y: 0, z: -1 },
+    })!
+
+    expect(front).toMatchObject({
+      origin: { x: 0.5, y: 0.5 },
+      planarFallback: true,
+    })
+    expectPointClose(back.direction, {
+      x: -front.direction.x,
+      y: -front.direction.y,
+    })
+
+    const cameraScene: SceneGeometry = {
+      ...planarScene,
+      projection: {
+        kind: 'camera',
+        matrix: [100, 0, 20, 0, 0, 100, -10, 0, 0, 0, 0, 1],
+        rmsError: 0,
+        maxError: 0,
+      },
+    }
+    const projected = faceNormalIndicator(cameraScene, face)!
+    expect(projected.planarFallback).toBe(false)
+    expectPointClose(projected.direction, {
+      x: 2 / Math.sqrt(5),
+      y: -1 / Math.sqrt(5),
+    })
   })
 
   it('fits a homography from more than four planar observations', () => {

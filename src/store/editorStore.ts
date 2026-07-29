@@ -4,9 +4,11 @@ import {
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   faceForLocalNormal,
+  flatConnectedFaceIds,
   isAxisMappingComplete,
   mappedAnchorOffset,
   meshEdgeKey,
+  negate3,
   outerEdgeForExtrusion,
   planarProjectionForPlane,
   projectionInfo,
@@ -194,7 +196,7 @@ function syncProposalToThreshold(entry: FaceEvidence, threshold: number): void {
 
 function syncUnconfirmedProposals(document: EditorDocument): void {
   document.evidence
-    .filter((entry) => !['confirmed', 'excluded'].includes(entry.reviewStatus))
+    .filter((entry) => entry.reviewStatus !== 'confirmed')
     .forEach((entry) =>
       syncProposalToThreshold(entry, document.scanner.confidenceThreshold),
     )
@@ -275,7 +277,7 @@ interface EditorState {
   setVariant: (evidenceId: string, variant: number) => void
   setEvidenceStatus: (
     evidenceIds: string[],
-    status: 'confirmed' | 'excluded' | 'unlabeled',
+    status: 'confirmed' | 'unlabeled',
   ) => void
   applyAnalysisResults: (results: AnalysisResult[]) => void
   acceptProposed: () => void
@@ -511,19 +513,28 @@ export const useEditorStore = create<EditorState>((set) => ({
   flipSelectedFaces: () =>
     set((state) => {
       if (state.selectedEvidenceIds.length === 0) return state
-      const ids = new Set(state.selectedEvidenceIds)
       return mutateDocument(state, (document) => {
-        document.scene.faces
-          .filter((face) => ids.has(face.id))
-          .forEach((face) => {
-            face.normal = {
-              x: -face.normal.x,
-              y: -face.normal.y,
-              z: -face.normal.z,
-            }
-          })
+        const flippedIds = new Set<string>()
+        state.selectedEvidenceIds.forEach((selectedId) => {
+          if (flippedIds.has(selectedId)) return
+          const selectedFace = document.scene.faces.find(
+            (face) => face.id === selectedId,
+          )
+          if (!selectedFace) return
+          const targetNormal = negate3(selectedFace.normal)
+          const connectedIds = flatConnectedFaceIds(
+            document.scene.faces,
+            selectedId,
+          )
+          document.scene.faces
+            .filter((face) => connectedIds.has(face.id))
+            .forEach((face) => {
+              face.normal = targetNormal
+              flippedIds.add(face.id)
+            })
+        })
         document.evidence
-          .filter((entry) => ids.has(entry.faceId))
+          .filter((entry) => flippedIds.has(entry.faceId))
           .forEach((entry) => {
             const face = document.scene.faces.find(
               (candidate) => candidate.id === entry.faceId,

@@ -76,7 +76,7 @@ describe('face inspector batch selection', () => {
         .getAllByRole('button')
         .map((button) => button.textContent?.trim()),
     ).toEqual([
-      'Exclude',
+      'Flip visible side',
       'Clear variants',
       'Auto analyze selected faces',
       'Confirm',
@@ -146,7 +146,7 @@ describe('face inspector batch selection', () => {
     expect(confirm).toBeDisabled()
   })
 
-  it('turns Exclude into Include for excluded faces', () => {
+  it('flips the selected flat-connected faces from the Faces workspace', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().selectFace(first.id, false)
     useEditorStore.getState().selectFace(second.id, true)
@@ -160,14 +160,12 @@ describe('face inspector batch selection', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Exclude' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Flip visible side' }))
     expect(
-      useEditorStore.getState().document.evidence.every(
-        (entry) => entry.reviewStatus === 'excluded',
+      useEditorStore.getState().document.scene.faces.every(
+        (face) => face.normal.z === -1,
       ),
     ).toBe(true)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Include' }))
     expect(
       useEditorStore.getState().document.evidence.every(
         (entry) =>
@@ -175,7 +173,6 @@ describe('face inspector batch selection', () => {
           entry.selectedVariant === undefined,
       ),
     ).toBe(true)
-    expect(screen.getByRole('button', { name: 'Exclude' })).toBeInTheDocument()
   })
 })
 
@@ -194,6 +191,9 @@ describe('geometry deletion', () => {
       />,
     )
 
+    expect(
+      screen.queryByRole('button', { name: 'Flip visible side' }),
+    ).not.toBeInTheDocument()
     fireEvent.click(
       screen.getByRole('button', { name: 'Delete selected faces' }),
     )

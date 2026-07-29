@@ -69,6 +69,52 @@ describe('unit-face geometry', () => {
     expect(state.past).toHaveLength(historyBeforeDelete + 1)
   })
 
+  it('flips and aligns every flat-connected face in one transaction', () => {
+    const document = structuredClone(useEditorStore.getState().document)
+    const planeIds = document.scene.faces.map((face) => face.id)
+    document.scene.faces[1].normal = { x: 0, y: 0, z: -1 }
+    document.scene.faces.push(
+      {
+        id: 'disconnected',
+        blockCoordinate: { x: 20, y: 0, z: 0 },
+        normal: { x: 0, y: 0, z: 1 },
+      },
+      {
+        id: 'perpendicular',
+        blockCoordinate: { x: 0, y: 0, z: 0 },
+        normal: { x: 0, y: 1, z: 0 },
+      },
+    )
+    useEditorStore.setState({ document })
+    const selectedId = planeIds[0]
+    useEditorStore.getState().selectFace(selectedId, false)
+    useEditorStore.getState().setVariant(selectedId, 2)
+    const historyBeforeFlip = useEditorStore.getState().past.length
+
+    useEditorStore.getState().flipSelectedFaces()
+
+    const state = useEditorStore.getState()
+    expect(
+      state.document.scene.faces
+        .filter((face) => planeIds.includes(face.id))
+        .every((face) => face.normal.z === -1),
+    ).toBe(true)
+    expect(
+      state.document.scene.faces.find((face) => face.id === 'disconnected')
+        ?.normal,
+    ).toEqual({ x: 0, y: 0, z: 1 })
+    expect(
+      state.document.scene.faces.find((face) => face.id === 'perpendicular')
+        ?.normal,
+    ).toEqual({ x: 0, y: 1, z: 0 })
+    expect(state.document.evidence[0]).toMatchObject({
+      localNormal: { x: 0, y: 0, z: -1 },
+      reviewStatus: 'unlabeled',
+      selectedVariant: undefined,
+    })
+    expect(state.past).toHaveLength(historyBeforeFlip + 1)
+  })
+
   it('removes all calibration anchors after the final face is deleted', () => {
     const ids = useEditorStore
       .getState()

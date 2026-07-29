@@ -92,7 +92,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
 
   const proposals = document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length
   if (proposals > 0) {
-    warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} excluded until reviewed.`)
+    warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} omitted until reviewed.`)
   }
 
   return { errors: [...new Set(errors)], warnings, rowCount: rows.length }

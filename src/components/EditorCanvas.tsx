@@ -21,6 +21,7 @@ import {
   distance,
   faceCornersLattice,
   faceEdgeGeometry,
+  faceNormalIndicator,
   faceQuad,
   flattenPoints,
   meshEdgeKey,
@@ -50,7 +51,6 @@ const SELECTED = '#70a7ff'
 const PROPOSED = '#f0b64d'
 const ANCHOR = '#ff626b'
 const CONFIRMED = '#53e6a5'
-const EXCLUDED = '#68737c'
 const EDGE = '#d6e0e5'
 
 interface CanvasSize {
@@ -60,6 +60,7 @@ interface CanvasSize {
 
 interface VisualizationSettings {
   axisGizmo: boolean
+  faceNormals: boolean
   anchorMarker: boolean
   calibrationPoints: boolean
   calibrationResiduals: boolean
@@ -87,6 +88,12 @@ const visualizationOptions: Array<{
     description: 'Show the known global lattice directions.',
   },
   {
+    key: 'faceNormals',
+    label: 'Face normals',
+    description:
+      'Show visible-side normals. Planar calibration uses a screen-space side indicator.',
+  },
+  {
     key: 'anchorMarker',
     label: 'Anchor block',
     description: 'Show the anchor reticle.',
@@ -108,7 +115,6 @@ const faceEdges: FaceEdge[] = ['top', 'right', 'bottom', 'left']
 function statusColor(status?: string): string {
   if (status === 'confirmed') return CONFIRMED
   if (status === 'proposed') return PROPOSED
-  if (status === 'excluded') return EXCLUDED
   return GRID
 }
 
@@ -322,6 +328,46 @@ function AnchorGizmo({
   )
 }
 
+function FaceNormalGizmo({
+  scene,
+  face,
+  scale,
+}: {
+  scene: SceneGeometry
+  face: MeshFace
+  scale: number
+}) {
+  const indicator = faceNormalIndicator(scene, face)
+  if (!indicator) return null
+
+  const end = {
+    x: indicator.origin.x + indicator.direction.x * (18 / scale),
+    y: indicator.origin.y + indicator.direction.y * (18 / scale),
+  }
+  const points = [indicator.origin.x, indicator.origin.y, end.x, end.y]
+  return (
+    <Group listening={false}>
+      <Arrow
+        points={points}
+        stroke="#071014"
+        fill="#071014"
+        strokeWidth={4 / scale}
+        pointerLength={6 / scale}
+        pointerWidth={6 / scale}
+      />
+      <Arrow
+        points={points}
+        stroke="#f5fbff"
+        fill="#f5fbff"
+        strokeWidth={1.6 / scale}
+        pointerLength={5 / scale}
+        pointerWidth={5 / scale}
+        dash={indicator.planarFallback ? [3 / scale, 2 / scale] : undefined}
+      />
+    </Group>
+  )
+}
+
 export function EditorCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
@@ -349,6 +395,7 @@ export function EditorCanvas() {
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
+    faceNormals: false,
     anchorMarker: true,
     calibrationPoints: true,
     calibrationResiduals: true,
@@ -701,6 +748,15 @@ export function EditorCanvas() {
               />
             )
           })}
+          {visualizations.faceNormals &&
+            sceneForRendering.faces.map((face) => (
+              <FaceNormalGizmo
+                key={`normal-${face.id}`}
+                scene={sceneForRendering}
+                face={face}
+                scale={view.scale}
+              />
+            ))}
           {visualizations.anchorMarker && anchorFace && (
             <AnchorGizmo
               scene={sceneForRendering}
