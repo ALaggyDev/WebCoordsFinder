@@ -401,6 +401,8 @@ export function EditorCanvas() {
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const draftControlDragRef = useRef<DraftControlDrag>(undefined)
+  const draftWidthInputRef = useRef<HTMLInputElement>(null)
+  const draftHeightInputRef = useRef<HTMLInputElement>(null)
   const document = useEditorStore((state) => state.document)
   const tool = useEditorStore((state) => state.tool)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
@@ -627,6 +629,45 @@ export function EditorCanvas() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [clearSelectedEdges, setTool, tool])
+
+  useEffect(() => {
+    if (!draftGridSize) return
+    const attachWheelHandler = (
+      input: HTMLInputElement | null,
+      dimension: keyof DraftGridSize,
+    ) => {
+      if (!input) return () => {}
+      const onInputWheel = (event: WheelEvent) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const delta = event.deltaY < 0 ? -1 : 1
+        setDraftGridSize((current) => {
+          if (!current) return current
+          return {
+            ...current,
+            [dimension]: Math.max(
+              MIN_GRID_SIZE,
+              Math.min(MAX_GRID_SIZE, current[dimension] + delta),
+            ),
+          }
+        })
+      }
+      input.addEventListener('wheel', onInputWheel, { passive: false })
+      return () => input.removeEventListener('wheel', onInputWheel)
+    }
+    const detachWidth = attachWheelHandler(
+      draftWidthInputRef.current,
+      'columns',
+    )
+    const detachHeight = attachWheelHandler(
+      draftHeightInputRef.current,
+      'rows',
+    )
+    return () => {
+      detachWidth()
+      detachHeight()
+    }
+  }, [draftGridSize])
 
   const pointerInImage = (): Point2 | null => {
     const pointer = stageRef.current?.getPointerPosition()
@@ -1099,6 +1140,7 @@ export function EditorCanvas() {
             <label>
               <span>Width</span>
               <input
+                ref={draftWidthInputRef}
                 type="number"
                 aria-label="Grid width"
                 min={MIN_GRID_SIZE}
@@ -1108,14 +1150,6 @@ export function EditorCanvas() {
                 onChange={(event) =>
                   updateDraftGridSize('columns', event.currentTarget.valueAsNumber)
                 }
-                onWheel={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  updateDraftGridSize(
-                    'columns',
-                    draftGridSize.columns + (event.deltaY < 0 ? -1 : 1),
-                  )
-                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') confirmDraftGrid()
                 }}
@@ -1125,6 +1159,7 @@ export function EditorCanvas() {
             <label>
               <span>Height</span>
               <input
+                ref={draftHeightInputRef}
                 type="number"
                 aria-label="Grid height"
                 min={MIN_GRID_SIZE}
@@ -1133,14 +1168,6 @@ export function EditorCanvas() {
                 onChange={(event) =>
                   updateDraftGridSize('rows', event.currentTarget.valueAsNumber)
                 }
-                onWheel={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  updateDraftGridSize(
-                    'rows',
-                    draftGridSize.rows + (event.deltaY < 0 ? -1 : 1),
-                  )
-                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') confirmDraftGrid()
                 }}
