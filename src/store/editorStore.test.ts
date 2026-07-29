@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { projectScenePoint, selectedEdgeGeometry } from '../domain/geometry'
+import {
+  projectScenePoint,
+  projectionInfo,
+  selectedEdgeGeometry,
+} from '../domain/geometry'
 import { createInitialDocument, useEditorStore } from './editorStore'
 
 beforeEach(() => {
@@ -109,6 +113,25 @@ describe('unit-face geometry', () => {
     const outerEdge = selectedEdgeGeometry(updated, outerSelection)
     expect(outerEdge?.start.y).toBe(-3)
     expect(outerEdge?.end.y).toBe(-3)
+  })
+
+  it('adds planar calibration anchors without promoting to a camera', () => {
+    const scene = useEditorStore.getState().document.scene
+    const latticePoints = [
+      { x: 1, y: 1, z: 0 },
+      { x: 5, y: 3, z: 0 },
+    ]
+    latticePoints.forEach((lattice) => {
+      useEditorStore
+        .getState()
+        .upsertObservation(lattice, projectScenePoint(scene, lattice)!)
+    })
+
+    const updated = useEditorStore.getState().document.scene
+    expect(updated.observations).toHaveLength(6)
+    expect(updated.projection.kind).toBe('planar')
+    expect(projectionInfo(updated).resolvedAxes).toBe(2)
+    expect(projectionInfo(updated).rmsError).toBeLessThan(0.01)
   })
 
   it('extrudes through an existing camera without recalibrating it', () => {

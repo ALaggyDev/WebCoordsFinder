@@ -2,13 +2,14 @@ import { create } from 'zustand'
 import {
   add3,
   chooseEdgeExtrusion,
-  computeHomography,
   createEdgeExtrusionFaces,
   faceForLocalNormal,
   isAxisMappingComplete,
   mappedAnchorOffset,
   meshEdgeKey,
   outerEdgeForExtrusion,
+  planarProjectionForPlane,
+  projectionInfo,
   refitProjection,
   scale3,
   selectedEdgeEndpoints,
@@ -68,30 +69,22 @@ function createPlanarScene(
     { x: columns, y: rows, z: 0 },
     { x: 0, y: rows, z: 0 },
   ]
+  const observations = cornerLattice.map((lattice, index) => ({
+    id: crypto.randomUUID(),
+    lattice,
+    image: corners[index],
+    weight: 1,
+  }))
   return {
     faces: createFaceGrid(columns, rows, prefix),
-    observations: cornerLattice.map((lattice, index) => ({
-      id: crypto.randomUUID(),
-      lattice,
-      image: corners[index],
-      weight: 1,
-    })),
-    projection: {
-      kind: 'planar',
-      origin: planeOrigin,
-      uAxis: planeU,
-      vAxis: planeV,
+    observations,
+    projection: planarProjectionForPlane(
+      planeOrigin,
+      planeU,
+      planeV,
       cornerLattice,
-      homography: computeHomography(
-        [
-          { x: 0, y: 0 },
-          { x: columns, y: 0 },
-          { x: columns, y: rows },
-          { x: 0, y: rows },
-        ],
-        corners,
-      ),
-    },
+      observations,
+    ),
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
   }
 }
@@ -450,9 +443,9 @@ export const useEditorStore = create<EditorState>((set) => ({
         state.document.scene,
         state.selectedEdges,
       )
+      const projection = projectionInfo(state.document.scene)
       const planarAnchors =
-        state.document.scene.projection.kind === 'camera' ||
-        !extrusion?.createsAxis
+        projection.resolvedAxes === 3 || !extrusion?.createsAxis
           ? undefined
           : translatedExtrusionAnchors(
               state.document.scene,
@@ -477,7 +470,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...mutateDocument(state, (document) => {
           document.scene.faces.push(...faces)
-          if (document.scene.projection.kind !== 'camera' && planarAnchors) {
+          if (
+            projectionInfo(document.scene).resolvedAxes < 3 &&
+            planarAnchors
+          ) {
             planarAnchors.endpoints.forEach((endpoint, index) => {
               document.scene.observations.push({
                 id: crypto.randomUUID(),

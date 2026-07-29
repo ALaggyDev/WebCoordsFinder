@@ -29,6 +29,7 @@ import {
   faceDisplayName,
   isAxisMappingComplete,
   mappedAnchorOffset,
+  projectionInfo,
   worldAlignedFaceQuad,
 } from '../domain/geometry'
 import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
@@ -153,9 +154,8 @@ function GeometryInspector() {
       </div>
     )
   }
-  const calibrated = scene.projection.kind === 'camera'
-  const cameraProjection =
-    scene.projection.kind === 'camera' ? scene.projection : undefined
+  const calibration = projectionInfo(scene)
+  const calibrated = calibration.resolvedAxes === 3
   const mappingComplete = isAxisMappingComplete(scene.axisMapping)
 
   return (
@@ -224,12 +224,12 @@ function GeometryInspector() {
         <Compass size={19} />
         <div>
           <strong>
-            {cameraProjection ? 'Global camera fitted' : 'Planar calibration'}
+            {calibrated ? 'Global camera fitted' : 'Planar calibration'}
           </strong>
           <span>
-            {cameraProjection
-              ? `${scene.observations.length} anchors · ${cameraProjection.rmsError.toFixed(1)} px RMS`
-              : 'Move near the plane to extend it, or away to establish a new axis.'}
+            {scene.observations.length} anchors ·{' '}
+            {calibration.rmsError.toFixed(1)} px RMS ·{' '}
+            {calibration.resolvedAxes} axes
           </span>
         </div>
         {mappingComplete && <Check size={15} />}

@@ -24,6 +24,7 @@ import {
   faceQuad,
   flattenPoints,
   meshEdgeKey,
+  projectionInfo,
   projectScenePoint,
   projectedAbstractAxes,
   refitProjection,
@@ -130,7 +131,10 @@ function makeExtrusionPreview(
     ...scene,
     faces: [...scene.faces, ...faces],
   }
-  if (scene.projection.kind === 'camera' || !extrusion.createsAxis) {
+  if (
+    projectionInfo(scene).resolvedAxes === 3 ||
+    !extrusion.createsAxis
+  ) {
     return {
       scene: previewScene,
       blocks: extrusion.blocks,
@@ -372,6 +376,14 @@ export function EditorCanvas() {
     }
     return scene
   }, [document.scene, draggedObservation])
+  const documentProjectionInfo = useMemo(
+    () => projectionInfo(document.scene),
+    [document.scene],
+  )
+  const renderedProjectionInfo = useMemo(
+    () => projectionInfo(renderedScene),
+    [renderedScene],
+  )
 
   const preview = useMemo(() => {
     if (tool !== 'extrude' || selectedEdges.length === 0 || !pointerPoint) {
@@ -390,6 +402,10 @@ export function EditorCanvas() {
   ])
 
   const sceneForRendering = preview?.scene ?? renderedScene
+  const sceneProjectionInfo = useMemo(
+    () => projectionInfo(sceneForRendering),
+    [sceneForRendering],
+  )
   const anchorFace = document.anchorFaceId
     ? sceneForRendering.faces.find((face) => face.id === document.anchorFaceId)
     : undefined
@@ -418,7 +434,6 @@ export function EditorCanvas() {
     [renderedScene, selectedEdges],
   )
   const calibrationCandidates = useMemo(() => {
-    if (document.scene.projection.kind !== 'camera') return []
     const unique = new Map<string, { x: number; y: number; z: number }>()
     document.scene.faces.forEach((face) => {
       faceCornersLattice(face).forEach((lattice) => {
@@ -732,7 +747,9 @@ export function EditorCanvas() {
                 }
                 radius={4.5 / view.scale}
                 fill="#f5fbff"
-                stroke={renderedScene.projection.kind === 'camera' ? SELECTED : GRID}
+                stroke={
+                  renderedProjectionInfo.resolvedAxes === 3 ? SELECTED : GRID
+                }
                 strokeWidth={1.8 / view.scale}
                 draggable
                 onDragStart={(event) =>
@@ -845,9 +862,9 @@ export function EditorCanvas() {
         <span>{Math.round(view.scale * 100)}%</span>
         <span>{document.image.width} × {document.image.height}</span>
         <strong>
-          {sceneForRendering.projection.kind === 'camera'
-            ? `3D camera · ${sceneForRendering.projection.rmsError.toFixed(1)} px RMS`
-            : 'Planar calibration · 2 axes'}
+          {sceneProjectionInfo.resolvedAxes === 3
+            ? `3D camera · ${sceneProjectionInfo.rmsError.toFixed(1)} px RMS`
+            : `Planar calibration · ${sceneForRendering.observations.length} anchors · ${sceneProjectionInfo.rmsError.toFixed(1)} px RMS`}
         </strong>
         {tool === 'plane' && (
           <strong>
@@ -866,7 +883,7 @@ export function EditorCanvas() {
         )}
         {tool === 'extrude' && selectedEdges.length > 0 && (
           <strong>
-            {document.scene.projection.kind === 'camera'
+            {documentProjectionInfo.resolvedAxes === 3
               ? `Snapped to ${preview?.blocks ?? 1} block${(preview?.blocks ?? 1) === 1 ? '' : 's'} · click to extrude`
               : preview && !preview.createsAxis
                 ? `Along plane · ${preview.blocks} block${preview.blocks === 1 ? '' : 's'} · click to extrude`

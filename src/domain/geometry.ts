@@ -228,6 +228,136 @@ export function computeHomography(
   return [...result, 1] as Homography
 }
 
+interface PointNormalization {
+  points: Point2[]
+  matrix: Homography
+  inverse: Homography
+}
+
+function normalizationForPoints(
+  points: Point2[],
+  weights: number[],
+): PointNormalization {
+  const safeWeights = weights.map((weight) => Math.max(0.05, weight))
+  const totalWeight = safeWeights.reduce((sum, weight) => sum + weight, 0)
+  const center = points.reduce(
+    (sum, point, index) => ({
+      x: sum.x + point.x * safeWeights[index],
+      y: sum.y + point.y * safeWeights[index],
+    }),
+    { x: 0, y: 0 },
+  )
+  center.x /= totalWeight
+  center.y /= totalWeight
+  const meanDistance =
+    points.reduce(
+      (sum, point, index) =>
+        sum +
+        Math.hypot(point.x - center.x, point.y - center.y) *
+          safeWeights[index],
+      0,
+    ) / totalWeight
+  if (meanDistance < EPSILON) {
+    throw new Error('The selected calibration points are degenerate.')
+  }
+  const scale = Math.SQRT2 / meanDistance
+  return {
+    points: points.map((point) => ({
+      x: (point.x - center.x) * scale,
+      y: (point.y - center.y) * scale,
+    })),
+    matrix: [
+      scale,
+      0,
+      -scale * center.x,
+      0,
+      scale,
+      -scale * center.y,
+      0,
+      0,
+      1,
+    ],
+    inverse: [
+      1 / scale,
+      0,
+      center.x,
+      0,
+      1 / scale,
+      center.y,
+      0,
+      0,
+      1,
+    ],
+  }
+}
+
+function multiplyHomographies(a: Homography, b: Homography): Homography {
+  const result = Array(9).fill(0)
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 3; column += 1) {
+      for (let inner = 0; inner < 3; inner += 1) {
+        result[row * 3 + column] +=
+          a[row * 3 + inner] * b[inner * 3 + column]
+      }
+    }
+  }
+  return result as Homography
+}
+
+export function fitHomography(
+  source: Point2[],
+  destination: Point2[],
+  weights = source.map(() => 1),
+): Homography {
+  if (
+    source.length < 4 ||
+    destination.length !== source.length ||
+    weights.length !== source.length
+  ) {
+    throw new Error('At least four paired calibration observations are required.')
+  }
+  const normalizedSource = normalizationForPoints(source, weights)
+  const normalizedDestination = normalizationForPoints(destination, weights)
+  const rows: number[][] = []
+  const values: number[] = []
+  normalizedSource.points.forEach((point, index) => {
+    const target = normalizedDestination.points[index]
+    const weight = Math.sqrt(Math.max(0.05, weights[index]))
+    rows.push([
+      point.x * weight,
+      point.y * weight,
+      weight,
+      0,
+      0,
+      0,
+      -target.x * point.x * weight,
+      -target.x * point.y * weight,
+    ])
+    values.push(target.x * weight)
+    rows.push([
+      0,
+      0,
+      0,
+      point.x * weight,
+      point.y * weight,
+      weight,
+      -target.y * point.x * weight,
+      -target.y * point.y * weight,
+    ])
+    values.push(target.y * weight)
+  })
+  const normalized = [...solveLeastSquares(rows, values), 1] as Homography
+  const denormalized = multiplyHomographies(
+    normalizedDestination.inverse,
+    multiplyHomographies(normalized, normalizedSource.matrix),
+  )
+  const scale = denormalized[8]
+  if (Math.abs(scale) < EPSILON) {
+    throw new Error('The selected calibration points are degenerate.')
+  }
+  return denormalized.map((value) => value / scale) as Homography
+}
+
 export function projectPoint(h: Homography, point: Point2): Point2 {
   const denominator = h[6] * point.x + h[7] * point.y + h[8]
   return {
@@ -298,23 +428,29 @@ export function planarProjectionForPlane(
   cornerLattice: [Point3, Point3, Point3, Point3],
   observations: CalibrationObservation[],
 ): PlanarProjection {
-  const destination = cornerLattice.map((corner) => {
-    const observation = observations.find((entry) => same3(entry.lattice, corner))
-    if (!observation) throw new Error('The base surface needs four corner observations.')
-    return observation.image
-  }) as [Point2, Point2, Point2, Point2]
-  const source = cornerLattice.map((corner) => {
-    const local = localCoordinatesOnPlane(origin, uAxis, vAxis, corner)
-    if (!local) throw new Error('The base surface corners must be coplanar.')
-    return local
-  }) as [Point2, Point2, Point2, Point2]
+  const planarObservations = observations.flatMap((observation) => {
+    const local = localCoordinatesOnPlane(
+      origin,
+      uAxis,
+      vAxis,
+      observation.lattice,
+    )
+    return local ? [{ observation, local }] : []
+  })
+  if (planarObservations.length < 4) {
+    throw new Error('The base surface needs four coplanar observations.')
+  }
   return {
     kind: 'planar',
     origin,
     uAxis,
     vAxis,
     cornerLattice,
-    homography: computeHomography(source, destination),
+    homography: fitHomography(
+      planarObservations.map(({ local }) => local),
+      planarObservations.map(({ observation }) => observation.image),
+      planarObservations.map(({ observation }) => observation.weight),
+    ),
   }
 }
 
@@ -352,6 +488,37 @@ export function projectScenePoint(
     point,
   )
   return local ? projectPoint(projection.homography, local) : undefined
+}
+
+export interface ProjectionInfo {
+  resolvedAxes: 2 | 3
+  rmsError: number
+  maxError: number
+}
+
+export function projectionInfo(scene: SceneGeometry): ProjectionInfo {
+  if (scene.projection.kind === 'camera') {
+    return {
+      resolvedAxes: 3,
+      rmsError: scene.projection.rmsError,
+      maxError: scene.projection.maxError,
+    }
+  }
+  const errors = scene.observations.flatMap((observation) => {
+    const predicted = projectScenePoint(scene, observation.lattice)
+    return predicted ? [distance(predicted, observation.image)] : []
+  })
+  return {
+    resolvedAxes: 2,
+    rmsError:
+      errors.length === 0
+        ? 0
+        : Math.sqrt(
+            errors.reduce((sum, error) => sum + error * error, 0) /
+              errors.length,
+          ),
+    maxError: errors.length === 0 ? 0 : Math.max(...errors),
+  }
 }
 
 function solveLeastSquares(rows: number[][], values: number[]): number[] {
@@ -426,25 +593,37 @@ export function fitCameraProjection(
 export function refitProjection(
   scene: SceneGeometry,
 ): SceneProjection {
-  if (scene.observations.length >= 6) {
+  if (scene.projection.kind === 'camera') {
+    if (scene.observations.length < 6) return scene.projection
     try {
       return fitCameraProjection(scene.observations)
     } catch {
-      // Keep the exact planar model until the non-coplanar observations are
+      return scene.projection
+    }
+  }
+  const { origin, uAxis, vAxis, cornerLattice } = scene.projection
+  const outOfPlaneObservations = scene.observations.filter(
+    (observation) =>
+      !localCoordinatesOnPlane(origin, uAxis, vAxis, observation.lattice),
+  )
+  if (
+    scene.observations.length >= 6 &&
+    outOfPlaneObservations.length >= 2
+  ) {
+    try {
+      return fitCameraProjection(scene.observations)
+    } catch {
+      // Keep the planar model until the non-coplanar observations are
       // sufficiently well-conditioned.
     }
   }
-  if (scene.projection.kind === 'planar') {
-    const { origin, uAxis, vAxis, cornerLattice } = scene.projection
-    return planarProjectionForPlane(
-      origin,
-      uAxis,
-      vAxis,
-      cornerLattice,
-      scene.observations,
-    )
-  }
-  return scene.projection
+  return planarProjectionForPlane(
+    origin,
+    uAxis,
+    vAxis,
+    cornerLattice,
+    scene.observations,
+  )
 }
 
 export function faceQuad(

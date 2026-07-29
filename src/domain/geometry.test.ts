@@ -7,10 +7,15 @@ import {
   faceQuad,
   faceVertex,
   fitCameraProjection,
+  fitHomography,
   isAxisMappingComplete,
   mappedVector,
+  planarProjectionForPlane,
   projectCamera,
   projectPoint,
+  projectScenePoint,
+  projectionInfo,
+  refitProjection,
   worldAlignedFaceCorners,
 } from './geometry'
 import type {
@@ -18,6 +23,7 @@ import type {
   Matrix3x4,
   MeshFace,
   Point2,
+  Point3,
   SceneGeometry,
 } from './types'
 
@@ -87,6 +93,94 @@ describe('global perspective geometry', () => {
     expectPointClose(leftQuad[1], rightQuad[0])
     expectPointClose(leftQuad[2], rightQuad[3])
     expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
+  })
+
+  it('fits a homography from more than four planar observations', () => {
+    const expected = computeHomography(
+      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }],
+      [
+        { x: 100, y: 100 },
+        { x: 500, y: 120 },
+        { x: 480, y: 500 },
+        { x: 120, y: 470 },
+      ],
+    )
+    const source = [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 4, y: 4 },
+      { x: 0, y: 4 },
+      { x: 12, y: 0 },
+      { x: 12, y: 4 },
+    ]
+    const fitted = fitHomography(
+      source,
+      source.map((point) => projectPoint(expected, point)),
+    )
+
+    source.forEach((point) => {
+      expectPointClose(projectPoint(fitted, point), projectPoint(expected, point), 4)
+    })
+  })
+
+  it('uses six coplanar anchors without inventing a third axis', () => {
+    const cornerLattice: [Point3, Point3, Point3, Point3] = [
+      { x: 0, y: 0, z: 0 },
+      { x: 4, y: 0, z: 0 },
+      { x: 4, y: 4, z: 0 },
+      { x: 0, y: 4, z: 0 },
+    ]
+    const expected = computeHomography(
+      cornerLattice.map(({ x, y }) => ({ x, y })) as [
+        Point2,
+        Point2,
+        Point2,
+        Point2,
+      ],
+      [
+        { x: 100, y: 100 },
+        { x: 500, y: 120 },
+        { x: 480, y: 500 },
+        { x: 120, y: 470 },
+      ],
+    )
+    const latticePoints = [
+      ...cornerLattice,
+      { x: 12, y: 0, z: 0 },
+      { x: 12, y: 4, z: 0 },
+    ]
+    const observations: CalibrationObservation[] = latticePoints.map(
+      (lattice, index) => ({
+        id: String(index),
+        lattice,
+        image: projectPoint(expected, lattice),
+        weight: 1,
+      }),
+    )
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations,
+      projection: planarProjectionForPlane(
+        { x: 0, y: 0, z: 0 },
+        planeU,
+        planeV,
+        cornerLattice,
+        observations.slice(0, 4),
+      ),
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    scene.projection = refitProjection(scene)
+
+    expect(scene.projection.kind).toBe('planar')
+    expect(projectionInfo(scene).resolvedAxes).toBe(2)
+    observations.forEach((observation) => {
+      expectPointClose(
+        projectScenePoint(scene, observation.lattice)!,
+        observation.image,
+        4,
+      )
+    })
   })
 
   it('fits a camera from six non-coplanar observations', () => {
