@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Layers3 } from 'lucide-react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { Check, Layers3 } from 'lucide-react'
 import type Konva from 'konva'
 import {
   Arrow,
@@ -24,9 +25,11 @@ import {
   faceEdgeGeometry,
   faceNormalIndicator,
   faceQuad,
+  fitHomography,
   flattenPoints,
   meshEdgeKey,
   projectionInfo,
+  projectPoint,
   projectScenePoint,
   projectedAbstractAxesAtImagePoint,
   refitProjection,
@@ -77,6 +80,23 @@ interface RenderedMeshEdge {
   key: string
   selection: SelectedEdge
 }
+
+interface DraftGridSize {
+  columns: number
+  rows: number
+}
+
+interface DraftControlDrag {
+  pointerId: number
+  startPointer: Point2
+  startOffset: Point2
+}
+
+const DEFAULT_GRID_SIZE = 4
+const MIN_GRID_SIZE = 1
+const MAX_GRID_SIZE = 128
+const DRAFT_CONTROL_HALF_WIDTH = 132
+const DRAFT_CONTROL_HALF_HEIGHT = 66
 
 const visualizationOptions: Array<{
   key: keyof VisualizationSettings
@@ -380,6 +400,7 @@ export function EditorCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
+  const draftControlDragRef = useRef<DraftControlDrag>(undefined)
   const document = useEditorStore((state) => state.document)
   const tool = useEditorStore((state) => state.tool)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
@@ -397,6 +418,11 @@ export function EditorCanvas() {
   const [size, setSize] = useState<CanvasSize>({ width: 900, height: 640 })
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 })
   const [draft, setDraft] = useState<Point2[]>([])
+  const [draftGridSize, setDraftGridSize] = useState<DraftGridSize>()
+  const [draftControlOffset, setDraftControlOffset] = useState<Point2>({
+    x: 0,
+    y: 0,
+  })
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
   const [draggedObservation, setDraggedObservation] = useState<DraggedObservation>()
   const [pointerPoint, setPointerPoint] = useState<Point2>()
@@ -505,6 +531,62 @@ export function EditorCanvas() {
     () => new Map(document.evidence.map((entry) => [entry.id, entry])),
     [document.evidence],
   )
+  const draftGridLines = useMemo(() => {
+    if (draft.length !== 4 || !draftGridSize) return []
+    try {
+      const homography = fitHomography(
+        [
+          { x: 0, y: 0 },
+          { x: draftGridSize.columns, y: 0 },
+          { x: draftGridSize.columns, y: draftGridSize.rows },
+          { x: 0, y: draftGridSize.rows },
+        ],
+        draft,
+      )
+      return [
+        ...Array.from({ length: draftGridSize.columns + 1 }, (_, column) => [
+          projectPoint(homography, { x: column, y: 0 }),
+          projectPoint(homography, { x: column, y: draftGridSize.rows }),
+        ]),
+        ...Array.from({ length: draftGridSize.rows + 1 }, (_, row) => [
+          projectPoint(homography, { x: 0, y: row }),
+          projectPoint(homography, { x: draftGridSize.columns, y: row }),
+        ]),
+      ]
+    } catch {
+      return []
+    }
+  }, [draft, draftGridSize])
+  const draftControlAnchor = useMemo(() => {
+    if (draft.length !== 4 || !draftGridSize) return undefined
+    const center = draft.reduce(
+      (sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }),
+      { x: 0, y: 0 },
+    )
+    return {
+      left: view.x + center.x * view.scale,
+      top: view.y + center.y * view.scale,
+    }
+  }, [draft, draftGridSize, view])
+  const draftControlPosition = useMemo(() => {
+    if (!draftControlAnchor) return undefined
+    return {
+      left: Math.max(
+        DRAFT_CONTROL_HALF_WIDTH,
+        Math.min(
+          size.width - DRAFT_CONTROL_HALF_WIDTH,
+          draftControlAnchor.left + draftControlOffset.x,
+        ),
+      ),
+      top: Math.max(
+        DRAFT_CONTROL_HALF_HEIGHT,
+        Math.min(
+          size.height - DRAFT_CONTROL_HALF_HEIGHT,
+          draftControlAnchor.top + draftControlOffset.y,
+        ),
+      ),
+    }
+  }, [draftControlAnchor, draftControlOffset, size.height, size.width])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -536,6 +618,8 @@ export function EditorCanvas() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDraft([])
+        setDraftGridSize(undefined)
+        setDraftControlOffset({ x: 0, y: 0 })
         if (tool === 'extrude' || tool === 'anchor') setTool('select')
         else if (tool === 'select') clearSelectedEdges()
       }
@@ -553,7 +637,88 @@ export function EditorCanvas() {
     }
   }
 
+  const confirmDraftGrid = () => {
+    if (draft.length !== 4 || !draftGridSize) return
+    addBaseFaces(
+      draft as [Point2, Point2, Point2, Point2],
+      draftGridSize.columns,
+      draftGridSize.rows,
+    )
+    setDraft([])
+    setDraftGridSize(undefined)
+    setDraftControlOffset({ x: 0, y: 0 })
+  }
+
+  const updateDraftGridSize = (
+    dimension: keyof DraftGridSize,
+    value: number,
+  ) => {
+    if (!Number.isFinite(value)) return
+    const normalized = Math.max(
+      MIN_GRID_SIZE,
+      Math.min(MAX_GRID_SIZE, Math.round(value)),
+    )
+    setDraftGridSize((current) =>
+      current ? { ...current, [dimension]: normalized } : current,
+    )
+  }
+
+  const startDraftControlDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    draftControlDragRef.current = {
+      pointerId: event.pointerId,
+      startPointer: { x: event.clientX, y: event.clientY },
+      startOffset: draftControlOffset,
+    }
+  }
+
+  const moveDraftControl = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = draftControlDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !draftControlAnchor) return
+    const desiredLeft =
+      draftControlAnchor.left +
+      drag.startOffset.x +
+      event.clientX -
+      drag.startPointer.x
+    const desiredTop =
+      draftControlAnchor.top +
+      drag.startOffset.y +
+      event.clientY -
+      drag.startPointer.y
+    setDraftControlOffset({
+      x:
+        Math.max(
+          DRAFT_CONTROL_HALF_WIDTH,
+          Math.min(size.width - DRAFT_CONTROL_HALF_WIDTH, desiredLeft),
+        ) - draftControlAnchor.left,
+      y:
+        Math.max(
+          DRAFT_CONTROL_HALF_HEIGHT,
+          Math.min(size.height - DRAFT_CONTROL_HALF_HEIGHT, desiredTop),
+        ) - draftControlAnchor.top,
+    })
+  }
+
+  const stopDraftControlDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (draftControlDragRef.current?.pointerId !== event.pointerId) return
+    draftControlDragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
   const onStageClick = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    if (draft.length === 4 && draftGridSize) {
+      confirmDraftGrid()
+      return
+    }
     if (event.target !== event.currentTarget && event.target.draggable()) return
     const point = pointerInImage()
     if (!point) return
@@ -568,8 +733,12 @@ export function EditorCanvas() {
     if (tool !== 'plane') return
     const next = [...draft, point]
     if (next.length === 4) {
-      addBaseFaces(next as [Point2, Point2, Point2, Point2])
-      setDraft([])
+      setDraft(next)
+      setDraftGridSize({
+        columns: DEFAULT_GRID_SIZE,
+        rows: DEFAULT_GRID_SIZE,
+      })
+      setDraftControlOffset({ x: 0, y: 0 })
     } else {
       setDraft(next)
     }
@@ -878,6 +1047,16 @@ export function EditorCanvas() {
             })}
           {draft.length > 0 && (
             <>
+              {draftGridLines.map((line, index) => (
+                <Line
+                  key={`draft-grid-${index}`}
+                  points={flattenPoints(line)}
+                  stroke={PROPOSED}
+                  opacity={0.82}
+                  strokeWidth={1 / view.scale}
+                  listening={false}
+                />
+              ))}
               <Line
                 points={flattenPoints(draft)}
                 stroke={PROPOSED}
@@ -897,6 +1076,88 @@ export function EditorCanvas() {
           )}
         </Layer>
       </Stage>
+      {draftGridSize && draftControlPosition && (
+        <div
+          className="plane-size-control"
+          role="dialog"
+          aria-label="Grid dimensions"
+          style={draftControlPosition}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div
+            className="plane-size-heading"
+            title="Drag to move"
+            onPointerDown={startDraftControlDrag}
+            onPointerMove={moveDraftControl}
+            onPointerUp={stopDraftControlDrag}
+            onPointerCancel={stopDraftControlDrag}
+          >
+            <strong>Grid size</strong>
+            <span>Click canvas to apply</span>
+          </div>
+          <div className="plane-size-fields">
+            <label>
+              <span>Width</span>
+              <input
+                type="number"
+                aria-label="Grid width"
+                min={MIN_GRID_SIZE}
+                max={MAX_GRID_SIZE}
+                value={draftGridSize.columns}
+                autoFocus
+                onChange={(event) =>
+                  updateDraftGridSize('columns', event.currentTarget.valueAsNumber)
+                }
+                onWheel={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  updateDraftGridSize(
+                    'columns',
+                    draftGridSize.columns + (event.deltaY < 0 ? -1 : 1),
+                  )
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') confirmDraftGrid()
+                }}
+              />
+            </label>
+            <span className="plane-size-times">×</span>
+            <label>
+              <span>Height</span>
+              <input
+                type="number"
+                aria-label="Grid height"
+                min={MIN_GRID_SIZE}
+                max={MAX_GRID_SIZE}
+                value={draftGridSize.rows}
+                onChange={(event) =>
+                  updateDraftGridSize('rows', event.currentTarget.valueAsNumber)
+                }
+                onWheel={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  updateDraftGridSize(
+                    'rows',
+                    draftGridSize.rows + (event.deltaY < 0 ? -1 : 1),
+                  )
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') confirmDraftGrid()
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="plane-size-confirm"
+              aria-label="Create grid"
+              title="Create grid"
+              onClick={confirmDraftGrid}
+            >
+              <Check size={15} />
+            </button>
+          </div>
+        </div>
+      )}
       {visualizations.axisGizmo && sceneForRendering.faces.length > 0 && (
         <Stage
           width={size.width}
@@ -934,7 +1195,9 @@ export function EditorCanvas() {
           <strong>
             {draft.length === 0
               ? 'Click top-left, top-right, bottom-right, then bottom-left'
-              : `${4 - draft.length} corners remaining`}
+              : draftGridSize
+                ? 'Set the grid size, then click the canvas to create it'
+                : `${4 - draft.length} corners remaining`}
           </strong>
         )}
         {tool === 'anchor' && (

@@ -51,6 +51,30 @@ describe('unit-face geometry', () => {
     expect(faces.every((entry) => entry.normal.z === -1)).toBe(true)
   })
 
+  it('creates the initial base with the requested grid dimensions', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces(
+      [
+        { x: 40, y: 100 },
+        { x: 360, y: 100 },
+        { x: 300, y: 300 },
+        { x: 100, y: 300 },
+      ],
+      7,
+      3,
+    )
+
+    const scene = useEditorStore.getState().document.scene
+    expect(scene.faces).toHaveLength(21)
+    expect(scene.faces.at(-1)?.blockCoordinate).toEqual({ x: 6, y: 2, z: 0 })
+    expect(scene.observations.map((entry) => entry.lattice)).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 7, y: 0, z: 0 },
+      { x: 7, y: 3, z: 0 },
+      { x: 0, y: 3, z: 0 },
+    ])
+  })
+
   it('toggles connected unit edges without entering extrusion mode', () => {
     const [first, second, far] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().toggleSelectedEdge({

@@ -321,7 +321,11 @@ interface EditorState {
   inspectEvidence: (evidenceId: string) => void
   loadDocument: (document: unknown) => void
   replaceImage: (image: EditorDocument['image']) => void
-  addBaseFaces: (corners: [Point2, Point2, Point2, Point2]) => void
+  addBaseFaces: (
+    corners: [Point2, Point2, Point2, Point2],
+    columns?: number,
+    rows?: number,
+  ) => void
   moveObservation: (id: string, point: Point2) => void
   upsertObservation: (lattice: Point3, point: Point2) => void
   extrudeSelectedEdges: (point: Point2, secondPoint?: Point2) => void
@@ -469,12 +473,17 @@ export const useEditorStore = create<EditorState>((set) => ({
       faceTab: 'selection',
       tool: 'plane',
     })),
-  addBaseFaces: (corners) =>
+  addBaseFaces: (corners, columns = 4, rows = 4) =>
     set((state) => {
       if (state.document.scene.faces.length > 0) return state
       return {
         ...mutateDocument(state, (document) => {
-          document.scene = createPlanarScene(4, 4, corners, crypto.randomUUID())
+          document.scene = createPlanarScene(
+            columns,
+            rows,
+            corners,
+            crypto.randomUUID(),
+          )
           document.evidence = []
           document.anchorFaceId = null
           document.scanner.compassResolved = false
