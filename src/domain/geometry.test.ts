@@ -12,11 +12,14 @@ import {
   isAxisMappingComplete,
   mappedVector,
   planarProjectionForPlane,
+  possibleFacesForLocalNormal,
   projectCamera,
   projectPoint,
   projectScenePoint,
   projectionInfo,
   refitProjection,
+  updatedAxisMapping,
+  validAxisMappingCompletions,
   worldAlignedFaceCorners,
 } from './geometry'
 import type {
@@ -87,7 +90,7 @@ describe('global perspective geometry', () => {
         ],
         homography,
       },
-      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
     }
     const leftQuad = faceQuad(scene, face)!
     const rightQuad = faceQuad(scene, right)!
@@ -472,7 +475,7 @@ describe('global perspective geometry', () => {
         rmsError: 0,
         maxError: 0,
       },
-      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
     }
     const topFromPositiveExtrusion: MeshFace = {
       id: 'positive',
@@ -486,16 +489,16 @@ describe('global perspective geometry', () => {
     }
 
     expect(worldAlignedFaceCorners(scene, topFromPositiveExtrusion)).toEqual([
-      { x: 0, y: 0, z: 0 },
-      { x: 1, y: 0, z: 0 },
-      { x: 1, y: 1, z: 0 },
       { x: 0, y: 1, z: 0 },
+      { x: 1, y: 1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
     ])
     expect(worldAlignedFaceCorners(scene, topAfterNegativeExtrusionAndFlip)).toEqual([
-      { x: 0, y: -1, z: 0 },
-      { x: 1, y: -1, z: 0 },
-      { x: 1, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 1, y: -1, z: 0 },
+      { x: 0, y: -1, z: 0 },
     ])
   })
 
@@ -511,5 +514,36 @@ describe('global perspective geometry', () => {
       y: 4,
       z: -3,
     })
+  })
+
+  it('accepts only proper right-handed completions', () => {
+    const partial = {
+      a: 'x+' as const,
+      b: 'unknown' as const,
+      c: 'y+' as const,
+    }
+    const reflected = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
+    const proper = { a: 'x+' as const, b: 'z-' as const, c: 'y+' as const }
+
+    expect(validAxisMappingCompletions(partial)).toEqual([proper])
+    expect(isAxisMappingComplete(reflected)).toBe(false)
+    expect(isAxisMappingComplete(proper)).toBe(true)
+    expect(updatedAxisMapping(partial, 'b', 'z+')).toBe(partial)
+    expect(updatedAxisMapping(partial, 'b', 'z-')).toEqual(proper)
+  })
+
+  it('reports every face still possible under a partial mapping', () => {
+    const mapping = {
+      a: 'unknown' as const,
+      b: 'unknown' as const,
+      c: 'y+' as const,
+    }
+
+    expect(possibleFacesForLocalNormal(mapping, { x: 0, y: 0, z: 1 })).toEqual([
+      'up',
+    ])
+    expect(
+      new Set(possibleFacesForLocalNormal(mapping, { x: 1, y: 0, z: 0 })),
+    ).toEqual(new Set(['north', 'south', 'east', 'west']))
   })
 })

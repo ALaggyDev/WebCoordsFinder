@@ -17,17 +17,16 @@ export type Matrix3x4 = [
 
 export type FaceDirection = 'up' | 'down' | 'north' | 'south' | 'east' | 'west'
 export type AbstractAxis = 'a' | 'b' | 'c'
-export type WorldAxisLabel =
-  | 'unknown'
-  | 'x'
-  | 'x+'
-  | 'x-'
-  | 'y'
-  | 'y+'
-  | 'y-'
-  | 'z'
-  | 'z+'
-  | 'z-'
+export const worldAxisLabels = [
+  'unknown',
+  'x+',
+  'x-',
+  'y+',
+  'y-',
+  'z+',
+  'z-',
+] as const
+export type WorldAxisLabel = (typeof worldAxisLabels)[number]
 export const textureAlgorithms = [
   'Vanilla-1',
   'Vanilla-2',
@@ -36,6 +35,8 @@ export const textureAlgorithms = [
   'Sodium-2',
 ] as const
 export type TextureAlgorithm = (typeof textureAlgorithms)[number]
+export const searchDirections = [0, 90, 180, 270] as const
+export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
@@ -148,6 +149,7 @@ export interface SearchBounds {
 
 export interface ScannerSettings {
   textureAlgorithm: TextureAlgorithm
+  directions: SearchDirection[]
   compassResolved: boolean
   bounds: SearchBounds
   chunkBlocksX: number

@@ -69,6 +69,7 @@ describe('CoordsFinder export', () => {
     const config = generateCoordsFinderConfig(document)
 
     expect(config).toContain('mode = Vanilla-3')
+    expect(config).toContain('directions = [0]')
     expect(config).toContain('[filter]\n# x y z | variant [side]')
     expect(config).not.toContain('# Anchor block:')
     expect(config).toContain('-1 0 0 | 3')
@@ -116,6 +117,15 @@ describe('CoordsFinder export', () => {
     expect(generateCoordsFinderConfig(document)).toContain('mode = Sodium-2')
   })
 
+  it('writes every selected compass rotation to the scanner settings', () => {
+    const document = documentWith([])
+    document.scanner.directions = [0, 180]
+
+    expect(generateCoordsFinderConfig(document)).toContain(
+      'directions = [0, 180]',
+    )
+  })
+
   it('blocks export while compass orientation is unresolved', () => {
     const document = documentWith([
       evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),
@@ -123,7 +133,7 @@ describe('CoordsFinder export', () => {
     document.scanner.compassResolved = false
 
     expect(validateForExport(document).errors).toContain(
-      'Resolve the screenshot compass direction before export.',
+      'Choose a valid right-handed reference direction before export.',
     )
   })
 })

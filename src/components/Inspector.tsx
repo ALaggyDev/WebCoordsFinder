@@ -23,12 +23,12 @@ import {
   validateForExport,
 } from '../domain/exportConfig'
 import {
-  axisDisplayLabel,
   faceHasWorldOrientation,
   faceForLocalNormal,
   faceDisplayName,
   isAxisMappingComplete,
   mappedAnchorOffset,
+  possibleFacesForLocalNormal,
   projectionInfo,
   worldAlignedFaceQuad,
 } from '../domain/geometry'
@@ -37,17 +37,19 @@ import {
   blockProfiles,
   blockProfileMap,
   referenceTextureForFace,
-  statesForFace,
+  sharedReferenceTextureForFaces,
+  sharedStatesForFaces,
 } from '../domain/references'
 import {
+  searchDirections,
   textureAlgorithms,
-  type AbstractAxis,
   type CandidateTransform,
+  type SearchDirection,
   type TextureAlgorithm,
-  type WorldAxisLabel,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { useEditorStore } from '../store/editorStore'
+import { AxisMappingGizmo } from './AxisMappingGizmo'
 import { ExportRunDialog } from './ExportRunDialog'
 
 interface InspectorProps {
@@ -55,19 +57,6 @@ interface InspectorProps {
   onOpenImage: () => void
   onAutoFill: (evidenceIds?: string[]) => void
 }
-
-const axisOptions: Array<{ value: WorldAxisLabel; label: string }> = [
-  { value: 'unknown', label: 'Unknown' },
-  { value: 'x', label: 'X axis · sign unknown' },
-  { value: 'x+', label: '+X' },
-  { value: 'x-', label: '−X' },
-  { value: 'y', label: 'Y axis · sign unknown' },
-  { value: 'y+', label: '+Y' },
-  { value: 'y-', label: '−Y' },
-  { value: 'z', label: 'Z axis · sign unknown' },
-  { value: 'z+', label: '+Z' },
-  { value: 'z-', label: '−Z' },
-]
 
 function transformStyle(transform: CandidateTransform): string {
   return {
@@ -136,7 +125,7 @@ function GeometryInspector() {
   const deleteSelectedFaces = useEditorStore(
     (state) => state.deleteSelectedFaces,
   )
-  const updateAxisMapping = useEditorStore((state) => state.updateAxisMapping)
+  const setAxisMapping = useEditorStore((state) => state.setAxisMapping)
   const setTool = useEditorStore((state) => state.setTool)
   const tool = useEditorStore((state) => state.tool)
   const anchorFaceId = useEditorStore((state) => state.document.anchorFaceId)
@@ -194,29 +183,14 @@ function GeometryInspector() {
       </div>
       <div className="subsection">
         <h3>Global axis directions</h3>
-        <div className="field-stack">
-          {(['a', 'b', 'c'] as AbstractAxis[]).map((axis) => (
-            <label className="field" key={axis}>
-              <span>Abstract {axis.toUpperCase()} · currently {axisDisplayLabel(axis, scene.axisMapping)}</span>
-              <select
-                value={scene.axisMapping[axis]}
-                onChange={(event) =>
-                  updateAxisMapping(axis, event.target.value as WorldAxisLabel)
-                }
-              >
-                {axisOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
+        <AxisMappingGizmo
+          mapping={scene.axisMapping}
+          onChange={setAxisMapping}
+          scene={scene}
+        />
         <p className="axis-hint">
-          Geometry uses A/B/C even while compass directions are unknown.
-          Assigning a world axis colors the global gizmo; export requires all
-          three signed directions.
+          Choose any two signed directions. Pin one arrow to keep it fixed;
+          changing either other arrow recalculates the remaining direction.
         </p>
       </div>
       <div className={calibrated ? 'compass-card resolved' : 'compass-card'}>
@@ -280,6 +254,12 @@ function FaceInspector({
   const evidenceFace = evidence
     ? faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
     : undefined
+  const possibleEvidenceFaces = evidence
+    ? possibleFacesForLocalNormal(
+        document.scene.axisMapping,
+        evidence.localNormal,
+      )
+    : []
   const evidenceCoordinate = evidence
     ? mappedAnchorOffset(
         document.scene,
@@ -371,9 +351,10 @@ function FaceInspector({
   const profile = selectedBlockId ? blockProfileMap.get(selectedBlockId) : undefined
   const referenceUrl = multiple
     ? undefined
-    : evidenceFace && worldOrientationKnown
-      ? referenceTextureForFace(evidence.blockId, evidenceFace)
-      : undefined
+    : sharedReferenceTextureForFaces(
+        evidence.blockId,
+        possibleEvidenceFaces,
+      )
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const selectedTransform =
     evidence.selectedVariant === undefined || !profile
@@ -426,6 +407,11 @@ function FaceInspector({
         <span>
           {directions.size === 1 && evidenceFace
             ? faceDisplayName(evidenceFace)
+            : possibleEvidenceFaces.length > 0 &&
+                possibleEvidenceFaces.every((face) =>
+                  ['north', 'south', 'east', 'west'].includes(face),
+                )
+              ? 'Side face · compass unresolved'
             : directions.has(undefined)
               ? 'World direction unresolved'
               : 'Mixed directions'}
@@ -463,9 +449,9 @@ function FaceInspector({
                 />
               ) : (
                 <div className="reference-unavailable">
-                  {worldOrientationKnown
+                  {possibleEvidenceFaces.length > 0
                     ? 'Unsupported face'
-                    : 'Resolve global axes'}
+                    : 'Resolve vertical axis'}
                 </div>
               )}
             </div>
@@ -490,21 +476,21 @@ function FaceInspector({
               value={candidate.id}
               disabled={selectedEvidence.some(
                 (entry) => {
-                  const face = faceForLocalNormal(
+                  const faces = possibleFacesForLocalNormal(
                     document.scene.axisMapping,
                     entry.localNormal,
                   )
-                  return !face || !statesForFace(candidate.id, face)
+                  return !sharedStatesForFaces(candidate.id, faces)
                 },
               )}
             >
               {candidate.label}
               {selectedEvidence.some((entry) => {
-                const face = faceForLocalNormal(
+                const faces = possibleFacesForLocalNormal(
                   document.scene.axisMapping,
                   entry.localNormal,
                 )
-                return !face || !statesForFace(candidate.id, face)
+                return !sharedStatesForFaces(candidate.id, faces)
               })
                 ? ' — unsupported selection'
                 : ''}
@@ -912,6 +898,39 @@ function ExportInspector() {
         </div>
       </details>
       <div className="subsection">
+        <h3>Directions to search</h3>
+        <div className="field-grid two" aria-label="Directions to search">
+          {searchDirections.map((direction) => {
+            const checked = document.scanner.directions.includes(direction)
+            return (
+              <label className="check-field" key={direction}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={direction === 0}
+                  onChange={(event) => {
+                    const directions = searchDirections.filter(
+                      (candidate) =>
+                        candidate === 0 ||
+                        (candidate === direction
+                          ? event.target.checked
+                          : document.scanner.directions.includes(candidate)),
+                    ) as SearchDirection[]
+                    updateScanner({ directions })
+                  }}
+                />
+                {direction}°
+                {direction === 0 ? ' · selected axes' : ''}
+              </label>
+            )
+          })}
+        </div>
+        <p className="field-help">
+          Add horizontal rotations when the screenshot's compass direction
+          cannot be distinguished. The selected axes are always searched as 0°.
+        </p>
+      </div>
+      <div className="subsection">
         <h3>Inclusive search bounds</h3>
         <div className="bounds-grid">
           {(['x', 'y', 'z'] as const).map((axis) => (
@@ -963,7 +982,7 @@ function ExportInspector() {
       </details>
       <div className="todo-card">
         <AlertTriangle size={15} />
-        <span><b>Note:</b> world directions are user-confirmed; the app does not infer a compass bearing from the screenshot.</span>
+        <span><b>Note:</b> world directions are user-confirmed; the app does not infer a compass bearing from the screenshot. Extra rotations are written to the exported configuration.</span>
       </div>
       <div className="export-inspector-footer">
         <button

@@ -72,6 +72,31 @@ export const abstractAxisVector = (axis: AbstractAxis): Point3 => ({
   z: axis === 'c' ? 1 : 0,
 })
 
+const completeAxisMappings: AxisMapping[] = (() => {
+  const labels = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'] as const
+  const mappings: AxisMapping[] = []
+  for (const a of labels) {
+    for (const b of labels) {
+      for (const c of labels) {
+        const mapping = { a, b, c }
+        if (new Set([a[0], b[0], c[0]]).size !== 3) continue
+        const mappedA = mappedVector(mapping, { x: 1, y: 0, z: 0 })
+        const mappedB = mappedVector(mapping, { x: 0, y: 1, z: 0 })
+        const mappedC = mappedVector(mapping, { x: 0, y: 0, z: 1 })
+        if (
+          mappedA &&
+          mappedB &&
+          mappedC &&
+          same3(cross3(mappedA, mappedB), mappedC)
+        ) {
+          mappings.push(mapping)
+        }
+      }
+    }
+  }
+  return mappings
+})()
+
 function coordinateForAxis(point: Point3, axis: AbstractAxis): number {
   return axis === 'a' ? point.x : axis === 'b' ? point.y : point.z
 }
@@ -89,11 +114,48 @@ function worldAxisSign(label: WorldAxisLabel): number | undefined {
 
 export function isAxisMappingComplete(mapping: AxisMapping): boolean {
   const labels = [mapping.a, mapping.b, mapping.c]
-  const axes = labels.map(worldAxisPart)
   return (
     labels.every((label) => worldAxisSign(label) !== undefined) &&
-    new Set(axes).size === 3
+    validAxisMappingCompletions(mapping).length === 1
   )
+}
+
+function mappingMatchesPartial(
+  complete: AxisMapping,
+  partial: AxisMapping,
+): boolean {
+  return (['a', 'b', 'c'] as const).every((axis) => {
+    const expected = partial[axis]
+    return expected === 'unknown' || complete[axis] === expected
+  })
+}
+
+export function validAxisMappingCompletions(
+  mapping: AxisMapping,
+): AxisMapping[] {
+  return completeAxisMappings.filter((candidate) =>
+    mappingMatchesPartial(candidate, mapping),
+  )
+}
+
+export function updatedAxisMapping(
+  mapping: AxisMapping,
+  axis: AbstractAxis,
+  label: WorldAxisLabel,
+): AxisMapping {
+  const next: AxisMapping = { ...mapping, [axis]: label }
+  const worldAxis = worldAxisPart(label)
+  if (worldAxis) {
+    for (const other of ['a', 'b', 'c'] as const) {
+      if (
+        other !== axis &&
+        worldAxisPart(next[other]) === worldAxis
+      ) {
+        next[other] = 'unknown'
+      }
+    }
+  }
+  return validAxisMappingCompletions(next).length > 0 ? next : mapping
 }
 
 export function mappedVector(
@@ -142,13 +204,25 @@ export function faceForLocalNormal(
   return undefined
 }
 
+export function possibleFacesForLocalNormal(
+  mapping: AxisMapping,
+  normal: Point3,
+): FaceDirection[] {
+  return [
+    ...new Set(
+      validAxisMappingCompletions(mapping)
+        .map((candidate) => faceForLocalNormal(candidate, normal))
+        .filter((face): face is FaceDirection => face !== undefined),
+    ),
+  ]
+}
+
 export function axisDisplayLabel(
   axis: AbstractAxis,
   mapping: AxisMapping,
 ): string {
   const value = mapping[axis]
   if (value === 'unknown') return axis.toUpperCase()
-  if (value.length === 1) return `${value.toUpperCase()}?`
   return `${value[1] === '+' ? '+' : '−'}${value[0].toUpperCase()}`
 }
 

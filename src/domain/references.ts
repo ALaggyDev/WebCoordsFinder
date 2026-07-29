@@ -202,9 +202,41 @@ export function statesForFace(blockId: string, face: FaceDirection): 2 | 4 | und
   return blockProfileMap.get(blockId)?.faceStates[face]
 }
 
+export function sharedStatesForFaces(
+  blockId: string,
+  faces: FaceDirection[],
+): 2 | 4 | undefined {
+  const states = faces.map((face) => statesForFace(blockId, face))
+  if (
+    states.length === 0 ||
+    states.some((state) => state === undefined) ||
+    new Set(states).size !== 1
+  ) {
+    return undefined
+  }
+  return states[0]
+}
+
 export function referenceTextureForFace(
   blockId: string,
   face: FaceDirection,
 ): string | undefined {
   return blockProfileMap.get(blockId)?.referenceTextures[face]
+}
+
+export function sharedReferenceTextureForFaces(
+  blockId: string,
+  faces: FaceDirection[],
+): string | undefined {
+  const references = faces.map((face) =>
+    referenceTextureForFace(blockId, face),
+  )
+  if (
+    references.length === 0 ||
+    references.some((reference) => reference === undefined) ||
+    new Set(references).size !== 1
+  ) {
+    return undefined
+  }
+  return references[0]
 }

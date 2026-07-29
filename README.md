@@ -31,7 +31,8 @@ npm run build
 - Manual variant review plus selected-face automatic proposals using bundled
   face-correct vanilla reference textures
 - Exact CoordsFinder `.conf` export
-- Unknown compass direction remains intentionally unsupported
+- Right-handed reference-axis selection with optional 90° compass rotations
+  written to the exported search configuration
 
 WebCoordsFinder is an unofficial community tool and is not affiliated with
 Mojang Studios or Microsoft.

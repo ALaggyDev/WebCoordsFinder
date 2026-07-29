@@ -1,6 +1,17 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { z } from 'zod'
-import { textureAlgorithms, type EditorDocument } from './types'
+import {
+  searchDirections,
+  textureAlgorithms,
+  type EditorDocument,
+  type SearchDirection,
+} from './types'
+
+const searchDirectionSchema = z.number().refine(
+  (value): value is SearchDirection =>
+    searchDirections.includes(value as SearchDirection),
+  'Invalid search direction.',
+)
 
 const projectSchema = z
   .object({
@@ -20,6 +31,16 @@ const projectSchema = z
     scanner: z
       .object({
         textureAlgorithm: z.enum(textureAlgorithms),
+        directions: z
+          .array(searchDirectionSchema)
+          .min(1)
+          .refine((directions) => directions.includes(0), {
+            message: 'Search directions must include 0 degrees.',
+          })
+          .refine(
+            (directions) => new Set(directions).size === directions.length,
+            { message: 'Search directions must be unique.' },
+          ),
       })
       .passthrough(),
   })

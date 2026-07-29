@@ -645,6 +645,114 @@ button:disabled {
   line-height: 1.45;
 }
 
+.axis-mapping-gizmo {
+  position: relative;
+  height: 190px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(83, 230, 165, 0.055), transparent 33%),
+    linear-gradient(rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0.006));
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.axis-mapping-gizmo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 16px 16px;
+  pointer-events: none;
+}
+
+.axis-mapping-gizmo > .axis-mapping-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.axis-mapping-node {
+  --axis-color: #a8b3b9;
+  position: absolute;
+  width: 110px;
+  min-height: 38px;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+  background: rgba(9, 15, 19, 0.96);
+  border: 1px solid color-mix(in srgb, var(--axis-color) 48%, #263139);
+  border-radius: 8px;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.28),
+    inset 0 0 14px color-mix(in srgb, var(--axis-color) 7%, transparent);
+}
+
+.axis-mapping-name {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #071014;
+  background: var(--axis-color);
+  border-radius: 5px;
+  font: 800 10px var(--mono);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--axis-color) 24%, transparent);
+}
+
+.axis-mapping-node select {
+  min-width: 0;
+  width: 100%;
+  height: 28px;
+  padding: 0 4px;
+  color: var(--text);
+  background: #0d1418;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: 600 10px var(--mono);
+}
+
+.axis-mapping-node select:hover:not(:disabled) {
+  border-color: var(--axis-color);
+}
+
+.axis-mapping-node.anchored {
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.28),
+    0 0 18px color-mix(in srgb, var(--axis-color) 18%, transparent),
+    inset 0 0 0 1px var(--axis-color);
+}
+
+.axis-mapping-pin {
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.axis-mapping-pin:hover {
+  color: var(--axis-color);
+  background: color-mix(in srgb, var(--axis-color) 10%, transparent);
+}
+
+.axis-mapping-pin[aria-pressed='true'] {
+  color: #071014;
+  background: var(--axis-color);
+}
+
 .compass-card,
 .algorithm-reference,
 .hint-card,

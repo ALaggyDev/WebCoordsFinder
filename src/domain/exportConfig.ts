@@ -2,8 +2,10 @@ import type {
   EditorDocument,
   FaceEvidence,
   Point3,
+  SearchDirection,
   ValidationResult,
 } from './types'
+import { searchDirections } from './types'
 import { isAxisMappingComplete, mappedAnchorOffset } from './geometry'
 
 type ExportEvidence = FaceEvidence & { coordinate: Point3 }
@@ -58,7 +60,19 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     !document.scanner.compassResolved ||
     !isAxisMappingComplete(document.scene.axisMapping)
   ) {
-    errors.push('Resolve the screenshot compass direction before export.')
+    errors.push('Choose a valid right-handed reference direction before export.')
+  }
+  if (
+    document.scanner.directions.length === 0 ||
+    !document.scanner.directions.includes(0) ||
+    new Set(document.scanner.directions).size !==
+      document.scanner.directions.length ||
+    document.scanner.directions.some(
+      (direction) =>
+        !searchDirections.includes(direction as SearchDirection),
+    )
+  ) {
+    errors.push('Search directions must be unique quarter-turns including 0°.')
   }
   if (rows.length === 0) errors.push('Confirm at least one block face before export.')
   if (rows.length > 256) errors.push('CoordsFinder supports at most 256 filter rows.')
@@ -105,6 +119,7 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
     '# Generated locally by WebCoordsFinder.',
     '',
     `mode = ${scanner.textureAlgorithm}`,
+    `directions = [${scanner.directions.join(', ')}]`,
     '',
     `xStart = ${scanner.bounds.xStart}`,
     `xEnd = ${scanner.bounds.xEnd}`,

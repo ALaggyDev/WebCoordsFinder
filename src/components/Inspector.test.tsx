@@ -1,11 +1,18 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInitialDocument, useEditorStore } from '../store/editorStore'
 import { Inspector } from './Inspector'
 
 beforeEach(() => {
   const document = createInitialDocument()
-  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
     document,
@@ -39,6 +46,68 @@ describe('face inspector batch selection', () => {
     expect(
       await screen.findByText('Resolve global axes to align this face'),
     ).toBeInTheDocument()
+  })
+
+  it('keeps common references and variants visible while compass yaw is unknown', async () => {
+    const document = createInitialDocument()
+    document.scene.axisMapping = {
+      a: 'unknown',
+      b: 'unknown',
+      c: 'y+',
+    }
+    useEditorStore.setState({
+      document,
+      step: 'faces',
+      faceTab: 'selection',
+    })
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+
+    const { container } = render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(
+      await screen.findByText('Resolve global axes to align this face'),
+    ).toBeInTheDocument()
+    expect(screen.getByAltText('Stone reference')).toBeInTheDocument()
+    expect(container.querySelectorAll('.candidate-image img')).toHaveLength(4)
+  })
+
+  it('keeps two-state side variants visible without a compass direction', async () => {
+    const document = createInitialDocument()
+    document.scene.axisMapping = {
+      a: 'unknown',
+      b: 'unknown',
+      c: 'y+',
+    }
+    document.scene.faces[0].normal = { x: 1, y: 0, z: 0 }
+    useEditorStore.setState({
+      document,
+      step: 'faces',
+      faceTab: 'selection',
+    })
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+
+    const { container } = render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(
+      await screen.findByText('Side face · compass unresolved'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('2-state')).toBeInTheDocument()
+    expect(screen.getByAltText('Stone reference')).toBeInTheDocument()
+    expect(container.querySelectorAll('.candidate-image img')).toHaveLength(2)
   })
 
   it('shows Mixed, hides per-face imagery, and updates every selected profile', () => {
@@ -177,6 +246,98 @@ describe('face inspector batch selection', () => {
 })
 
 describe('geometry deletion', () => {
+  it('projects the gizmo and recomputes around a movable anchored axis', async () => {
+    const document = createInitialDocument()
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
+    useEditorStore.setState({ document, step: 'grid' })
+
+    const { container } = render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    const initialArrow = container
+      .querySelector('[data-axis-arrow="a"]')
+      ?.getAttribute('d')
+    const rotated = structuredClone(useEditorStore.getState().document)
+    if (rotated.scene.projection.kind !== 'planar') {
+      throw new Error('Expected the example project to start planar.')
+    }
+    rotated.scene.projection.homography = [
+      0, -100, 500,
+      100, 0, 500,
+      0, 0, 1,
+    ]
+    useEditorStore.setState({ document: rotated })
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector('[data-axis-arrow="a"]')
+          ?.getAttribute('d'),
+      ).not.toBe(initialArrow)
+    })
+
+    fireEvent.change(screen.getByLabelText('Abstract A direction'), {
+      target: { value: 'x+' },
+    })
+    fireEvent.change(screen.getByLabelText('Abstract C direction'), {
+      target: { value: 'y+' },
+    })
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+        a: 'x+',
+        b: 'z-',
+        c: 'y+',
+      })
+    })
+    expect(screen.getByLabelText('Abstract A direction')).toBeEnabled()
+    expect(screen.getByLabelText('Abstract B direction')).toBeEnabled()
+    expect(screen.getByLabelText('Abstract C direction')).toBeEnabled()
+    expect(screen.queryByRole('option', { name: 'X?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Y?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Z?' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z-')
+    expect(
+      screen.getByRole('button', { name: 'Unanchor abstract A axis' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.change(screen.getByLabelText('Abstract C direction'), {
+      target: { value: 'y-' },
+    })
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+        a: 'x+',
+        b: 'z+',
+        c: 'y-',
+      })
+    })
+    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z+')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Anchor abstract C axis' }),
+    )
+    fireEvent.change(screen.getByLabelText('Abstract B direction'), {
+      target: { value: 'z-' },
+    })
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+        a: 'x-',
+        b: 'z-',
+        c: 'y-',
+      })
+    })
+    expect(
+      screen.getByRole('button', { name: 'Unanchor abstract C axis' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('deletes all selected faces from the geometry inspector', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().selectFace(first.id, false)

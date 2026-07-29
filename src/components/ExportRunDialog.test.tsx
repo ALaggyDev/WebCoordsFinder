@@ -23,10 +23,29 @@ describe('Export / Run workspace', () => {
     )
 
     expect(screen.getByLabelText('Error tolerance')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /^0°/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /^0°/ })).toBeDisabled()
     expect(screen.getByText('CoordsFinder settings')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Export / Run' }),
     ).toBeInTheDocument()
+  })
+
+  it('adds optional compass rotations to the scanner settings', () => {
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '180°' }))
+
+    expect(useEditorStore.getState().document.scanner.directions).toEqual([
+      0,
+      180,
+    ])
   })
 
   it('opens the runtime comparison and leaves web search disabled', () => {

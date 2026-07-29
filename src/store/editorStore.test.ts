@@ -4,7 +4,11 @@ import {
   projectionInfo,
   selectedEdgeGeometry,
 } from '../domain/geometry'
-import { createInitialDocument, useEditorStore } from './editorStore'
+import {
+  createInitialDocument,
+  normalizeEditorDocument,
+  useEditorStore,
+} from './editorStore'
 
 beforeEach(() => {
   useEditorStore.setState({
@@ -258,6 +262,40 @@ describe('unit-face geometry', () => {
             entry.selectedVariant === undefined,
         ),
     ).toBe(true)
+  })
+
+  it('rejects a reflected axis mapping without adding history', () => {
+    useEditorStore.getState().updateAxisMapping('a', 'x+')
+    useEditorStore.getState().updateAxisMapping('c', 'y+')
+    const historyBefore = useEditorStore.getState().past.length
+
+    useEditorStore.getState().updateAxisMapping('b', 'z+')
+
+    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+      a: 'x+',
+      b: 'unknown',
+      c: 'y+',
+    })
+    expect(useEditorStore.getState().past).toHaveLength(historyBefore)
+
+    useEditorStore.getState().updateAxisMapping('b', 'z-')
+    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+      a: 'x+',
+      b: 'z-',
+      c: 'y+',
+    })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+  })
+
+  it('rejects unsigned legacy axis labels', () => {
+    const legacy = structuredClone(createInitialDocument()) as unknown as {
+      scene: { axisMapping: Record<string, string> }
+    }
+    legacy.scene.axisMapping.a = 'x'
+
+    expect(() => normalizeEditorDocument(legacy)).toThrow(
+      'This project uses an unsupported document schema.',
+    )
   })
 
   it('undoes and redoes a committed calibration drag in one step', () => {

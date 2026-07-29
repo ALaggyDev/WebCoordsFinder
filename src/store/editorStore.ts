@@ -3,7 +3,6 @@ import {
   add3,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
-  faceForLocalNormal,
   flatConnectedFaceIds,
   isAxisMappingComplete,
   mappedAnchorOffset,
@@ -11,6 +10,7 @@ import {
   negate3,
   outerEdgeForExtrusion,
   planarProjectionForPlane,
+  possibleFacesForLocalNormal,
   projectionInfo,
   refitProjection,
   scale3,
@@ -18,9 +18,12 @@ import {
   selectedEdgeGeometry,
   same3,
   translatedExtrusionAnchors,
+  updatedAxisMapping,
+  validAxisMappingCompletions,
 } from '../domain/geometry'
-import { statesForFace } from '../domain/references'
+import { sharedStatesForFaces } from '../domain/references'
 import type { ExampleProjectId } from '../domain/examples'
+import { searchDirections, worldAxisLabels } from '../domain/types'
 import type {
   AbstractAxis,
   AxisMapping,
@@ -34,6 +37,7 @@ import type {
   Point2,
   Point3,
   ScannerSettings,
+  SearchDirection,
   SelectedEdge,
   WorldAxisLabel,
 } from '../domain/types'
@@ -94,6 +98,7 @@ function createPlanarScene(
 function createDefaultScanner(): ScannerSettings {
   return {
     textureAlgorithm: 'Vanilla-3',
+    directions: [0],
     compassResolved: false,
     bounds: {
       xStart: -5000,
@@ -167,12 +172,40 @@ export const createEmptyDocument = (): EditorDocument => ({
 // Retained as the fixture factory used by domain and component tests.
 export const createInitialDocument = createExampleDocument
 
+function isValidAxisMapping(input: unknown): input is AxisMapping {
+  if (!input || typeof input !== 'object') return false
+  const mapping = input as Record<string, unknown>
+  if (
+    !(['a', 'b', 'c'] as const).every(
+      (axis) =>
+        typeof mapping[axis] === 'string' &&
+        worldAxisLabels.includes(mapping[axis] as WorldAxisLabel),
+    )
+  ) {
+    return false
+  }
+  return validAxisMappingCompletions(mapping as unknown as AxisMapping).length > 0
+}
+
 export function normalizeEditorDocument(input: unknown): EditorDocument {
   const candidate = input as Record<string, unknown>
+  const scanner = candidate.scanner as Record<string, unknown> | undefined
+  const scene = candidate.scene as Record<string, unknown> | undefined
+  const directions = scanner?.directions
   if (
     candidate.schemaVersion !== 1 ||
     typeof candidate.projectName !== 'string' ||
-    !candidate.scene ||
+    !scene ||
+    !isValidAxisMapping(scene.axisMapping) ||
+    !Array.isArray(directions) ||
+    directions.length === 0 ||
+    !directions.includes(0) ||
+    new Set(directions).size !== directions.length ||
+    directions.some(
+      (direction) =>
+        typeof direction !== 'number' ||
+        !searchDirections.includes(direction as SearchDirection),
+    ) ||
     (candidate.anchorFaceId !== null &&
       typeof candidate.anchorFaceId !== 'string')
   ) {
@@ -202,22 +235,35 @@ function syncUnconfirmedProposals(document: EditorDocument): void {
     )
 }
 
-function evidenceFace(
+function evidenceFaces(
   document: EditorDocument,
   evidence: FaceEvidence,
-): FaceDirection | undefined {
-  return faceForLocalNormal(document.scene.axisMapping, evidence.localNormal)
+): FaceDirection[] {
+  return possibleFacesForLocalNormal(
+    document.scene.axisMapping,
+    evidence.localNormal,
+  )
+}
+
+function evidenceStateCount(
+  document: EditorDocument,
+  evidence: FaceEvidence,
+): 2 | 4 | undefined {
+  return sharedStatesForFaces(evidence.blockId, evidenceFaces(document, evidence))
 }
 
 function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEvidence {
-  const direction = faceForLocalNormal(document.scene.axisMapping, face.normal)
+  const faces = possibleFacesForLocalNormal(
+    document.scene.axisMapping,
+    face.normal,
+  )
   return {
     id: face.id,
     faceId: face.id,
     latticeCoordinate: face.blockCoordinate,
     localNormal: face.normal,
     blockId: 'stone',
-    stateCount: direction ? statesForFace('stone', direction) ?? 4 : 4,
+    stateCount: sharedStatesForFaces('stone', faces) ?? 4,
     reviewStatus: 'unlabeled',
   }
 }
@@ -268,6 +314,7 @@ interface EditorState {
   deleteFace: (faceId: string) => void
   deleteSelectedFaces: () => void
   flipSelectedFaces: () => void
+  setAxisMapping: (mapping: AxisMapping) => void
   updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
@@ -306,6 +353,21 @@ function mutateDocument(
 function removeFaces(document: EditorDocument, ids: Set<string>): void {
   document.scene.faces = document.scene.faces.filter((face) => !ids.has(face.id))
   pruneGeometry(document)
+}
+
+function applyAxisMapping(
+  document: EditorDocument,
+  mapping: AxisMapping,
+): void {
+  document.scene.axisMapping = mapping
+  document.scanner.compassResolved = isAxisMappingComplete(mapping)
+  document.evidence.forEach((entry) => {
+    entry.stateCount = evidenceStateCount(document, entry) ?? 4
+    entry.selectedVariant = undefined
+    entry.reviewStatus = 'unlabeled'
+    entry.scores = undefined
+    entry.confidence = undefined
+  })
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -548,28 +610,33 @@ export const useEditorStore = create<EditorState>((set) => ({
           })
       })
     }),
+  setAxisMapping: (mapping) =>
+    set((state) => {
+      if (validAxisMappingCompletions(mapping).length === 0) return state
+      if (
+        (['a', 'b', 'c'] as const).every(
+          (axis) =>
+            state.document.scene.axisMapping[axis] === mapping[axis],
+        )
+      ) {
+        return state
+      }
+      return mutateDocument(state, (document) => {
+        applyAxisMapping(document, mapping)
+      })
+    }),
   updateAxisMapping: (axis, label) =>
-    set((state) =>
-      mutateDocument(state, (document) => {
-        const next: AxisMapping = { ...document.scene.axisMapping, [axis]: label }
-        const worldAxis = label === 'unknown' ? undefined : label[0]
-        if (worldAxis) {
-          for (const other of ['a', 'b', 'c'] as const) {
-            if (other !== axis && next[other][0] === worldAxis) next[other] = 'unknown'
-          }
-        }
-        document.scene.axisMapping = next
-        document.scanner.compassResolved = isAxisMappingComplete(next)
-        document.evidence.forEach((entry) => {
-          const face = evidenceFace(document, entry)
-          entry.stateCount = face ? statesForFace(entry.blockId, face) ?? 4 : 4
-          entry.selectedVariant = undefined
-          entry.reviewStatus = 'unlabeled'
-          entry.scores = undefined
-          entry.confidence = undefined
-        })
-      }),
-    ),
+    set((state) => {
+      const next = updatedAxisMapping(
+        state.document.scene.axisMapping,
+        axis,
+        label,
+      )
+      if (next === state.document.scene.axisMapping) return state
+      return mutateDocument(state, (document) => {
+        applyAxisMapping(document, next)
+      })
+    }),
   setAnchorFace: (faceId) =>
     set((state) => {
       if (!state.document.scene.faces.some((face) => face.id === faceId)) {
@@ -637,11 +704,13 @@ export const useEditorStore = create<EditorState>((set) => ({
         const selected = document.evidence.filter((entry) =>
           state.selectedEvidenceIds.includes(entry.id),
         )
-        const faces = selected.map((entry) => evidenceFace(document, entry))
-        if (faces.some((face) => !face || !statesForFace(blockId, face))) return
+        const states = selected.map((entry) =>
+          sharedStatesForFaces(blockId, evidenceFaces(document, entry)),
+        )
+        if (states.some((state) => state === undefined)) return
         selected.forEach((entry, index) => {
           entry.blockId = blockId
-          entry.stateCount = statesForFace(blockId, faces[index]!)!
+          entry.stateCount = states[index]!
           entry.selectedVariant = undefined
           entry.reviewStatus = 'unlabeled'
           entry.scores = undefined
