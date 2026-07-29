@@ -15,7 +15,6 @@ const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; 
   { id: 'anchor', label: 'Select anchor block', icon: Crosshair, shortcut: 'A' },
   { id: 'plane', label: 'Create base faces', icon: Box, shortcut: 'G' },
   { id: 'extrude', label: 'Extrude selected edges', icon: Move3d, shortcut: 'E' },
-  { id: 'delete', label: 'Delete faces', icon: Eraser, shortcut: 'X' },
 ]
 
 export function ToolRail() {
@@ -23,12 +22,16 @@ export function ToolRail() {
   const setTool = useEditorStore((state) => state.setTool)
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
+  const deleteSelectedFaces = useEditorStore((state) => state.deleteSelectedFaces)
   const canUndo = useEditorStore((state) => state.past.length > 0)
   const canRedo = useEditorStore((state) => state.future.length > 0)
   const hasGeometry = useEditorStore(
     (state) => state.document.scene.faces.length > 0,
   )
   const hasSelectedEdges = useEditorStore((state) => state.selectedEdges.length > 0)
+  const hasSelectedFaces = useEditorStore(
+    (state) => state.selectedEvidenceIds.length > 0,
+  )
 
   return (
     <aside className="tool-rail" aria-label="Canvas tools">
@@ -50,6 +53,17 @@ export function ToolRail() {
             <span>{shortcut}</span>
           </button>
         ))}
+        <button
+          type="button"
+          className="tool-button"
+          onClick={deleteSelectedFaces}
+          disabled={!hasSelectedFaces}
+          title="Delete selected faces (X)"
+          aria-label="Delete selected faces"
+        >
+          <Eraser size={19} />
+          <span>X</span>
+        </button>
       </div>
       <div className="tool-group bottom">
         <button

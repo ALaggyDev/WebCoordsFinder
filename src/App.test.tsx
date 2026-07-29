@@ -95,4 +95,21 @@ describe('face keyboard shortcuts', () => {
 
     expect(useEditorStore.getState().selectedEvidenceIds).toEqual([])
   })
+
+  it('deletes selected faces with X without changing the edit mode', () => {
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
+    useEditorStore.getState().setTool('anchor')
+    render(<App />)
+
+    fireEvent.keyDown(window, { key: 'x' })
+
+    const state = useEditorStore.getState()
+    expect(state.document.scene.faces.map((face) => face.id)).not.toEqual(
+      expect.arrayContaining([first.id, second.id]),
+    )
+    expect(state.selectedEvidenceIds).toEqual([])
+    expect(state.tool).toBe('anchor')
+  })
 })

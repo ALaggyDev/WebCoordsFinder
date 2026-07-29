@@ -119,6 +119,9 @@ function App() {
   const setFaceTab = useEditorStore((state) => state.setFaceTab)
   const setTool = useEditorStore((state) => state.setTool)
   const selectAllFaces = useEditorStore((state) => state.selectAllFaces)
+  const deleteSelectedFaces = useEditorStore(
+    (state) => state.deleteSelectedFaces,
+  )
   const setVariant = useEditorStore((state) => state.setVariant)
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
@@ -243,12 +246,21 @@ function App() {
         selectAllFaces()
         return
       }
+      if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'x'
+      ) {
+        event.preventDefault()
+        deleteSelectedFaces()
+        return
+      }
       const toolShortcut = {
         v: 'select',
         a: 'anchor',
         g: 'plane',
         e: 'extrude',
-        x: 'delete',
       } as const
       const shortcut = toolShortcut[event.key.toLowerCase() as keyof typeof toolShortcut]
       if (shortcut) setTool(shortcut)
@@ -262,7 +274,15 @@ function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [redo, selectAllFaces, selectedEvidenceIds, setTool, setVariant, undo])
+  }, [
+    deleteSelectedFaces,
+    redo,
+    selectAllFaces,
+    selectedEvidenceIds,
+    setTool,
+    setVariant,
+    undo,
+  ])
 
   const openImagePicker = (mode: ImageImportMode) => {
     setImageImportMode(mode)

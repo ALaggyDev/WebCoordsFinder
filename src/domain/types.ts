@@ -40,7 +40,7 @@ export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
-export type EditorTool = 'select' | 'anchor' | 'plane' | 'extrude' | 'delete'
+export type EditorTool = 'select' | 'anchor' | 'plane' | 'extrude'
 
 export type CandidateTransform =
   | 'identity'

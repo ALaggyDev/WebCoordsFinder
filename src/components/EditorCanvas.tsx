@@ -381,7 +381,6 @@ export function EditorCanvas() {
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
   const selectFace = useEditorStore((state) => state.selectFace)
   const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
-  const deleteFace = useEditorStore((state) => state.deleteFace)
   const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
   const moveObservation = useEditorStore((state) => state.moveObservation)
   const upsertObservation = useEditorStore((state) => state.upsertObservation)
@@ -595,9 +594,7 @@ export function EditorCanvas() {
       ? 'crosshair'
       : tool === 'extrude'
         ? 'copy'
-        : tool === 'delete'
-          ? 'not-allowed'
-          : 'grab'
+        : 'grab'
 
   return (
     <div className="canvas-shell" ref={containerRef}>
@@ -714,12 +711,11 @@ export function EditorCanvas() {
                 hitStrokeWidth={8 / view.scale}
                 listening={
                   !isPreview &&
-                  (tool === 'select' || tool === 'anchor' || tool === 'delete')
+                  (tool === 'select' || tool === 'anchor')
                 }
                 onClick={(event) => {
                   event.cancelBubble = true
-                  if (tool === 'delete') deleteFace(face.id)
-                  else if (tool === 'anchor') setAnchorFace(face.id)
+                  if (tool === 'anchor') setAnchorFace(face.id)
                   else if (tool === 'select') selectFace(face.id, event.evt.shiftKey)
                 }}
               />
