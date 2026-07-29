@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { createInitialDocument } from '../store/editorStore'
+import { blockCoordinateForFace } from './geometry'
 import type { EditorDocument, FaceEvidence } from './types'
 import {
   createWebSearchCheckpoint,
@@ -17,7 +18,7 @@ function searchableDocument(): EditorDocument {
   const evidence: FaceEvidence = {
     id: 'side',
     faceId: anchor.id,
-    latticeCoordinate: anchor.blockCoordinate,
+    latticeCoordinate: blockCoordinateForFace(anchor),
     localNormal: anchor.normal,
     blockId: 'stone',
     stateCount: 2,

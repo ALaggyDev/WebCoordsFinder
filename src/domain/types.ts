@@ -61,6 +61,7 @@ export interface ImageAsset {
 
 export interface MeshFace {
   id: string
+  /** Canonical minimum lattice corner of the face square, not its owning block. */
   blockCoordinate: Point3
   normal: Point3
 }
@@ -128,6 +129,7 @@ export interface CandidateScore {
 export interface FaceEvidence {
   id: string
   faceId: string
+  /** Coordinate of the block that owns the visible face. */
   latticeCoordinate: Point3
   localNormal: Point3
   blockId: string

@@ -5,6 +5,7 @@ import {
   createWebSearchRequest,
   webSearchRequestKey,
 } from '../domain/webSearch'
+import { blockCoordinateForFace } from '../domain/geometry'
 import type { FaceEvidence } from '../domain/types'
 import { createInitialDocument, useEditorStore } from '../store/editorStore'
 import { Inspector } from './Inspector'
@@ -24,7 +25,7 @@ function documentWithSavedSearch() {
   const evidence: FaceEvidence = {
     id: anchor.id,
     faceId: anchor.id,
-    latticeCoordinate: anchor.blockCoordinate,
+    latticeCoordinate: blockCoordinateForFace(anchor),
     localNormal: anchor.normal,
     blockId: 'stone',
     stateCount: 2,

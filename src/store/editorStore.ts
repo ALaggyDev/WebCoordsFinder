@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import {
   add3,
+  blockCoordinateForFace,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   flatConnectedFaceIds,
@@ -262,7 +263,7 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
   return {
     id: face.id,
     faceId: face.id,
-    latticeCoordinate: face.blockCoordinate,
+    latticeCoordinate: blockCoordinateForFace(face),
     localNormal: face.normal,
     blockId: 'stone',
     stateCount: sharedStatesForFaces('stone', faces) ?? 4,
@@ -605,6 +606,7 @@ export const useEditorStore = create<EditorState>((set) => ({
               (candidate) => candidate.id === entry.faceId,
             )
             if (!face) return
+            entry.latticeCoordinate = blockCoordinateForFace(face)
             entry.localNormal = face.normal
             entry.selectedVariant = undefined
             entry.reviewStatus = 'unlabeled'

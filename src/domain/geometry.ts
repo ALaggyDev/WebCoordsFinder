@@ -175,6 +175,15 @@ export function mappedVector(
   return result
 }
 
+export function blockCoordinateForFace(face: MeshFace): Point3 {
+  // A positive-facing square lies on the owning block's maximum boundary.
+  return {
+    x: face.blockCoordinate.x - Math.max(0, face.normal.x),
+    y: face.blockCoordinate.y - Math.max(0, face.normal.y),
+    z: face.blockCoordinate.z - Math.max(0, face.normal.z),
+  }
+}
+
 export function mappedAnchorOffset(
   scene: SceneGeometry,
   anchorFaceId: string | null,
@@ -185,7 +194,7 @@ export function mappedAnchorOffset(
   if (!anchor) return undefined
   return mappedVector(
     scene.axisMapping,
-    subtract3(local, anchor.blockCoordinate),
+    subtract3(local, blockCoordinateForFace(anchor)),
   )
 }
 

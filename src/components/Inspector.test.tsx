@@ -414,8 +414,8 @@ describe('Auto Analyze queue', () => {
     ])
 
     const queueRows = screen.getAllByTitle('Inspect this face')
-    expect(within(queueRows[0]).getByText('2, 0, 0')).toBeInTheDocument()
-    expect(within(queueRows[1]).getByText('0, 0, 0')).toBeInTheDocument()
+    expect(within(queueRows[0]).getByText('2, 0, -1')).toBeInTheDocument()
+    expect(within(queueRows[1]).getByText('0, 0, -1')).toBeInTheDocument()
     expect(within(queueRows[0]).getByText('Δ 0.25')).toBeInTheDocument()
     expect(within(queueRows[1]).getByText('Variant —')).toBeInTheDocument()
 

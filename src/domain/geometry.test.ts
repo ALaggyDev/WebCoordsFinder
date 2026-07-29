@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  blockCoordinateForFace,
   chooseEdgeExtrusion,
   computeHomography,
   createEdgeExtrusionFaces,
@@ -45,6 +46,43 @@ const planeU = { x: 1, y: 0, z: 0 }
 const planeV = { x: 0, y: 1, z: 0 }
 
 describe('global perspective geometry', () => {
+  it.each([
+    [{ x: 1, y: 0, z: 0 }, { x: 2, y: 4, z: 5 }],
+    [{ x: -1, y: 0, z: 0 }, { x: 3, y: 4, z: 5 }],
+    [{ x: 0, y: 1, z: 0 }, { x: 3, y: 3, z: 5 }],
+    [{ x: 0, y: -1, z: 0 }, { x: 3, y: 4, z: 5 }],
+    [{ x: 0, y: 0, z: 1 }, { x: 3, y: 4, z: 4 }],
+    [{ x: 0, y: 0, z: -1 }, { x: 3, y: 4, z: 5 }],
+  ] satisfies [Point3, Point3][])(
+    'derives the owning block coordinate for face normal %o',
+    (normal, expected) => {
+      expect(
+        blockCoordinateForFace({
+          id: 'coordinate',
+          blockCoordinate: { x: 3, y: 4, z: 5 },
+          normal,
+        }),
+      ).toEqual(expected)
+    },
+  )
+
+  it('assigns perpendicular faces of one block the same coordinate', () => {
+    const blockCoordinate = { x: 7, y: -2, z: 11 }
+    const side: MeshFace = {
+      id: 'side',
+      blockCoordinate: { ...blockCoordinate, x: blockCoordinate.x + 1 },
+      normal: { x: 1, y: 0, z: 0 },
+    }
+    const top: MeshFace = {
+      id: 'top',
+      blockCoordinate: { ...blockCoordinate, z: blockCoordinate.z + 1 },
+      normal: { x: 0, y: 0, z: 1 },
+    }
+
+    expect(blockCoordinateForFace(side)).toEqual(blockCoordinate)
+    expect(blockCoordinateForFace(top)).toEqual(blockCoordinate)
+  })
+
   it('maps all four planar corners through a homography', () => {
     const source: [Point2, Point2, Point2, Point2] = [
       { x: 0, y: 0 },

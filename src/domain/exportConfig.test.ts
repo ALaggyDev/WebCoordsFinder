@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialDocument } from '../store/editorStore'
-import type { EditorDocument, FaceEvidence } from './types'
+import { blockCoordinateForFace } from './geometry'
+import type { EditorDocument, FaceEvidence, MeshFace } from './types'
 import type { Point3 } from './types'
 import {
   confirmedUniqueEvidence,
@@ -30,6 +31,9 @@ const evidence = (
 
 const documentWith = (entries: FaceEvidence[]): EditorDocument => {
   const document = createInitialDocument()
+  document.scene.faces.forEach((face) => {
+    face.normal = { x: 0, y: 0, z: -1 }
+  })
   return {
     ...document,
     anchorFaceId: document.scene.faces[0].id,
@@ -59,6 +63,28 @@ describe('CoordsFinder export', () => {
       'other',
     ])
     expect(constraintBits(document)).toBe(3)
+  })
+
+  it('deduplicates perpendicular faces that belong to the same block', () => {
+    const blockCoordinate = { x: 4, y: 2, z: -3 }
+    const sideFace: MeshFace = {
+      id: 'side',
+      blockCoordinate: { ...blockCoordinate, x: blockCoordinate.x + 1 },
+      normal: { x: 1, y: 0, z: 0 },
+    }
+    const topFace: MeshFace = {
+      id: 'top',
+      blockCoordinate: { ...blockCoordinate, z: blockCoordinate.z + 1 },
+      normal: { x: 0, y: 0, z: 1 },
+    }
+    const document = documentWith([
+      evidence('side', blockCoordinateForFace(sideFace), 2, 1),
+      evidence('top', blockCoordinateForFace(topFace), 4, 3),
+    ])
+
+    expect(confirmedUniqueEvidence(document).map((entry) => entry.id)).toEqual([
+      'top',
+    ])
   })
 
   it('emits the scanner syntax, including folded side evidence', () => {

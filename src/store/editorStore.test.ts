@@ -7,6 +7,7 @@ import {
 import type { WebSearchCheckpoint } from '../domain/types'
 import {
   createInitialDocument,
+  evidenceWorldCoordinate,
   normalizeEditorDocument,
   useEditorStore,
 } from './editorStore'
@@ -113,11 +114,46 @@ describe('unit-face geometry', () => {
         ?.normal,
     ).toEqual({ x: 0, y: 1, z: 0 })
     expect(state.document.evidence[0]).toMatchObject({
+      latticeCoordinate: { x: 0, y: 0, z: 0 },
       localNormal: { x: 0, y: 0, z: -1 },
       reviewStatus: 'unlabeled',
       selectedVariant: undefined,
     })
     expect(state.past).toHaveLength(historyBeforeFlip + 1)
+  })
+
+  it('uses one owning-block coordinate for perpendicular faces of the same block', () => {
+    const document = structuredClone(useEditorStore.getState().document)
+    document.scene.faces = [
+      {
+        id: 'side',
+        blockCoordinate: { x: 1, y: 0, z: 0 },
+        normal: { x: 1, y: 0, z: 0 },
+      },
+      {
+        id: 'top',
+        blockCoordinate: { x: 0, y: 0, z: 1 },
+        normal: { x: 0, y: 0, z: 1 },
+      },
+    ]
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+    useEditorStore.setState({ document })
+
+    useEditorStore.getState().selectFace('side', false)
+    useEditorStore.getState().selectFace('top', true)
+    useEditorStore.getState().setAnchorFace('side')
+
+    const updated = useEditorStore.getState().document
+    expect(updated.evidence.map((entry) => entry.latticeCoordinate)).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+    ])
+    expect(
+      updated.evidence.map((entry) => evidenceWorldCoordinate(updated, entry)),
+    ).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+    ])
   })
 
   it('removes all calibration anchors after the final face is deleted', () => {
