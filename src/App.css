@@ -767,6 +767,7 @@ button:disabled {
 .axis-mapping-gizmo > .axis-mapping-lines {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -791,9 +792,8 @@ button:disabled {
     inset 0 0 14px color-mix(in srgb, var(--axis-color) 7%, transparent);
 }
 
-.axis-mapping-node:hover,
-.axis-mapping-node:focus-within {
-  z-index: 1;
+.axis-mapping-node:hover {
+  z-index: 2;
 }
 
 .axis-mapping-name {

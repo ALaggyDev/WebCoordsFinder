@@ -175,7 +175,7 @@ describe('global perspective geometry', () => {
     expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
   })
 
-  it('evaluates planar axis directions at the requested image point', () => {
+  it('preserves relative planar axis lengths at the requested image point', () => {
     const scene: SceneGeometry = {
       faces: [face],
       observations: [],
@@ -195,23 +195,23 @@ describe('global perspective geometry', () => {
       axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     }
 
-    const directions = projectedAbstractAxesAtImagePoint(scene, {
+    const projectedAxes = projectedAbstractAxesAtImagePoint(scene, {
       x: 200,
       y: 100,
     })
 
-    expectPointClose(directions.a!, {
-      x: 8 / Math.sqrt(65),
-      y: -1 / Math.sqrt(65),
+    expectPointClose(projectedAxes.a!, {
+      x: 4 / Math.sqrt(20),
+      y: -1 / (2 * Math.sqrt(20)),
     })
-    expectPointClose(directions.b!, {
+    expectPointClose(projectedAxes.b!, {
       x: -1 / Math.sqrt(5),
       y: 2 / Math.sqrt(5),
     })
-    expect(directions.c).toBeUndefined()
+    expect(projectedAxes.c).toBeUndefined()
   })
 
-  it('evaluates camera axis directions at the requested image point', () => {
+  it('preserves relative camera axis lengths at the requested image point', () => {
     const scene: SceneGeometry = {
       faces: [face],
       observations: [],
@@ -228,20 +228,20 @@ describe('global perspective geometry', () => {
       axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     }
 
-    const directions = projectedAbstractAxesAtImagePoint(scene, {
+    const projectedAxes = projectedAbstractAxesAtImagePoint(scene, {
       x: 200,
       y: 100,
     })
 
-    expectPointClose(directions.a!, {
-      x: 8 / Math.sqrt(65),
-      y: -1 / Math.sqrt(65),
+    expectPointClose(projectedAxes.a!, {
+      x: 8 / Math.sqrt(445),
+      y: -1 / Math.sqrt(445),
     })
-    expectPointClose(directions.b!, {
-      x: -1 / Math.sqrt(5),
-      y: 2 / Math.sqrt(5),
+    expectPointClose(projectedAxes.b!, {
+      x: -4 / Math.sqrt(445),
+      y: 8 / Math.sqrt(445),
     })
-    expectPointClose(directions.c!, {
+    expectPointClose(projectedAxes.c!, {
       x: -18 / Math.sqrt(445),
       y: -11 / Math.sqrt(445),
     })

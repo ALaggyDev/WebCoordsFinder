@@ -1183,12 +1183,28 @@ export function outerEdgeForExtrusion(
   return result?.edge
 }
 
-function normalizedImageDirection(
-  x: number,
-  y: number,
-): Point2 | undefined {
-  const length = Math.hypot(x, y)
-  return length > EPSILON ? { x: x / length, y: y / length } : undefined
+function normalizeProjectedAxes(
+  vectors: Partial<Record<AbstractAxis, Point2>>,
+): Partial<Record<AbstractAxis, Point2>> {
+  const maxLength = Math.max(
+    0,
+    ...(['a', 'b', 'c'] as const).map((axis) => {
+      const vector = vectors[axis]
+      return vector ? Math.hypot(vector.x, vector.y) : 0
+    }),
+  )
+  if (maxLength <= EPSILON) return {}
+
+  const result: Partial<Record<AbstractAxis, Point2>> = {}
+  for (const axis of ['a', 'b', 'c'] as const) {
+    const vector = vectors[axis]
+    if (!vector || Math.hypot(vector.x, vector.y) <= EPSILON) continue
+    result[axis] = {
+      x: vector.x / maxLength,
+      y: vector.y / maxLength,
+    }
+  }
+  return result
 }
 
 export function projectedAbstractAxesAtImagePoint(
@@ -1216,13 +1232,12 @@ export function projectedAbstractAxesAtImagePoint(
       const vanishingX = matrix[index]
       const vanishingY = matrix[4 + index]
       const vanishingW = matrix[8 + index]
-      const direction = normalizedImageDirection(
-        (vanishingX - imagePoint.x * vanishingW) * orientation,
-        (vanishingY - imagePoint.y * vanishingW) * orientation,
-      )
-      if (direction) result[axis] = direction
+      result[axis] = {
+        x: (vanishingX - imagePoint.x * vanishingW) * orientation,
+        y: (vanishingY - imagePoint.y * vanishingW) * orientation,
+      }
     }
-    return result
+    return normalizeProjectedAxes(result)
   }
 
   const projection = scene.projection
@@ -1248,13 +1263,12 @@ export function projectedAbstractAxesAtImagePoint(
       projection.homography[3] * u + projection.homography[4] * v
     const vanishingW =
       projection.homography[6] * u + projection.homography[7] * v
-    const direction = normalizedImageDirection(
-      (vanishingX - imagePoint.x * vanishingW) * orientation,
-      (vanishingY - imagePoint.y * vanishingW) * orientation,
-    )
-    if (direction) result[axis] = direction
+    result[axis] = {
+      x: (vanishingX - imagePoint.x * vanishingW) * orientation,
+      y: (vanishingY - imagePoint.y * vanishingW) * orientation,
+    }
   }
-  return result
+  return normalizeProjectedAxes(result)
 }
 
 export interface FaceNormalIndicator {

@@ -221,12 +221,12 @@ function GlobalAxisGizmo({
   directionReference: Point2
   scale: number
 }) {
-  const directions = projectedAbstractAxesAtImagePoint(
+  const projectedAxes = projectedAbstractAxesAtImagePoint(
     scene,
     directionReference,
   )
   const axes = (['a', 'b', 'c'] as AbstractAxis[]).filter(
-    (axis) => directions[axis],
+    (axis) => projectedAxes[axis],
   )
   const length = 30 / scale
   return (
@@ -240,11 +240,16 @@ function GlobalAxisGizmo({
         strokeWidth={1 / scale}
       />
       {axes.map((axis) => {
-        const direction = directions[axis]!
+        const projectedAxis = projectedAxes[axis]!
+        const projectedLength = Math.hypot(projectedAxis.x, projectedAxis.y)
+        const direction = {
+          x: projectedAxis.x / projectedLength,
+          y: projectedAxis.y / projectedLength,
+        }
         const color = axisColor(axis, scene.axisMapping)
         const end = {
-          x: origin.x + direction.x * length,
-          y: origin.y + direction.y * length,
+          x: origin.x + projectedAxis.x * length,
+          y: origin.y + projectedAxis.y * length,
         }
         return (
           <Group key={axis}>
@@ -265,8 +270,8 @@ function GlobalAxisGizmo({
               pointerWidth={5 / scale}
             />
             <Text
-              x={end.x + direction.x * (4 / scale) - 7 / scale}
-              y={end.y + direction.y * (4 / scale) - 5 / scale}
+              x={end.x + direction.x * (7 / scale) - 7 / scale}
+              y={end.y + direction.y * (7 / scale) - 5 / scale}
               text={axisDisplayLabel(axis, scene.axisMapping)}
               fontFamily="Inter, Segoe UI, sans-serif"
               fontStyle="bold"
