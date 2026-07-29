@@ -15,6 +15,23 @@ function coordinateKey(evidence: ExportEvidence): string {
   return `${x}:${y}:${z}`
 }
 
+function rotateXzOffset(
+  x: number,
+  z: number,
+  direction: SearchDirection,
+): { x: number; z: number } {
+  switch (direction) {
+    case 90:
+      return { x: -z, z: x }
+    case 180:
+      return { x: -x, z: -z }
+    case 270:
+      return { x: z, z: -x }
+    case 0:
+      return { x, z }
+  }
+}
+
 export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidence[] {
   const unique = new Map<string, ExportEvidence>()
   document.evidence
@@ -95,6 +112,25 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     if ([x, y, z].some((value) => value < -128 || value > 127)) {
       errors.push(`Offset (${x}, ${y}, ${z}) is outside the signed-byte range.`)
     }
+    document.scanner.directions.forEach((direction) => {
+      if (
+        direction === 0 ||
+        !searchDirections.includes(direction as SearchDirection)
+      ) {
+        return
+      }
+      const rotated = rotateXzOffset(x, z, direction as SearchDirection)
+      if (
+        rotated.x < -128 ||
+        rotated.x > 127 ||
+        rotated.z < -128 ||
+        rotated.z > 127
+      ) {
+        errors.push(
+          `Direction ${direction}° rotates offset (${x}, ${y}, ${z}) outside the signed-byte range.`,
+        )
+      }
+    })
     if (
       entry.selectedVariant === undefined ||
       entry.selectedVariant < 0 ||

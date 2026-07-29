@@ -5,6 +5,7 @@ import {
   type WebSearchWorkerCommand,
   type WebSearchWorkerState,
 } from '../domain/webSearch'
+import type { SearchDirection } from '../domain/types'
 
 interface SearchExports extends WebAssembly.Exports {
   search_configure: (
@@ -17,7 +18,9 @@ interface SearchExports extends WebAssembly.Exports {
     zEnd: number,
     maxBadBlocks: number,
     filterCount: number,
+    directionCount: number,
   ) => number
+  search_set_direction: (index: number, quarterTurns: number) => number
   search_set_filter: (
     index: number,
     x: number,
@@ -37,6 +40,7 @@ interface SearchExports extends WebAssembly.Exports {
   search_get_result_y: (index: number) => number
   search_get_result_z: (index: number) => number
   search_get_result_bad_blocks: (index: number) => number
+  search_get_result_direction: (index: number) => number
 }
 
 const minimumBatchSize = 2_048
@@ -83,6 +87,7 @@ function collectResults(module: SearchExports): WebSearchResult[] {
     y: module.search_get_result_y(index),
     z: module.search_get_result_z(index),
     badBlocks: module.search_get_result_bad_blocks(index),
+    direction: module.search_get_result_direction(index) as SearchDirection,
   }))
   capturedResults += results.length
   return results
@@ -190,10 +195,21 @@ async function startSearch(
       request.zEnd,
       request.maxBadBlocks,
       request.constraints.length,
+      request.directions.length,
     )
     if (configureError !== 0) {
       throw new Error(`WASM scanner rejected the configuration (${configureError}).`)
     }
+
+    request.directions.forEach((direction, index) => {
+      const directionError = module.search_set_direction(
+        index,
+        direction / 90,
+      )
+      if (directionError !== 0) {
+        throw new Error(`WASM scanner rejected direction ${direction}°.`)
+      }
+    })
 
     request.constraints.forEach((constraint, index) => {
       const filterError = module.search_set_filter(

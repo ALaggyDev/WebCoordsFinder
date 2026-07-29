@@ -53,7 +53,7 @@ function documentWithSavedSearch() {
       total: 10n,
       matchCount: 2n,
       checksPerSecond: 100,
-      results: [{ x: 3, y: 0, z: 0, badBlocks: 0 }],
+      results: [{ x: 3, y: 0, z: 0, badBlocks: 0, direction: 0 }],
     },
     1234,
   )
@@ -157,7 +157,7 @@ describe('Export / Run workspace', () => {
       screen.getByRole('button', { name: 'Resume saved search' }),
     ).toBeEnabled()
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '40')
-    expect(screen.getByRole('row', { name: '3 0 0 0' })).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: '3 0 0 0° 0' })).toBeInTheDocument()
     expect(
       screen.getByText(/Progress and the first 1,000 matches are saved/),
     ).toBeInTheDocument()

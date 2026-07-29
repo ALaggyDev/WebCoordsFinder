@@ -41,14 +41,14 @@ describe('project storage', () => {
       mime: 'image/webp',
     }
     second.scanner.webSearch = {
-      engineVersion: 1,
+      engineVersion: 2,
       requestKey: 'saved-search',
       phase: 'paused',
       processed: '12345678901234567',
       total: '99999999999999999',
       matchCount: '42',
       checksPerSecond: 2_500_000,
-      results: [{ x: 12, y: -4, z: 99, badBlocks: 0 }],
+      results: [{ x: 12, y: -4, z: 99, badBlocks: 0, direction: 180 }],
       updatedAt: 1234,
     }
 
@@ -78,7 +78,7 @@ describe('project storage', () => {
       scanner: {
         webSearch: {
           processed: '12345678901234567',
-          results: [{ x: 12, y: -4, z: 99, badBlocks: 0 }],
+          results: [{ x: 12, y: -4, z: 99, badBlocks: 0, direction: 180 }],
         },
       },
     })

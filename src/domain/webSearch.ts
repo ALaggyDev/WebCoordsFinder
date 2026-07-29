@@ -2,13 +2,14 @@ import { confirmedUniqueEvidence, validateForExport } from './exportConfig'
 import type {
   EditorDocument,
   PersistedWebSearchPhase,
+  SearchDirection,
   TextureAlgorithm,
   WebSearchCheckpoint,
   WebSearchResult,
 } from './types'
 
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 1
+export const WEB_SEARCH_ENGINE_VERSION = 2
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -28,6 +29,7 @@ export interface WebSearchConstraint {
 
 export interface WebSearchRequest {
   mode: number
+  directions: SearchDirection[]
   xStart: number
   xEnd: number
   yStart: number
@@ -111,12 +113,15 @@ export function createWebSearchRequest(
     (BigInt(xEnd) - BigInt(xStart) + 1n) *
     (BigInt(yEnd) - BigInt(yStart) + 1n) *
     (BigInt(zEnd) - BigInt(zStart) + 1n)
-  if (volume > uint64Maximum) {
+  const directionalVolume =
+    volume * BigInt(document.scanner.directions.length)
+  if (directionalVolume > uint64Maximum) {
     throw new Error('The web search volume exceeds the WASM scanner limit.')
   }
 
   return {
     mode: textureModeIds[document.scanner.textureAlgorithm],
+    directions: document.scanner.directions,
     xStart,
     xEnd,
     yStart,
@@ -142,7 +147,8 @@ export function webSearchRequestVolume(request: WebSearchRequest): bigint {
   return (
     (BigInt(request.xEnd) - BigInt(request.xStart) + 1n) *
     (BigInt(request.yEnd) - BigInt(request.yStart) + 1n) *
-    (BigInt(request.zEnd) - BigInt(request.zStart) + 1n)
+    (BigInt(request.zEnd) - BigInt(request.zStart) + 1n) *
+    BigInt(request.directions.length)
   )
 }
 

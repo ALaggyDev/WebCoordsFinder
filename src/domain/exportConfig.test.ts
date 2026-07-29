@@ -152,6 +152,17 @@ describe('CoordsFinder export', () => {
     )
   })
 
+  it('rejects offsets that overflow after a selected X/Z rotation', () => {
+    const document = documentWith([
+      evidence('edge', { x: 0, y: 0, z: -128 }, 4, 0),
+    ])
+    document.scanner.directions = [0, 90]
+
+    expect(validateForExport(document).errors).toContain(
+      'Direction 90° rotates offset (0, 0, -128) outside the signed-byte range.',
+    )
+  })
+
   it('blocks export while compass orientation is unresolved', () => {
     const document = documentWith([
       evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),

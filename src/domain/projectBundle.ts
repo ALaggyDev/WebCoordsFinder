@@ -43,7 +43,7 @@ const projectSchema = z
           ),
         webSearch: z
           .object({
-            engineVersion: z.literal(1),
+            engineVersion: z.literal(2),
             requestKey: z.string(),
             phase: z.enum([
               'running',
@@ -62,6 +62,7 @@ const projectSchema = z
                 y: z.number().int(),
                 z: z.number().int(),
                 badBlocks: z.number().int().nonnegative(),
+                direction: searchDirectionSchema,
               }),
             ),
             error: z.string().optional(),

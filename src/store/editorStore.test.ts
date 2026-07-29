@@ -399,14 +399,14 @@ describe('unit-face geometry', () => {
 
   it('persists search checkpoints without adding history and preserves them through undo', () => {
     const checkpoint: WebSearchCheckpoint = {
-      engineVersion: 1,
+      engineVersion: 2,
       requestKey: 'request',
       phase: 'paused',
       processed: '125000',
       total: '1000000',
       matchCount: '17',
       checksPerSecond: 5_000_000,
-      results: [{ x: 1, y: 2, z: 3, badBlocks: 0 }],
+      results: [{ x: 1, y: 2, z: 3, badBlocks: 0, direction: 270 }],
       updatedAt: 1234,
     }
     useEditorStore.getState().setWebSearchCheckpoint(checkpoint)

@@ -8,6 +8,7 @@ enum {
     MODE_VANILLA_3 = 2,
     MODE_SODIUM_1 = 3,
     MODE_SODIUM_2 = 4,
+    MAX_DIRECTIONS = 4,
     MAX_FILTERS = 256,
     MAX_BATCH_RESULTS = 1024
 };
@@ -25,10 +26,13 @@ typedef struct {
     int32_t y;
     int32_t z;
     uint16_t bad_blocks;
+    uint8_t direction;
 } SearchResult;
 
-static Filter filters[MAX_FILTERS];
+static Filter directional_filters[MAX_DIRECTIONS][MAX_FILTERS];
 static SearchResult batch_results[MAX_BATCH_RESULTS];
+static uint8_t directions[MAX_DIRECTIONS];
+static uint8_t direction_set[MAX_DIRECTIONS];
 
 static int32_t search_x_start;
 static int32_t search_x_end;
@@ -42,7 +46,10 @@ static int32_t cursor_z;
 static int32_t search_mode;
 static int32_t search_max_bad_blocks;
 static int32_t search_filter_count;
+static int32_t search_direction_count;
+static int32_t cursor_direction;
 static uint32_t batch_result_count;
+static uint64_t positions_per_direction;
 static uint64_t processed_positions;
 static uint64_t total_positions;
 static uint64_t matching_positions;
@@ -232,6 +239,14 @@ static void advance_cursor(void)
         return;
     }
 
+    if (cursor_direction + 1 < search_direction_count) {
+        cursor_direction += 1;
+        cursor_x = search_x_start;
+        cursor_y = search_y_start;
+        cursor_z = search_z_start;
+        return;
+    }
+
     search_finished = 1;
 }
 
@@ -245,12 +260,14 @@ int32_t search_configure(
     int32_t z_start,
     int32_t z_end,
     int32_t max_bad_blocks,
-    int32_t filter_count)
+    int32_t filter_count,
+    int32_t direction_count)
 {
     if (mode < MODE_VANILLA_1 || mode > MODE_SODIUM_2) return 1;
     if (x_start > x_end || y_start > y_end || z_start > z_end) return 2;
     if (max_bad_blocks < 0) return 3;
     if (filter_count < 1 || filter_count > MAX_FILTERS) return 4;
+    if (direction_count < 1 || direction_count > MAX_DIRECTIONS) return 6;
 
     uint64_t x_size = (uint64_t)((int64_t)x_end - x_start) + 1ull;
     uint64_t y_size = (uint64_t)((int64_t)y_end - y_start) + 1ull;
@@ -259,6 +276,13 @@ int32_t search_configure(
     uint64_t volume;
     if (!checked_multiply_u64(x_size, y_size, &xy_size)) return 5;
     if (!checked_multiply_u64(xy_size, z_size, &volume)) return 5;
+    uint64_t directional_volume;
+    if (!checked_multiply_u64(
+            volume,
+            (uint64_t)direction_count,
+            &directional_volume)) {
+        return 5;
+    }
 
     search_mode = mode;
     search_x_start = x_start;
@@ -269,14 +293,39 @@ int32_t search_configure(
     search_z_end = z_end;
     search_max_bad_blocks = max_bad_blocks;
     search_filter_count = filter_count;
+    search_direction_count = direction_count;
+    cursor_direction = 0;
     cursor_x = x_start;
     cursor_y = y_start;
     cursor_z = z_start;
     batch_result_count = 0;
+    positions_per_direction = volume;
     processed_positions = 0;
     matching_positions = 0;
-    total_positions = volume;
+    total_positions = directional_volume;
     search_finished = 0;
+    for (int32_t index = 0; index < MAX_DIRECTIONS; index += 1) {
+        direction_set[index] = 0;
+    }
+    return 0;
+}
+
+EXPORT("search_set_direction")
+int32_t search_set_direction(int32_t index, int32_t quarter_turns)
+{
+    if (index < 0 || index >= search_direction_count) return 1;
+    if (quarter_turns < 0 || quarter_turns > 3) return 2;
+
+    for (int32_t other = 0; other < search_direction_count; other += 1) {
+        if (other != index &&
+            direction_set[other] &&
+            directions[other] == quarter_turns) {
+            return 3;
+        }
+    }
+
+    directions[index] = (uint8_t)quarter_turns;
+    direction_set[index] = 1;
     return 0;
 }
 
@@ -299,11 +348,48 @@ int32_t search_set_filter(
         return 3;
     }
 
-    filters[index].x = (int8_t)x;
-    filters[index].y = (int8_t)y;
-    filters[index].z = (int8_t)z;
-    filters[index].rotation = (uint8_t)rotation;
-    filters[index].visible_mask = (uint8_t)visible_mask;
+    for (int32_t direction_index = 0;
+         direction_index < search_direction_count;
+         direction_index += 1) {
+        if (!direction_set[direction_index]) return 4;
+
+        int32_t directional_x;
+        int32_t directional_z;
+        int32_t quarter_turns = directions[direction_index];
+        switch (quarter_turns) {
+        case 1:
+            directional_x = -z;
+            directional_z = x;
+            break;
+        case 2:
+            directional_x = -x;
+            directional_z = -z;
+            break;
+        case 3:
+            directional_x = z;
+            directional_z = -x;
+            break;
+        case 0:
+        default:
+            directional_x = x;
+            directional_z = z;
+            break;
+        }
+        if (directional_x < -128 || directional_x > 127 ||
+            directional_z < -128 || directional_z > 127) {
+            return 2;
+        }
+
+        Filter* filter = &directional_filters[direction_index][index];
+        filter->x = (int8_t)directional_x;
+        filter->y = (int8_t)y;
+        filter->z = (int8_t)directional_z;
+        filter->rotation = (uint8_t)(
+            visible_mask == 3
+                ? (rotation + quarter_turns) % 4
+                : rotation);
+        filter->visible_mask = (uint8_t)visible_mask;
+    }
     return 0;
 }
 
@@ -322,13 +408,15 @@ int32_t search_restore(uint64_t processed, uint64_t matches)
         return 0;
     }
 
+    uint64_t directional_processed = processed % positions_per_direction;
+    cursor_direction = (int32_t)(processed / positions_per_direction);
     uint64_t x_size =
         (uint64_t)((int64_t)search_x_end - search_x_start) + 1ull;
     uint64_t y_size =
         (uint64_t)((int64_t)search_y_end - search_y_start) + 1ull;
     uint64_t xy_size = x_size * y_size;
-    uint64_t z_index = processed / xy_size;
-    uint64_t within_z = processed % xy_size;
+    uint64_t z_index = directional_processed / xy_size;
+    uint64_t within_z = directional_processed % xy_size;
     uint64_t y_index = within_z / x_size;
     uint64_t x_index = within_z % x_size;
 
@@ -350,7 +438,7 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
         int32_t bad_blocks = 0;
 
         for (int32_t index = 0; index < search_filter_count; index += 1) {
-            Filter filter = filters[index];
+            Filter filter = directional_filters[cursor_direction][index];
             int32_t x = wrap_add_i32(cursor_x, filter.x);
             int32_t y = wrap_add_i32(cursor_y, filter.y);
             int32_t z = wrap_add_i32(cursor_z, filter.z);
@@ -371,6 +459,7 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
                 result->y = cursor_y;
                 result->z = cursor_z;
                 result->bad_blocks = (uint16_t)bad_blocks;
+                result->direction = directions[cursor_direction];
                 batch_result_count += 1;
             }
         }
@@ -435,4 +524,12 @@ EXPORT("search_get_result_bad_blocks")
 int32_t search_get_result_bad_blocks(uint32_t index)
 {
     return index < batch_result_count ? batch_results[index].bad_blocks : 0;
+}
+
+EXPORT("search_get_result_direction")
+int32_t search_get_result_direction(uint32_t index)
+{
+    return index < batch_result_count
+        ? (int32_t)batch_results[index].direction * 90
+        : 0;
 }

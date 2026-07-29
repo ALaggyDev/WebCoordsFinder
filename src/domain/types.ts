@@ -154,6 +154,7 @@ export interface WebSearchResult {
   y: number
   z: number
   badBlocks: number
+  direction: SearchDirection
 }
 
 export type PersistedWebSearchPhase =
@@ -164,7 +165,7 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 1
+  engineVersion: 2
   requestKey: string
   phase: PersistedWebSearchPhase
   processed: string

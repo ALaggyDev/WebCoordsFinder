@@ -709,17 +709,19 @@ export function ExportRunDialog({
                           <th>X</th>
                           <th>Y</th>
                           <th>Z</th>
+                          <th>Direction</th>
                           <th>Errors</th>
                         </tr>
                       </thead>
                       <tbody>
                         {webSearch.results.map((result) => (
                           <tr
-                            key={`${result.x}:${result.y}:${result.z}`}
+                            key={`${result.x}:${result.y}:${result.z}:${result.direction}`}
                           >
                             <td>{result.x}</td>
                             <td>{result.y}</td>
                             <td>{result.z}</td>
+                            <td>{result.direction}°</td>
                             <td>{result.badBlocks}</td>
                           </tr>
                         ))}
