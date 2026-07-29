@@ -16,6 +16,7 @@ import {
   add3,
   axisColor,
   axisDisplayLabel,
+  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   distance,
@@ -176,6 +177,9 @@ function makeExtrusionPreview(
   ]
   try {
     previewScene.projection = refitProjection(previewScene)
+    faces.forEach((face) => {
+      face.normal = cameraFacingNormal(previewScene, face)
+    })
     return {
       scene: previewScene,
       blocks: extrusion.blocks,
@@ -929,7 +933,7 @@ export function EditorCanvas() {
         {tool === 'plane' && (
           <strong>
             {draft.length === 0
-              ? 'Click four corners clockwise to create the base faces'
+              ? 'Click top-left, top-right, bottom-right, then bottom-left'
               : `${4 - draft.length} corners remaining`}
           </strong>
         )}

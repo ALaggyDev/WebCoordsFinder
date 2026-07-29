@@ -6,6 +6,7 @@ import {
 } from '../domain/geometry'
 import type { WebSearchCheckpoint } from '../domain/types'
 import {
+  createEmptyDocument,
   createInitialDocument,
   evidenceWorldCoordinate,
   normalizeEditorDocument,
@@ -34,6 +35,20 @@ describe('unit-face geometry', () => {
       true,
     )
     expect(scene.faces[0].blockCoordinate).toEqual({ x: 0, y: 0, z: 0 })
+  })
+
+  it('uses trapezoid perspective for the initial visible-side normal', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+
+    const faces = useEditorStore.getState().document.scene.faces
+    expect(faces).toHaveLength(16)
+    expect(faces.every((entry) => entry.normal.z === -1)).toBe(true)
   })
 
   it('toggles connected unit edges without entering extrusion mode', () => {
@@ -179,6 +194,7 @@ describe('unit-face geometry', () => {
     expect(scene.faces).toHaveLength(25)
     expect(scene.observations).toHaveLength(6)
     expect(scene.projection.kind).toBe('camera')
+    expect(scene.faces.at(-1)?.normal).toEqual({ x: 0, y: 1, z: 0 })
   })
 
   it('extends within the plane without creating a camera or new anchors', () => {
@@ -196,6 +212,9 @@ describe('unit-face geometry', () => {
     expect(updated.faces).toHaveLength(27)
     expect(updated.observations).toHaveLength(4)
     expect(updated.projection.kind).toBe('planar')
+    expect(
+      updated.faces.slice(-3).every((entry) => entry.normal.z === face.normal.z),
+    ).toBe(true)
     const [outerSelection] = useEditorStore.getState().selectedEdges
     const outerEdge = selectedEdgeGeometry(updated, outerSelection)
     expect(outerEdge?.start.y).toBe(-3)

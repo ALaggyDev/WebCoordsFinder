@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   blockCoordinateForFace,
+  cameraCenter,
   chooseEdgeExtrusion,
   computeHomography,
   createEdgeExtrusionFaces,
@@ -10,6 +11,7 @@ import {
   faceVertex,
   fitCameraProjection,
   fitHomography,
+  inferInitialFaceNormal,
   isAxisMappingComplete,
   mappedVector,
   planarProjectionForPlane,
@@ -47,6 +49,41 @@ const planeU = { x: 1, y: 0, z: 0 }
 const planeV = { x: 0, y: 1, z: 0 }
 
 describe('global perspective geometry', () => {
+  it.each([
+    [
+      [
+        { x: 100, y: 100 },
+        { x: 300, y: 100 },
+        { x: 360, y: 300 },
+        { x: 40, y: 300 },
+      ],
+      { x: 0, y: 0, z: 1 },
+    ],
+    [
+      [
+        { x: 40, y: 100 },
+        { x: 360, y: 100 },
+        { x: 300, y: 300 },
+        { x: 100, y: 300 },
+      ],
+      { x: 0, y: 0, z: -1 },
+    ],
+    [
+      [
+        { x: 100, y: 100 },
+        { x: 300, y: 100 },
+        { x: 305, y: 300 },
+        { x: 95, y: 300 },
+      ],
+      { x: 0, y: 0, z: 1 },
+    ],
+  ] satisfies [[Point2, Point2, Point2, Point2], Point3][])(
+    'infers the initial visible side from trapezoid perspective %#',
+    (corners, expected) => {
+      expect(inferInitialFaceNormal(corners)).toEqual(expected)
+    },
+  )
+
   it.each([
     [{ x: 1, y: 0, z: 0 }, { x: 2, y: 4, z: 5 }],
     [{ x: -1, y: 0, z: 0 }, { x: 3, y: 4, z: 5 }],
@@ -403,6 +440,106 @@ describe('global perspective geometry', () => {
     expect(created.map((entry) => entry.blockCoordinate.z)).toEqual([0, 1, 2])
   })
 
+  it.each([
+    ['top', { x: 0, y: -1, z: 0 }],
+    ['right', { x: 1, y: 0, z: 0 }],
+    ['bottom', { x: 0, y: 1, z: 0 }],
+    ['left', { x: -1, y: 0, z: 0 }],
+  ] as const)(
+    'inherits the source normal for a planar %s-edge extension',
+    (edge, axis) => {
+      const scene: SceneGeometry = {
+        faces: [face],
+        observations: [],
+        projection: {
+          kind: 'planar',
+          origin: face.blockCoordinate,
+          uAxis: planeU,
+          vAxis: planeV,
+          cornerLattice: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 1, y: 1, z: 0 },
+            { x: 0, y: 1, z: 0 },
+          ],
+          homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        },
+        axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+      }
+
+      const [created] = createEdgeExtrusionFaces(
+        scene,
+        [{ faceId: face.id, edge }],
+        axis,
+        1,
+        () => edge,
+      )
+
+      expect(created.normal).toEqual(face.normal)
+    },
+  )
+
+  it('preserves a manually flipped source normal during planar extension', () => {
+    const flipped = { ...face, normal: { x: 0, y: 0, z: -1 } }
+    const scene: SceneGeometry = {
+      faces: [flipped],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: face.blockCoordinate,
+        uAxis: planeU,
+        vAxis: planeV,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 1, y: 1, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    const [created] = createEdgeExtrusionFaces(
+      scene,
+      [{ faceId: face.id, edge: 'top' }],
+      { x: 0, y: -1, z: 0 },
+      1,
+      () => 'flipped-extension',
+    )
+
+    expect(created.normal).toEqual(flipped.normal)
+  })
+
+  it('orients a hinged face toward the fitted camera', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: [
+          100, 0, 0, -50,
+          0, 100, 0, -500,
+          0, 0, 1, -5,
+        ],
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    expect(cameraCenter(scene)).toEqual({ x: 0.5, y: 5, z: 5 })
+    const [created] = createEdgeExtrusionFaces(
+      scene,
+      [{ faceId: face.id, edge: 'top' }],
+      { x: 0, y: 0, z: 1 },
+      1,
+      () => 'hinged',
+    )
+
+    expect(created.normal).toEqual({ x: 0, y: 1, z: 0 })
+  })
+
   it('chooses extrusion direction and block count from the pointer', () => {
     const matrix: Matrix3x4 = [
       800, 0, 320, 100,
@@ -572,7 +709,7 @@ describe('global perspective geometry', () => {
     expect(created).toEqual({
       id: 'negative',
       blockCoordinate: { x: 0, y: -1, z: 0 },
-      normal: { x: 0, y: 0, z: -1 },
+      normal: { x: 0, y: 0, z: 1 },
     })
   })
 

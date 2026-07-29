@@ -2,9 +2,11 @@ import { create } from 'zustand'
 import {
   add3,
   blockCoordinateForFace,
+  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   flatConnectedFaceIds,
+  inferInitialFaceNormal,
   isAxisMappingComplete,
   mappedAnchorOffset,
   meshEdgeKey,
@@ -53,14 +55,18 @@ const demoCorners: [Point2, Point2, Point2, Point2] = [
 const planeOrigin = { x: 0, y: 0, z: 0 }
 const planeU = { x: 1, y: 0, z: 0 }
 const planeV = { x: 0, y: 1, z: 0 }
-const planeNormal = { x: 0, y: 0, z: 1 }
 
-function createFaceGrid(columns: number, rows: number, prefix: string): MeshFace[] {
+function createFaceGrid(
+  columns: number,
+  rows: number,
+  prefix: string,
+  normal: Point3,
+): MeshFace[] {
   return Array.from({ length: rows }).flatMap((_, row) =>
     Array.from({ length: columns }).map((__, column) => ({
       id: `${prefix}-${column}-${row}`,
       blockCoordinate: { x: column, y: row, z: 0 },
-      normal: planeNormal,
+      normal,
     })),
   )
 }
@@ -84,7 +90,12 @@ function createPlanarScene(
     weight: 1,
   }))
   return {
-    faces: createFaceGrid(columns, rows, prefix),
+    faces: createFaceGrid(
+      columns,
+      rows,
+      prefix,
+      inferInitialFaceNormal(corners),
+    ),
     observations,
     projection: planarProjectionForPlane(
       planeOrigin,
@@ -554,6 +565,9 @@ export const useEditorStore = create<EditorState>((set) => ({
               })
             })
             document.scene.projection = refitProjection(document.scene)
+            faces.forEach((face) => {
+              face.normal = cameraFacingNormal(document.scene, face)
+            })
           }
         }),
         selectedEdges: outerEdges,

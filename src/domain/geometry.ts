@@ -504,6 +504,58 @@ export function faceCornersLattice(
   ]
 }
 
+export function cameraCenter(scene: SceneGeometry): Point3 | undefined {
+  if (scene.projection.kind !== 'camera') return undefined
+  const matrix = scene.projection.matrix
+  try {
+    const [x, y, z] = solveLinearSystem(
+      [
+        [matrix[0], matrix[1], matrix[2]],
+        [matrix[4], matrix[5], matrix[6]],
+        [matrix[8], matrix[9], matrix[10]],
+      ],
+      [-matrix[3], -matrix[7], -matrix[11]],
+    )
+    return [x, y, z].every(Number.isFinite) ? { x, y, z } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const MIN_CAMERA_FACING_COSINE = 0.02
+
+function normalFacingPoint(
+  face: MeshFace,
+  point: Point3,
+): Point3 {
+  const center = scale3(
+    faceCornersLattice(face).reduce(
+      (sum, corner) => add3(sum, corner),
+      { x: 0, y: 0, z: 0 },
+    ),
+    0.25,
+  )
+  const toPoint = subtract3(point, center)
+  const distanceToPoint = Math.hypot(toPoint.x, toPoint.y, toPoint.z)
+  const normalLength = Math.hypot(face.normal.x, face.normal.y, face.normal.z)
+  if (distanceToPoint <= EPSILON || normalLength <= EPSILON) return face.normal
+
+  const facing = dot3(face.normal, toPoint)
+  const cosine = facing / (distanceToPoint * normalLength)
+  if (!Number.isFinite(cosine) || Math.abs(cosine) < MIN_CAMERA_FACING_COSINE) {
+    return face.normal
+  }
+  return cosine >= 0 ? face.normal : negate3(face.normal)
+}
+
+export function cameraFacingNormal(
+  scene: SceneGeometry,
+  face: MeshFace,
+): Point3 {
+  const center = cameraCenter(scene)
+  return center ? normalFacingPoint(face, center) : face.normal
+}
+
 export function planarProjectionForPlane(
   origin: Point3,
   uAxis: Point3,
@@ -727,6 +779,38 @@ export function flattenPoints(points: Point2[]): number[] {
 
 export function distance(a: Point2, b: Point2): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+const MIN_TRAPEZOID_EDGE_RATIO = 1.1
+
+export function inferInitialFaceNormal(
+  corners: [Point2, Point2, Point2, Point2],
+): Point3 {
+  const signedArea = corners.reduce((sum, corner, index) => {
+    const next = corners[(index + 1) % corners.length]
+    return sum + corner.x * next.y - next.x * corner.y
+  }, 0)
+  const windingFallback =
+    signedArea >= 0 ? { x: 0, y: 0, z: 1 } : { x: 0, y: 0, z: -1 }
+
+  const topMidpointY = (corners[0].y + corners[1].y) * 0.5
+  const bottomMidpointY = (corners[2].y + corners[3].y) * 0.5
+  if (signedArea <= EPSILON || topMidpointY >= bottomMidpointY) {
+    return windingFallback
+  }
+
+  const topLength = distance(corners[0], corners[1])
+  const bottomLength = distance(corners[3], corners[2])
+  if (topLength <= EPSILON || bottomLength <= EPSILON) {
+    return windingFallback
+  }
+  if (bottomLength / topLength >= MIN_TRAPEZOID_EDGE_RATIO) {
+    return { x: 0, y: 0, z: 1 }
+  }
+  if (topLength / bottomLength >= MIN_TRAPEZOID_EDGE_RATIO) {
+    return { x: 0, y: 0, z: -1 }
+  }
+  return windingFallback
 }
 
 export interface FaceEdgeGeometry {
@@ -1048,11 +1132,14 @@ export function createEdgeExtrusionFaces(
   const seen = new Set<string>()
   const result: MeshFace[] = []
   for (const selection of selections) {
+    const sourceFace = scene.faces.find((face) => face.id === selection.faceId)
     const geometry = selectedEdgeGeometry(scene, selection)
-    if (!geometry) continue
+    if (!sourceFace || !geometry) continue
     const key = meshEdgeKey(geometry.start, geometry.end)
     if (seen.has(key)) continue
     seen.add(key)
+    const coplanar =
+      Math.abs(dot3(sourceFace.normal, extrusionAxis)) <= EPSILON
     for (let depth = 0; depth < blocks; depth += 1) {
       const start = add3(geometry.start, scale3(extrusionAxis, depth))
       const end = add3(geometry.end, scale3(extrusionAxis, depth))
@@ -1062,15 +1149,19 @@ export function createEdgeExtrusionFaces(
         add3(end, extrusionAxis),
         add3(start, extrusionAxis),
       ]
-      result.push({
+      const face: MeshFace = {
         id: makeId(),
         blockCoordinate: {
           x: Math.min(...corners.map((corner) => corner.x)),
           y: Math.min(...corners.map((corner) => corner.y)),
           z: Math.min(...corners.map((corner) => corner.z)),
         },
-        normal: cross3(geometry.direction, extrusionAxis),
-      })
+        normal: coplanar
+          ? sourceFace.normal
+          : cross3(geometry.direction, extrusionAxis),
+      }
+      if (!coplanar) face.normal = cameraFacingNormal(scene, face)
+      result.push(face)
     }
   }
   return result
