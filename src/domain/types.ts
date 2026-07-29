@@ -147,6 +147,33 @@ export interface SearchBounds {
   zEnd: number
 }
 
+export interface WebSearchResult {
+  x: number
+  y: number
+  z: number
+  badBlocks: number
+}
+
+export type PersistedWebSearchPhase =
+  | 'running'
+  | 'paused'
+  | 'stopped'
+  | 'completed'
+  | 'error'
+
+export interface WebSearchCheckpoint {
+  engineVersion: 1
+  requestKey: string
+  phase: PersistedWebSearchPhase
+  processed: string
+  total: string
+  matchCount: string
+  checksPerSecond: number
+  results: WebSearchResult[]
+  error?: string
+  updatedAt: number
+}
+
 export interface ScannerSettings {
   textureAlgorithm: TextureAlgorithm
   directions: SearchDirection[]
@@ -157,6 +184,7 @@ export interface ScannerSettings {
   maxBadBlocks: number
   printChunks: boolean
   confidenceThreshold: number
+  webSearch: WebSearchCheckpoint | null
 }
 
 export interface EditorDocument {

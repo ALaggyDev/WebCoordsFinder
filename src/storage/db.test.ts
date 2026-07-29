@@ -40,6 +40,17 @@ describe('project storage', () => {
       height: 720,
       mime: 'image/webp',
     }
+    second.scanner.webSearch = {
+      engineVersion: 1,
+      requestKey: 'saved-search',
+      phase: 'paused',
+      processed: '12345678901234567',
+      total: '99999999999999999',
+      matchCount: '42',
+      checksPerSecond: 2_500_000,
+      results: [{ x: 12, y: -4, z: 99, badBlocks: 0 }],
+      updatedAt: 1234,
+    }
 
     await persistImage(first.image.key, new Blob(['first'], { type: 'image/png' }))
     await persistImage(second.image.key, new Blob(['second'], { type: 'image/webp' }))
@@ -64,6 +75,12 @@ describe('project storage', () => {
     expect(restored?.document).toMatchObject({
       projectName: 'End island',
       image: { src: '' },
+      scanner: {
+        webSearch: {
+          processed: '12345678901234567',
+          results: [{ x: 12, y: -4, z: 99, badBlocks: 0 }],
+        },
+      },
     })
     expect(restored?.imageBlob).toBeDefined()
   })

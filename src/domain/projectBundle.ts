@@ -41,6 +41,33 @@ const projectSchema = z
             (directions) => new Set(directions).size === directions.length,
             { message: 'Search directions must be unique.' },
           ),
+        webSearch: z
+          .object({
+            engineVersion: z.literal(1),
+            requestKey: z.string(),
+            phase: z.enum([
+              'running',
+              'paused',
+              'stopped',
+              'completed',
+              'error',
+            ]),
+            processed: z.string().regex(/^\d+$/),
+            total: z.string().regex(/^\d+$/),
+            matchCount: z.string().regex(/^\d+$/),
+            checksPerSecond: z.number(),
+            results: z.array(
+              z.object({
+                x: z.number().int(),
+                y: z.number().int(),
+                z: z.number().int(),
+                badBlocks: z.number().int().nonnegative(),
+              }),
+            ),
+            error: z.string().optional(),
+            updatedAt: z.number(),
+          })
+          .nullable(),
       })
       .passthrough(),
   })

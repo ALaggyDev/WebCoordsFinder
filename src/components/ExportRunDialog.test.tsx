@@ -1,5 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createWebSearchCheckpoint,
+  createWebSearchRequest,
+  webSearchRequestKey,
+} from '../domain/webSearch'
+import type { FaceEvidence } from '../domain/types'
 import { createInitialDocument, useEditorStore } from '../store/editorStore'
 import { Inspector } from './Inspector'
 
@@ -11,6 +17,47 @@ beforeEach(() => {
 })
 
 afterEach(cleanup)
+
+function documentWithSavedSearch() {
+  const document = createInitialDocument()
+  const anchor = document.scene.faces[0]
+  const evidence: FaceEvidence = {
+    id: anchor.id,
+    faceId: anchor.id,
+    latticeCoordinate: anchor.blockCoordinate,
+    localNormal: anchor.normal,
+    blockId: 'stone',
+    stateCount: 2,
+    selectedVariant: 0,
+    reviewStatus: 'confirmed',
+  }
+  document.anchorFaceId = anchor.id
+  document.scene.axisMapping = { a: 'x+', b: 'y+', c: 'z+' }
+  document.scanner.compassResolved = true
+  document.scanner.bounds = {
+    xStart: 0,
+    xEnd: 9,
+    yStart: 0,
+    yEnd: 0,
+    zStart: 0,
+    zEnd: 0,
+  }
+  document.evidence = [evidence]
+  const request = createWebSearchRequest(document)
+  document.scanner.webSearch = createWebSearchCheckpoint(
+    webSearchRequestKey(request),
+    {
+      phase: 'stopped',
+      processed: 4n,
+      total: 10n,
+      matchCount: 2n,
+      checksPerSecond: 100,
+      results: [{ x: 3, y: 0, z: 0, badBlocks: 0 }],
+    },
+    1234,
+  )
+  return document
+}
 
 describe('Export / Run workspace', () => {
   it('keeps shared and CoordsFinder-only settings separated in the sidebar', () => {
@@ -48,7 +95,7 @@ describe('Export / Run workspace', () => {
     ])
   })
 
-  it('opens the runtime comparison and leaves web search disabled', () => {
+  it('opens the runtime comparison and blocks web search until setup is valid', () => {
     render(
       <Inspector
         busy={false}
@@ -69,7 +116,7 @@ describe('Export / Run workspace', () => {
     expect(screen.getByText('CoordsFinder CPU')).toBeInTheDocument()
     expect(screen.getByText('CoordsFinder CUDA')).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Web search coming soon' }),
+      screen.getByRole('button', { name: 'Run web search' }),
     ).toBeDisabled()
   })
 
@@ -88,5 +135,30 @@ describe('Export / Run workspace', () => {
     )
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('restores saved progress and candidates as a resumable search', () => {
+    useEditorStore.setState({
+      document: documentWithSavedSearch(),
+      step: 'export',
+    })
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+
+    expect(
+      screen.getByRole('button', { name: 'Resume saved search' }),
+    ).toBeEnabled()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '40')
+    expect(screen.getByRole('row', { name: '3 0 0 0' })).toBeInTheDocument()
+    expect(
+      screen.getByText(/Progress and the first 1,000 matches are saved/),
+    ).toBeInTheDocument()
   })
 })

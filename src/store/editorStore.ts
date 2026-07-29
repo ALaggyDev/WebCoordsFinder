@@ -39,6 +39,7 @@ import type {
   ScannerSettings,
   SearchDirection,
   SelectedEdge,
+  WebSearchCheckpoint,
   WorldAxisLabel,
 } from '../domain/types'
 
@@ -113,6 +114,7 @@ function createDefaultScanner(): ScannerSettings {
     maxBadBlocks: 0,
     printChunks: true,
     confidenceThreshold: 0.08,
+    webSearch: null,
   }
 }
 
@@ -331,6 +333,7 @@ interface EditorState {
   clearReviewQueue: () => void
   updateScanner: (patch: Partial<ScannerSettings>) => void
   updateBounds: (patch: Partial<ScannerSettings['bounds']>) => void
+  setWebSearchCheckpoint: (checkpoint: WebSearchCheckpoint | null) => void
   setProjectName: (name: string) => void
   undo: () => void
   redo: () => void
@@ -795,6 +798,16 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scanner.bounds = { ...document.scanner.bounds, ...patch }
       }),
     ),
+  setWebSearchCheckpoint: (webSearch) =>
+    set((state) => ({
+      document: {
+        ...state.document,
+        scanner: {
+          ...state.document.scanner,
+          webSearch,
+        },
+      },
+    })),
   setProjectName: (projectName) =>
     set((state) =>
       mutateDocument(state, (document) => {
@@ -805,8 +818,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       const previous = state.past.at(-1)
       if (!previous) return state
+      const document = structuredClone(previous)
+      document.scanner.webSearch = state.document.scanner.webSearch
       return {
-        document: previous,
+        document,
         past: state.past.slice(0, -1),
         future: [state.document, ...state.future].slice(0, 60),
       }
@@ -815,8 +830,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       const next = state.future[0]
       if (!next) return state
+      const document = structuredClone(next)
+      document.scanner.webSearch = state.document.scanner.webSearch
       return {
-        document: next,
+        document,
         past: [...state.past, state.document].slice(-60),
         future: state.future.slice(1),
       }

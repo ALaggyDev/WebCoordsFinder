@@ -4,6 +4,7 @@ import {
   projectionInfo,
   selectedEdgeGeometry,
 } from '../domain/geometry'
+import type { WebSearchCheckpoint } from '../domain/types'
 import {
   createInitialDocument,
   normalizeEditorDocument,
@@ -314,6 +315,36 @@ describe('unit-face geometry', () => {
     useEditorStore.getState().redo()
     expect(useEditorStore.getState().document.scene.observations[0].image).toEqual(
       moved,
+    )
+  })
+
+  it('persists search checkpoints without adding history and preserves them through undo', () => {
+    const checkpoint: WebSearchCheckpoint = {
+      engineVersion: 1,
+      requestKey: 'request',
+      phase: 'paused',
+      processed: '125000',
+      total: '1000000',
+      matchCount: '17',
+      checksPerSecond: 5_000_000,
+      results: [{ x: 1, y: 2, z: 3, badBlocks: 0 }],
+      updatedAt: 1234,
+    }
+    useEditorStore.getState().setWebSearchCheckpoint(checkpoint)
+    expect(useEditorStore.getState().past).toHaveLength(0)
+
+    const observation = useEditorStore.getState().document.scene.observations[0]
+    useEditorStore.getState().moveObservation(observation.id, {
+      x: observation.image.x + 10,
+      y: observation.image.y + 10,
+    })
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().document.scanner.webSearch).toEqual(
+      checkpoint,
+    )
+    useEditorStore.getState().redo()
+    expect(useEditorStore.getState().document.scanner.webSearch).toEqual(
+      checkpoint,
     )
   })
 })

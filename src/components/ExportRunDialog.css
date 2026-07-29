@@ -235,6 +235,200 @@ body.export-run-dialog-open {
   line-height: 1.55;
 }
 
+.web-search-progress {
+  padding-top: 10px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.web-search-start-actions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.web-search-start-actions button {
+  min-width: 0;
+}
+
+.web-search-progress-heading,
+.web-search-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.web-search-progress-heading > strong {
+  font: 600 11px var(--mono);
+}
+
+.web-search-phase {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent) !important;
+  font-size: 9px;
+}
+
+.web-search-phase.paused,
+.web-search-phase.stopped {
+  color: #e5c98d !important;
+}
+
+.web-search-phase.error {
+  color: #ff9c98 !important;
+}
+
+.web-search-progress progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  appearance: none;
+  background: #080d10;
+  border: 0;
+  border-radius: 99px;
+}
+
+.web-search-progress progress::-webkit-progress-bar {
+  background: #080d10;
+}
+
+.web-search-progress progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 99px;
+}
+
+.web-search-progress progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 99px;
+}
+
+.web-search-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.web-search-stats > div {
+  min-width: 0;
+  padding: 8px;
+  display: grid;
+  gap: 1px;
+  background: #0b1115;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.web-search-stats span {
+  font-size: 8px;
+}
+
+.web-search-stats strong {
+  overflow: hidden;
+  font: 600 10px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-search-stats small {
+  color: var(--muted);
+  font: inherit;
+}
+
+.web-search-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.web-search-controls button {
+  min-width: 0;
+}
+
+.web-search-checkpoint-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.web-search-checkpoint-note svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.web-search-clear {
+  align-self: flex-start;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.web-search-clear:hover {
+  color: #ff9c98;
+}
+
+.web-search-results {
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.web-search-results-heading strong {
+  font-size: 10px;
+}
+
+.web-search-results-heading span,
+.web-search-results > small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.web-search-results-scroll {
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.web-search-results table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 9px var(--mono);
+}
+
+.web-search-results th,
+.web-search-results td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.web-search-results th {
+  position: sticky;
+  top: 0;
+  color: var(--muted);
+  background: #0b1115;
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.web-search-results tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .export-run-config-preview {
   border-top: 1px solid var(--border-soft);
 }
