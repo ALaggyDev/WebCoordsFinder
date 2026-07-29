@@ -827,7 +827,7 @@ function ImageInspector({
         </div>
       </div>
       <button className="primary-button full" type="button" onClick={onOpenImage}>
-        <Upload size={16} /> Choose another image
+        <Upload size={16} /> Open image in new project
       </button>
       <div className="privacy-panel">
         <div><Check size={15} /><span>Processed in this browser</span></div>

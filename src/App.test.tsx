@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
@@ -7,31 +13,56 @@ import {
   useEditorStore,
 } from './store/editorStore'
 
+const storageMocks = vi.hoisted(() => ({
+  clearAllData: vi.fn(),
+  getActiveProjectId: vi.fn(),
+  listProjects: vi.fn(),
+  loadProject: vi.fn(),
+  persistImage: vi.fn(),
+  persistProject: vi.fn(),
+  setActiveProjectId: vi.fn(),
+}))
+
 vi.mock('./components/EditorCanvas', () => ({ EditorCanvas: () => null }))
 vi.mock('./components/Inspector', () => ({ Inspector: () => null }))
 vi.mock('./components/ToolRail', () => ({ ToolRail: () => null }))
 vi.mock('./components/TopBar', () => ({
   TopBar: ({
+    onOpenImage,
     onOpenProjects,
   }: {
+    onOpenImage: () => void
     onOpenProjects: () => void
   }) => (
-    <button type="button" onClick={onOpenProjects}>
-      Open project library
-    </button>
+    <>
+      <button type="button" onClick={onOpenImage}>
+        Open image
+      </button>
+      <button type="button" onClick={onOpenProjects}>
+        Open project library
+      </button>
+    </>
   ),
 }))
-vi.mock('./storage/db', () => ({
-  clearAllData: vi.fn().mockResolvedValue(undefined),
-  getActiveProjectId: vi.fn().mockReturnValue(null),
-  listProjects: vi.fn().mockResolvedValue([]),
-  loadProject: vi.fn().mockResolvedValue(null),
-  persistImage: vi.fn().mockResolvedValue(undefined),
-  persistProject: vi.fn().mockResolvedValue(undefined),
-  setActiveProjectId: vi.fn(),
-}))
+vi.mock('./storage/db', () => storageMocks)
 
 beforeEach(() => {
+  vi.clearAllMocks()
+  storageMocks.clearAllData.mockResolvedValue(undefined)
+  storageMocks.getActiveProjectId.mockReturnValue(null)
+  storageMocks.listProjects.mockResolvedValue([])
+  storageMocks.loadProject.mockResolvedValue(null)
+  storageMocks.persistImage.mockResolvedValue(undefined)
+  storageMocks.persistProject.mockImplementation(
+    async (id, nextDocument) => ({
+      id,
+      name: nextDocument.projectName,
+      imageName: nextDocument.image.name,
+      imageKey: nextDocument.image.key,
+      updatedAt: Date.now(),
+    }),
+  )
+
   useEditorStore.setState({
     document: createInitialDocument(),
     step: 'faces',
@@ -44,7 +75,11 @@ beforeEach(() => {
   })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 describe('face keyboard shortcuts', () => {
   it('shows the start menu instead of opening the demo for a fresh visitor', async () => {
@@ -73,6 +108,92 @@ describe('face keyboard shortcuts', () => {
       screen.getByRole('dialog', { name: 'Projects' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Example projects')).toBeInTheDocument()
+  })
+
+  it('creates and switches to a new project when opening an image', async () => {
+    const currentDocument = createInitialDocument()
+    currentDocument.projectName = 'Existing project'
+    const currentImageKey = currentDocument.image.key
+    storageMocks.getActiveProjectId.mockReturnValue('project-existing')
+    storageMocks.listProjects.mockResolvedValue([
+      {
+        id: 'project-existing',
+        name: currentDocument.projectName,
+        imageName: currentDocument.image.name,
+        imageKey: currentImageKey,
+        updatedAt: 1,
+      },
+    ])
+    storageMocks.loadProject.mockResolvedValue({
+      id: 'project-existing',
+      document: currentDocument,
+    })
+    vi.stubGlobal(
+      'Image',
+      class {
+        src = ''
+        naturalWidth = 1920
+        naturalHeight = 1080
+
+        decode() {
+          return Promise.resolve()
+        }
+      },
+    )
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:new-image'),
+      revokeObjectURL: vi.fn(),
+    })
+    const newImageId = '00000000-0000-4000-8000-000000000001'
+    const newProjectId = '00000000-0000-4000-8000-000000000002'
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(newImageId)
+      .mockReturnValueOnce(newProjectId)
+
+    const { container } = render(<App />)
+    await waitFor(() =>
+      expect(useEditorStore.getState().document.projectName).toBe(
+        'Existing project',
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open image' }))
+    const file = new File(['image'], 'second.png', { type: 'image/png' })
+    fireEvent.change(
+      container.querySelector('input[accept^="image/"]') as HTMLInputElement,
+      { target: { files: [file] } },
+    )
+
+    await waitFor(() =>
+      expect(storageMocks.setActiveProjectId).toHaveBeenCalledWith(
+        newProjectId,
+      ),
+    )
+    expect(storageMocks.persistProject).toHaveBeenCalledWith(
+      'project-existing',
+      expect.objectContaining({
+        projectName: 'Existing project',
+        image: expect.objectContaining({ key: currentImageKey }),
+      }),
+    )
+    expect(storageMocks.persistImage).toHaveBeenCalledWith(newImageId, file)
+    expect(storageMocks.persistProject).toHaveBeenCalledWith(
+      newProjectId,
+      expect.objectContaining({
+        projectName: 'second',
+        image: expect.objectContaining({
+          key: newImageId,
+          name: 'second.png',
+          src: 'blob:new-image',
+        }),
+      }),
+    )
+    expect(useEditorStore.getState().document).toEqual(
+      expect.objectContaining({
+        projectName: 'second',
+        image: expect.objectContaining({ key: newImageId }),
+      }),
+    )
   })
 
   it('selects all faces with Ctrl+A', () => {

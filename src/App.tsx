@@ -67,8 +67,6 @@ interface WorkerResponse {
   confidence: number
 }
 
-type ImageImportMode = 'new' | 'replace'
-
 function restoreStoredDocument(saved: StoredProject) {
   const restored = normalizeEditorDocument(saved.document)
   if (saved.imageBlob) {
@@ -99,8 +97,6 @@ function uniqueProjectName(base: string, projects: ProjectSummary[]): string {
 function App() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
-  const [imageImportMode, setImageImportMode] =
-    useState<ImageImportMode>('replace')
   const [busy, setBusy] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
@@ -113,7 +109,6 @@ function App() {
   const [toast, setToast] = useState<ToastState>()
   const document = useEditorStore((state) => state.document)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
-  const replaceImage = useEditorStore((state) => state.replaceImage)
   const loadDocument = useEditorStore((state) => state.loadDocument)
   const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
   const setFaceTab = useEditorStore((state) => state.setFaceTab)
@@ -284,12 +279,11 @@ function App() {
     undo,
   ])
 
-  const openImagePicker = (mode: ImageImportMode) => {
-    setImageImportMode(mode)
+  const openImagePicker = () => {
     imageInputRef.current?.click()
   }
 
-  const importImage = async (file: File, mode: ImageImportMode) => {
+  const importImage = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       notify('Choose a PNG, JPEG, or WebP image.', 'warning')
       return
@@ -299,6 +293,9 @@ function App() {
     image.src = source
     try {
       await image.decode()
+      const currentSummary = activeProjectId
+        ? await persistProject(activeProjectId, document)
+        : undefined
       const key = crypto.randomUUID()
       await persistImage(key, file)
       const importedImage = {
@@ -309,26 +306,24 @@ function App() {
         height: image.naturalHeight,
         mime: file.type,
       }
-      if (mode === 'new' || !activeProjectId) {
-        const projectId = crypto.randomUUID()
-        const nextDocument = createEmptyDocument()
-        nextDocument.projectName = projectNameFromFile(file)
-        nextDocument.image = importedImage
-        const summary = await persistProject(projectId, nextDocument)
-        revokeObjectUrl(document.image.src)
-        loadDocument(nextDocument)
-        setActiveProjectId(projectId)
-        rememberActiveProject(projectId)
-        setProjects((current) => [
-          summary,
-          ...current.filter((project) => project.id !== projectId),
-        ])
-        notify('Project created. Click four corners to create the base faces.', 'success')
-      } else {
-        revokeObjectUrl(document.image.src)
-        replaceImage(importedImage)
-        notify('Image loaded. Click four corners to create the base faces.', 'success')
-      }
+      const projectId = crypto.randomUUID()
+      const nextDocument = createEmptyDocument()
+      nextDocument.projectName = projectNameFromFile(file)
+      nextDocument.image = importedImage
+      const summary = await persistProject(projectId, nextDocument)
+      revokeObjectUrl(document.image.src)
+      loadDocument(nextDocument)
+      setActiveProjectId(projectId)
+      rememberActiveProject(projectId)
+      setProjects((current) => [
+        summary,
+        ...(currentSummary ? [currentSummary] : []),
+        ...current.filter(
+          (project) =>
+            project.id !== projectId && project.id !== activeProjectId,
+        ),
+      ])
+      notify('Project created. Click four corners to create the base faces.', 'success')
     } catch {
       URL.revokeObjectURL(source)
       notify('The selected image could not be decoded.', 'warning')
@@ -574,9 +569,7 @@ function App() {
       <TopBar
         activeProjectId={activeProjectId}
         projects={projects}
-        onOpenImage={() =>
-          openImagePicker(activeProjectId ? 'replace' : 'new')
-        }
+        onOpenImage={openImagePicker}
         onOpenProjects={() => setProjectDialogOpen(true)}
       />
       <main className={activeProjectId ? 'workspace' : 'workspace no-project'}>
@@ -586,7 +579,7 @@ function App() {
             <EditorCanvas />
             <Inspector
               busy={busy}
-              onOpenImage={() => openImagePicker('replace')}
+              onOpenImage={openImagePicker}
               onAutoFill={autoFill}
             />
           </>
@@ -609,7 +602,7 @@ function App() {
                     <button
                       className="primary-button project-start-action"
                       type="button"
-                      onClick={() => openImagePicker('new')}
+                      onClick={openImagePicker}
                     >
                       <ImagePlus size={17} />
                       Upload an image
@@ -655,7 +648,7 @@ function App() {
         accept="image/png,image/jpeg,image/webp"
         onChange={(event) => {
           const file = event.target.files?.[0]
-          if (file) void importImage(file, imageImportMode)
+          if (file) void importImage(file)
           event.currentTarget.value = ''
         }}
       />
@@ -666,7 +659,7 @@ function App() {
         projects={projects}
         onClose={() => setProjectDialogOpen(false)}
         onSelectProject={(projectId) => void selectProject(projectId)}
-        onNewProject={() => openImagePicker('new')}
+        onNewProject={openImagePicker}
         onImportProject={() => projectInputRef.current?.click()}
         onImportExample={(exampleId) => void importExampleProject(exampleId)}
         onExportProject={() => void exportProject()}
