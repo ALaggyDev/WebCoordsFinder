@@ -26,7 +26,7 @@ function searchableDocument(): EditorDocument {
     reviewStatus: 'confirmed',
   }
   document.anchorFaceId = anchor.id
-  document.scene.axisMapping = { a: 'x+', b: 'y+', c: 'z+' }
+  document.scene.axisMapping = { a: 'x+', b: 'y-', c: 'z+' }
   document.scanner.compassResolved = true
   document.scanner.textureAlgorithm = 'Sodium-2'
   document.evidence = [evidence]

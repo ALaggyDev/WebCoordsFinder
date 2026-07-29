@@ -175,7 +175,7 @@ describe('unit-face geometry', () => {
         normal: { x: 0, y: 0, z: 1 },
       },
     ]
-    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+    document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
     useEditorStore.setState({ document })
 
     useEditorStore.getState().selectFace('side', false)
@@ -344,12 +344,12 @@ describe('unit-face geometry', () => {
     ).toBe(true)
   })
 
-  it('rejects a reflected axis mapping without adding history', () => {
+  it('rejects an opposite-handed axis mapping without adding history', () => {
     useEditorStore.getState().updateAxisMapping('a', 'x+')
     useEditorStore.getState().updateAxisMapping('c', 'y+')
     const historyBefore = useEditorStore.getState().past.length
 
-    useEditorStore.getState().updateAxisMapping('b', 'z+')
+    useEditorStore.getState().updateAxisMapping('b', 'z-')
 
     expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
       a: 'x+',
@@ -358,10 +358,10 @@ describe('unit-face geometry', () => {
     })
     expect(useEditorStore.getState().past).toHaveLength(historyBefore)
 
-    useEditorStore.getState().updateAxisMapping('b', 'z-')
+    useEditorStore.getState().updateAxisMapping('b', 'z+')
     expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
       a: 'x+',
-      b: 'z-',
+      b: 'z+',
       c: 'y+',
     })
     expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)

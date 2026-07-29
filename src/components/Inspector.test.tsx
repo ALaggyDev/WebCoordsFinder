@@ -12,7 +12,7 @@ import { Inspector } from './Inspector'
 
 beforeEach(() => {
   const document = createInitialDocument()
-  document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
     document,
@@ -291,7 +291,7 @@ describe('geometry deletion', () => {
     await waitFor(() => {
       expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
         a: 'x+',
-        b: 'z-',
+        b: 'z+',
         c: 'y+',
       })
     })
@@ -301,7 +301,7 @@ describe('geometry deletion', () => {
     expect(screen.queryByRole('option', { name: 'X?' })).not.toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Y?' })).not.toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Z?' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z-')
+    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z+')
     expect(
       screen.getByRole('button', { name: 'Unanchor abstract A axis' }),
     ).toHaveAttribute('aria-pressed', 'true')
@@ -313,23 +313,23 @@ describe('geometry deletion', () => {
     await waitFor(() => {
       expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
         a: 'x+',
-        b: 'z+',
+        b: 'z-',
         c: 'y-',
       })
     })
-    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z+')
+    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z-')
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Anchor abstract C axis' }),
     )
     fireEvent.change(screen.getByLabelText('Abstract B direction'), {
-      target: { value: 'z-' },
+      target: { value: 'z+' },
     })
 
     await waitFor(() => {
       expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
         a: 'x-',
-        b: 'z-',
+        b: 'z+',
         c: 'y-',
       })
     })

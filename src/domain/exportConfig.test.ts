@@ -40,7 +40,7 @@ const documentWith = (entries: FaceEvidence[]): EditorDocument => {
     evidence: entries,
     scene: {
       ...document.scene,
-      axisMapping: { a: 'x+', b: 'y+', c: 'z+' },
+      axisMapping: { a: 'x+', b: 'y-', c: 'z+' },
     },
     scanner: {
       ...document.scanner,
@@ -159,7 +159,7 @@ describe('CoordsFinder export', () => {
     document.scanner.compassResolved = false
 
     expect(validateForExport(document).errors).toContain(
-      'Choose a valid right-handed reference direction before export.',
+      'Choose a valid global axis reference before export.',
     )
   })
 })

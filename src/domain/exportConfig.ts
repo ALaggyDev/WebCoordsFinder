@@ -60,7 +60,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     !document.scanner.compassResolved ||
     !isAxisMappingComplete(document.scene.axisMapping)
   ) {
-    errors.push('Choose a valid right-handed reference direction before export.')
+    errors.push('Choose a valid global axis reference before export.')
   }
   if (
     document.scanner.directions.length === 0 ||

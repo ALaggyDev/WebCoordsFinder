@@ -83,11 +83,12 @@ const completeAxisMappings: AxisMapping[] = (() => {
         const mappedA = mappedVector(mapping, { x: 1, y: 0, z: 0 })
         const mappedB = mappedVector(mapping, { x: 0, y: 1, z: 0 })
         const mappedC = mappedVector(mapping, { x: 0, y: 0, z: 1 })
+        // The gizmo orders the basis as A (forward), C (up), B (right).
         if (
           mappedA &&
           mappedB &&
           mappedC &&
-          same3(cross3(mappedA, mappedB), mappedC)
+          same3(cross3(mappedA, mappedC), mappedB)
         ) {
           mappings.push(mapping)
         }

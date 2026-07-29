@@ -166,7 +166,7 @@ describe('global perspective geometry', () => {
         ],
         homography,
       },
-      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
     }
     const leftQuad = faceQuad(scene, face)!
     const rightQuad = faceQuad(scene, right)!
@@ -723,7 +723,7 @@ describe('global perspective geometry', () => {
         rmsError: 0,
         maxError: 0,
       },
-      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
     }
     const topFromPositiveExtrusion: MeshFace = {
       id: 'positive',
@@ -737,16 +737,16 @@ describe('global perspective geometry', () => {
     }
 
     expect(worldAlignedFaceCorners(scene, topFromPositiveExtrusion)).toEqual([
-      { x: 0, y: 1, z: 0 },
-      { x: 1, y: 1, z: 0 },
-      { x: 1, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 1, y: 1, z: 0 },
+      { x: 0, y: 1, z: 0 },
     ])
     expect(worldAlignedFaceCorners(scene, topAfterNegativeExtrusionAndFlip)).toEqual([
-      { x: 0, y: 0, z: 0 },
-      { x: 1, y: 0, z: 0 },
-      { x: 1, y: -1, z: 0 },
       { x: 0, y: -1, z: 0 },
+      { x: 1, y: -1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
     ])
   })
 
@@ -755,29 +755,41 @@ describe('global perspective geometry', () => {
     expect(isAxisMappingComplete(partial)).toBe(false)
     expect(faceForLocalNormal(partial, { x: 0, y: 0, z: 1 })).toBe('up')
 
-    const complete = { a: 'x+' as const, b: 'z-' as const, c: 'y+' as const }
+    const complete = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
     expect(isAxisMappingComplete(complete)).toBe(true)
     expect(mappedVector(complete, { x: 2, y: 3, z: 4 })).toEqual({
       x: 2,
       y: 4,
-      z: -3,
+      z: 3,
     })
   })
 
-  it('accepts only proper right-handed completions', () => {
+  it('completes the gizmo axes using A cross C equals B', () => {
     const partial = {
       a: 'x+' as const,
       b: 'unknown' as const,
       c: 'y+' as const,
     }
-    const reflected = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
-    const proper = { a: 'x+' as const, b: 'z-' as const, c: 'y+' as const }
+    const opposite = { a: 'x+' as const, b: 'z-' as const, c: 'y+' as const }
+    const proper = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
 
     expect(validAxisMappingCompletions(partial)).toEqual([proper])
-    expect(isAxisMappingComplete(reflected)).toBe(false)
+    expect(isAxisMappingComplete(opposite)).toBe(false)
     expect(isAxisMappingComplete(proper)).toBe(true)
-    expect(updatedAxisMapping(partial, 'b', 'z+')).toBe(partial)
-    expect(updatedAxisMapping(partial, 'b', 'z-')).toEqual(proper)
+    expect(updatedAxisMapping(partial, 'b', 'z-')).toBe(partial)
+    expect(updatedAxisMapping(partial, 'b', 'z+')).toEqual(proper)
+  })
+
+  it('infers negative X to the right of positive Z when C is up', () => {
+    const partial = {
+      a: 'z+' as const,
+      b: 'unknown' as const,
+      c: 'y+' as const,
+    }
+
+    expect(validAxisMappingCompletions(partial)).toEqual([
+      { a: 'z+', b: 'x-', c: 'y+' },
+    ])
   })
 
   it('reports every face still possible under a partial mapping', () => {

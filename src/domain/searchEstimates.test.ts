@@ -54,7 +54,7 @@ describe('placeholder search estimates', () => {
   it('increases hits and lowers precision as error tolerance rises', () => {
     const document = createInitialDocument()
     document.anchorFaceId = document.scene.faces[0].id
-    document.scene.axisMapping = { a: 'x+', b: 'y+', c: 'z+' }
+    document.scene.axisMapping = { a: 'x+', b: 'y-', c: 'z+' }
     document.scanner.compassResolved = true
     document.evidence = [
       {
