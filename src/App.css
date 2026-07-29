@@ -791,6 +791,11 @@ button:disabled {
     inset 0 0 14px color-mix(in srgb, var(--axis-color) 7%, transparent);
 }
 
+.axis-mapping-node:hover,
+.axis-mapping-node:focus-within {
+  z-index: 1;
+}
+
 .axis-mapping-name {
   width: 22px;
   height: 22px;
