@@ -118,6 +118,7 @@ function SectionTitle({
 
 function GeometryInspector() {
   const scene = useEditorStore((state) => state.document.scene)
+  const image = useEditorStore((state) => state.document.image)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedFaceCount = useEditorStore(
     (state) => state.selectedEvidenceIds.length,
@@ -184,6 +185,7 @@ function GeometryInspector() {
       <div className="subsection">
         <h3>Global axis directions</h3>
         <AxisMappingGizmo
+          directionReference={{ x: image.width / 2, y: image.height / 2 }}
           mapping={scene.axisMapping}
           onChange={setAxisMapping}
           scene={scene}

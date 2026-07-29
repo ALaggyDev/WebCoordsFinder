@@ -27,7 +27,7 @@ import {
   meshEdgeKey,
   projectionInfo,
   projectScenePoint,
-  projectedAbstractAxes,
+  projectedAbstractAxesAtImagePoint,
   refitProjection,
   selectedEdgeGeometry,
   same3,
@@ -189,14 +189,18 @@ function makeExtrusionPreview(
 function GlobalAxisGizmo({
   scene,
   origin,
+  directionReference,
   scale,
 }: {
   scene: SceneGeometry
   origin: Point2
+  directionReference: Point2
   scale: number
 }) {
-  const anchor = scene.faces[0]?.blockCoordinate ?? { x: 0, y: 0, z: 0 }
-  const directions = projectedAbstractAxes(scene, anchor)
+  const directions = projectedAbstractAxesAtImagePoint(
+    scene,
+    directionReference,
+  )
   const axes = (['a', 'b', 'c'] as AbstractAxis[]).filter(
     (axis) => directions[axis],
   )
@@ -905,6 +909,10 @@ export function EditorCanvas() {
             <GlobalAxisGizmo
               scene={sceneForRendering}
               origin={{ x: size.width - 74, y: size.height - 72 }}
+              directionReference={{
+                x: document.image.width / 2,
+                y: document.image.height / 2,
+              }}
               scale={1}
             />
           </Layer>

@@ -1091,21 +1091,76 @@ export function outerEdgeForExtrusion(
   return result?.edge
 }
 
-export function projectedAbstractAxes(
+function normalizedImageDirection(
+  x: number,
+  y: number,
+): Point2 | undefined {
+  const length = Math.hypot(x, y)
+  return length > EPSILON ? { x: x / length, y: y / length } : undefined
+}
+
+export function projectedAbstractAxesAtImagePoint(
   scene: SceneGeometry,
-  anchor: Point3,
+  imagePoint: Point2,
 ): Partial<Record<AbstractAxis, Point2>> {
-  const origin = projectScenePoint(scene, anchor)
-  if (!origin) return {}
   const result: Partial<Record<AbstractAxis, Point2>> = {}
-  for (const axis of ['a', 'b', 'c'] as const) {
-    const endpoint = projectScenePoint(scene, add3(anchor, abstractAxisVector(axis)))
-    if (!endpoint) continue
-    const delta = { x: endpoint.x - origin.x, y: endpoint.y - origin.y }
-    const length = Math.hypot(delta.x, delta.y)
-    if (length > EPSILON) {
-      result[axis] = { x: delta.x / length, y: delta.y / length }
+
+  if (scene.projection.kind === 'camera') {
+    const matrix = scene.projection.matrix
+    const reference =
+      scene.faces[0]?.blockCoordinate ??
+      scene.observations[0]?.lattice ??
+      { x: 0, y: 0, z: 0 }
+    const referenceVector = [reference.x, reference.y, reference.z, 1]
+    const referenceDepth = matrix
+      .slice(8, 12)
+      .reduce(
+        (sum, value, index) => sum + value * referenceVector[index],
+        0,
+      )
+    const orientation = referenceDepth < 0 ? -1 : 1
+
+    for (const [index, axis] of (['a', 'b', 'c'] as const).entries()) {
+      const vanishingX = matrix[index]
+      const vanishingY = matrix[4 + index]
+      const vanishingW = matrix[8 + index]
+      const direction = normalizedImageDirection(
+        (vanishingX - imagePoint.x * vanishingW) * orientation,
+        (vanishingY - imagePoint.y * vanishingW) * orientation,
+      )
+      if (direction) result[axis] = direction
     }
+    return result
+  }
+
+  const projection = scene.projection
+  const referenceDepth = projection.homography[8]
+  const orientation = referenceDepth < 0 ? -1 : 1
+  for (const axis of ['a', 'b', 'c'] as const) {
+    const vector = abstractAxisVector(axis)
+    const u =
+      dot3(vector, projection.uAxis) /
+      dot3(projection.uAxis, projection.uAxis)
+    const v =
+      dot3(vector, projection.vAxis) /
+      dot3(projection.vAxis, projection.vAxis)
+    const reconstructed = add3(
+      scale3(projection.uAxis, u),
+      scale3(projection.vAxis, v),
+    )
+    if (!same3(reconstructed, vector)) continue
+
+    const vanishingX =
+      projection.homography[0] * u + projection.homography[1] * v
+    const vanishingY =
+      projection.homography[3] * u + projection.homography[4] * v
+    const vanishingW =
+      projection.homography[6] * u + projection.homography[7] * v
+    const direction = normalizedImageDirection(
+      (vanishingX - imagePoint.x * vanishingW) * orientation,
+      (vanishingY - imagePoint.y * vanishingW) * orientation,
+    )
+    if (direction) result[axis] = direction
   }
   return result
 }

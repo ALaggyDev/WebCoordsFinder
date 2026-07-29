@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   axisColor,
   isAxisMappingComplete,
-  projectedAbstractAxes,
+  projectedAbstractAxesAtImagePoint,
   updatedAxisMapping,
   validAxisMappingCompletions,
 } from '../domain/geometry'
@@ -52,9 +52,11 @@ function normalizeDirection(direction: Point2): Point2 | undefined {
   return { x: direction.x / length, y: direction.y / length }
 }
 
-function displayDirections(scene: SceneGeometry): Record<AbstractAxis, Point2> {
-  const anchor = scene.faces[0]?.blockCoordinate ?? { x: 0, y: 0, z: 0 }
-  const projected = projectedAbstractAxes(scene, anchor)
+function displayDirections(
+  scene: SceneGeometry,
+  directionReference: Point2,
+): Record<AbstractAxis, Point2> {
+  const projected = projectedAbstractAxesAtImagePoint(scene, directionReference)
   const result: Partial<Record<AbstractAxis, Point2>> = { ...projected }
   const known = axes.filter((axis) => result[axis])
 
@@ -108,17 +110,22 @@ function axisLayout(direction: Point2): {
 interface AxisMappingGizmoProps {
   mapping: AxisMapping
   scene: SceneGeometry
+  directionReference: Point2
   onChange: (mapping: AxisMapping) => void
 }
 
 export function AxisMappingGizmo({
   mapping,
   scene,
+  directionReference,
   onChange,
 }: AxisMappingGizmoProps) {
   const [anchoredAxis, setAnchoredAxis] = useState<AbstractAxis | null>(null)
   const [lastEditedAxis, setLastEditedAxis] = useState<AbstractAxis | null>(null)
-  const directions = useMemo(() => displayDirections(scene), [scene])
+  const directions = useMemo(
+    () => displayDirections(scene, directionReference),
+    [directionReference, scene],
+  )
   const layouts = useMemo(
     () =>
       Object.fromEntries(

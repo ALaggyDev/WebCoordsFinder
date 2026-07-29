@@ -17,6 +17,7 @@ import {
   projectCamera,
   projectPoint,
   projectScenePoint,
+  projectedAbstractAxesAtImagePoint,
   projectionInfo,
   refitProjection,
   updatedAxisMapping,
@@ -135,6 +136,78 @@ describe('global perspective geometry', () => {
     expectPointClose(leftQuad[1], rightQuad[0])
     expectPointClose(leftQuad[2], rightQuad[3])
     expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
+  })
+
+  it('evaluates planar axis directions at the requested image point', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: { x: 0, y: 0, z: 0 },
+        uAxis: planeU,
+        vAxis: planeV,
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 1, y: 1, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        homography: [100, 0, 0, 0, 100, 0, 0.1, 0.2, 1],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    const directions = projectedAbstractAxesAtImagePoint(scene, {
+      x: 200,
+      y: 100,
+    })
+
+    expectPointClose(directions.a!, {
+      x: 8 / Math.sqrt(65),
+      y: -1 / Math.sqrt(65),
+    })
+    expectPointClose(directions.b!, {
+      x: -1 / Math.sqrt(5),
+      y: 2 / Math.sqrt(5),
+    })
+    expect(directions.c).toBeUndefined()
+  })
+
+  it('evaluates camera axis directions at the requested image point', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: [
+          100, 0, 20, 0,
+          0, 100, -10, 0,
+          0.1, 0.2, 1, 1,
+        ],
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    const directions = projectedAbstractAxesAtImagePoint(scene, {
+      x: 200,
+      y: 100,
+    })
+
+    expectPointClose(directions.a!, {
+      x: 8 / Math.sqrt(65),
+      y: -1 / Math.sqrt(65),
+    })
+    expectPointClose(directions.b!, {
+      x: -1 / Math.sqrt(5),
+      y: 2 / Math.sqrt(5),
+    })
+    expectPointClose(directions.c!, {
+      x: -18 / Math.sqrt(445),
+      y: -11 / Math.sqrt(445),
+    })
   })
 
   it('uses a reversible screen-space normal indicator until a camera is fitted', () => {
