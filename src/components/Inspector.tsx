@@ -467,7 +467,11 @@ function FaceInspector({
             <span className="face-preview-label">
               {evidence.selectedVariant === undefined
                 ? 'No variant selected'
-                : `Variant ${evidence.selectedVariant}`}
+                : `Variant ${evidence.selectedVariant}${
+                    evidence.confidence === undefined
+                      ? ''
+                      : ` · Δ ${evidence.confidence.toFixed(2)}`
+                  }`}
             </span>
           </div>
         </div>
