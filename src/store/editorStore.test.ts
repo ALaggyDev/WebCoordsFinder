@@ -394,6 +394,16 @@ describe('unit-face geometry', () => {
     )
   })
 
+  it('accepts projects without the 0° X/Z rotation', () => {
+    const document = createInitialDocument()
+    document.scanner.directions = [180]
+
+    expect(normalizeEditorDocument(document).scanner.directions).toEqual([180])
+
+    document.scanner.directions = []
+    expect(normalizeEditorDocument(document).scanner.directions).toEqual([])
+  })
+
   it('undoes and redoes a committed calibration drag in one step', () => {
     const observation = useEditorStore.getState().document.scene.observations[0]
     const moved = {

@@ -85,7 +85,6 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   }
   if (
     document.scanner.directions.length === 0 ||
-    !document.scanner.directions.includes(0) ||
     new Set(document.scanner.directions).size !==
       document.scanner.directions.length ||
     document.scanner.directions.some(
@@ -93,7 +92,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
         !searchDirections.includes(direction as SearchDirection),
     )
   ) {
-    errors.push('Search directions must be unique quarter-turns including 0°.')
+    errors.push('Select at least one unique quarter-turn search direction.')
   }
   if (rows.length === 0) errors.push('Confirm at least one block face before export.')
   if (rows.length > 256) errors.push('CoordsFinder supports at most 256 filter rows.')

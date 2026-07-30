@@ -35,10 +35,6 @@ const projectSchema = z
         textureAlgorithm: z.enum(textureAlgorithms),
         directions: z
           .array(searchDirectionSchema)
-          .min(1)
-          .refine((directions) => directions.includes(0), {
-            message: 'Search directions must include 0 degrees.',
-          })
           .refine(
             (directions) => new Set(directions).size === directions.length,
             { message: 'Search directions must be unique.' },

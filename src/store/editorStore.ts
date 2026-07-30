@@ -222,8 +222,6 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     !scene ||
     !isValidAxisMapping(scene.axisMapping) ||
     !Array.isArray(directions) ||
-    directions.length === 0 ||
-    !directions.includes(0) ||
     new Set(directions).size !== directions.length ||
     directions.some(
       (direction) =>

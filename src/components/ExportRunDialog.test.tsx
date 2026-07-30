@@ -81,7 +81,7 @@ describe('Export / Run workspace', () => {
 
     expect(screen.getByLabelText('Error tolerance')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: /^0°/ })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /^0°/ })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: /^0°/ })).toBeEnabled()
     expect(screen.getByText('CoordsFinder settings')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Export / Run' }),
@@ -103,6 +103,20 @@ describe('Export / Run workspace', () => {
       0,
       180,
     ])
+  })
+
+  it('deselects the zero-degree X/Z rotation', () => {
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /^0°/ }))
+
+    expect(useEditorStore.getState().document.scanner.directions).toEqual([])
   })
 
   it('opens the runtime comparison and blocks web search until setup is valid', () => {

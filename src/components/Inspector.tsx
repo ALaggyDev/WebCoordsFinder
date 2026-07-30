@@ -924,29 +924,24 @@ function ExportInspector() {
                 <input
                   type="checkbox"
                   checked={checked}
-                  disabled={direction === 0}
                   onChange={(event) => {
-                    // Zero degrees represents the selected mapping and remains
-                    // mandatory; extra quarter-turns cover compass ambiguity.
                     const directions = searchDirections.filter(
                       (candidate) =>
-                        candidate === 0 ||
-                        (candidate === direction
+                        candidate === direction
                           ? event.target.checked
-                          : document.scanner.directions.includes(candidate)),
+                          : document.scanner.directions.includes(candidate),
                     ) as SearchDirection[]
                     updateScanner({ directions })
                   }}
                 />
                 {direction}°
-                {direction === 0 ? ' · selected axes' : ''}
               </label>
             )
           })}
         </div>
         <p className="field-help">
-          Add horizontal rotations when the screenshot's compass direction
-          cannot be distinguished. The selected axes are always searched as 0°.
+          Select the horizontal rotations to search when the screenshot's
+          compass direction cannot be distinguished.
         </p>
       </div>
       <div className="subsection">

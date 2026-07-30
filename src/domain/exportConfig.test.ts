@@ -147,10 +147,22 @@ describe('CoordsFinder export', () => {
 
   it('writes every selected compass rotation to the scanner settings', () => {
     const document = documentWith([])
-    document.scanner.directions = [0, 180]
+    document.scanner.directions = [180]
 
     expect(generateCoordsFinderConfig(document)).toContain(
-      'directions = [0, 180]',
+      'directions = [180]',
+    )
+    expect(validateForExport(document).errors).not.toContain(
+      'Select at least one unique quarter-turn search direction.',
+    )
+  })
+
+  it('requires at least one X/Z rotation for export', () => {
+    const document = documentWith([])
+    document.scanner.directions = []
+
+    expect(validateForExport(document).errors).toContain(
+      'Select at least one unique quarter-turn search direction.',
     )
   })
 
