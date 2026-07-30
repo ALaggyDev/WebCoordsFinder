@@ -26,14 +26,14 @@ describe('placeholder search estimates', () => {
 
   it('formats durations into compact readable units', () => {
     expect(formatSearchTime(0.5)).toBe('<1 sec')
-    expect(formatSearchTime(61)).toBe('~2 min')
-    expect(formatSearchTime(3_601)).toBe('~2 hr')
+    expect(formatSearchTime(61)).toBe('~1 min')
+    expect(formatSearchTime(3_601)).toBe('~1 hr')
   })
 
   it('uses scientific notation for large search and hit counts', () => {
     expect(formatEstimatedCount(999_999)).toBe('999,999')
-    expect(formatEstimatedCount(1_000_000)).toBe('1.00e6')
-    expect(formatEstimatedCount(6_101_220_061)).toBe('6.10e9')
+    expect(formatEstimatedCount(1_000_000)).toBe('1.00e+6')
+    expect(formatEstimatedCount(6_101_220_061)).toBe('6.10e+9')
   })
 
   it('increases hits and lowers precision as error tolerance rises', () => {

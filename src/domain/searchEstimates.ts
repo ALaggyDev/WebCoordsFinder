@@ -102,14 +102,14 @@ export function formatEstimatedCount(value: number): string {
 export function formatSearchTime(seconds: number): string {
   if (!Number.isFinite(seconds)) return 'Over 1,000 years'
   if (seconds < 1) return '<1 sec'
-  if (seconds < 60) return `~${Math.ceil(seconds)} sec`
-  if (seconds < 3_600) return `~${Math.ceil(seconds / 60)} min`
-  if (seconds < 86_400) return `~${Math.ceil(seconds / 3_600)} hr`
+  if (seconds < 60) return `~${Math.round(seconds)} sec`
+  if (seconds < 3_600) return `~${Math.round(seconds / 60)} min`
+  if (seconds < 86_400) return `~${Math.round(seconds / 3_600)} hr`
 
   const days = seconds / 86_400
-  if (days < 365) return `~${Math.ceil(days)} days`
+  if (days < 365) return `~${Math.round(days)} days`
 
   const years = days / 365
   if (years > 1_000) return 'Over 1,000 years'
-  return `~${Math.ceil(years)} years`
+  return `~${Math.round(years)} years`
 }

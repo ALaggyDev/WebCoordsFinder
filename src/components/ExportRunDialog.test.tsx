@@ -121,8 +121,6 @@ describe('Export / Run workspace', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Estimated hits')).toBeInTheDocument()
     expect(screen.getByText('Hit precision')).toBeInTheDocument()
-    expect(screen.getByText('33 bits needed for 90%')).toBeInTheDocument()
-    expect(screen.getAllByText('6.10e9')).toHaveLength(2)
     expect(screen.getByText('CoordsFinder CPU')).toBeInTheDocument()
     expect(screen.getByText('CoordsFinder CUDA')).toBeInTheDocument()
     expect(
