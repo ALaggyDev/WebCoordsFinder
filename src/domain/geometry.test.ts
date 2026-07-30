@@ -7,6 +7,8 @@ import {
   chooseEdgeExtrusion,
   computeHomography,
   createEdgeExtrusionFaces,
+  cross3,
+  defaultAxesForFace,
   faceForLocalNormal,
   faceNormalIndicator,
   faceQuad,
@@ -16,6 +18,7 @@ import {
   inferInitialFaceNormal,
   isAxisMappingComplete,
   mappedVector,
+  negate3,
   planarProjectionForPlane,
   possibleFacesForLocalNormal,
   projectCamera,
@@ -756,6 +759,29 @@ describe('global perspective geometry', () => {
       { x: 0, y: 0, z: 0 },
     ])
   })
+
+  it.each([
+    ['north', { x: 0, y: 0, z: -1 }, { x: -1, y: 0, z: 0 }],
+    ['south', { x: 0, y: 0, z: 1 }, { x: 1, y: 0, z: 0 }],
+    ['east', { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }],
+    ['west', { x: -1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }],
+  ] as const)(
+    'uses a non-reflected right/down crop basis for the %s face',
+    (direction, normal, expectedUAxis) => {
+      const axes = defaultAxesForFace(direction)
+
+      expect(axes).toEqual({
+        uAxis: expectedUAxis,
+        vAxis: { x: 0, y: -1, z: 0 },
+      })
+      // Screen-right crossed with screen-down points into the block.
+      const inward = cross3(axes.uAxis, axes.vAxis)
+      const expectedInward = negate3(normal)
+      expect(inward.x).toBeCloseTo(expectedInward.x)
+      expect(inward.y).toBeCloseTo(expectedInward.y)
+      expect(inward.z).toBeCloseTo(expectedInward.z)
+    },
+  )
 
   // Partial mappings remain useful for UI hints, but only one right-handed
   // completion is considered a resolved world orientation.
