@@ -330,7 +330,7 @@ interface EditorState {
   setStep: (step: EditorStep) => void
   setFaceTab: (tab: FaceTab) => void
   setTool: (tool: EditorTool) => void
-  toggleSelectedEdge: (edge: SelectedEdge) => void
+  selectEdge: (edge: SelectedEdge, additive: boolean) => void
   clearSelectedEdges: () => void
   inspectEvidence: (evidenceId: string) => void
   loadDocument: (document: unknown) => void
@@ -421,10 +421,12 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       tool: tool === 'extrude' && state.selectedEdges.length === 0 ? 'select' : tool,
     })),
-  toggleSelectedEdge: (edge) =>
+  selectEdge: (edge, additive) =>
     set((state) => {
       const geometry = selectedEdgeGeometry(state.document.scene, edge)
       if (!geometry) return state
+      if (!additive) return { selectedEdges: [edge] }
+
       const key = meshEdgeKey(geometry.start, geometry.end)
       const selectedIndex = state.selectedEdges.findIndex((selection) => {
         const selected = selectedEdgeGeometry(state.document.scene, selection)

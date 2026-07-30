@@ -79,25 +79,36 @@ describe('unit-face geometry', () => {
     ])
   })
 
-  it('toggles connected unit edges without entering extrusion mode', () => {
+  it('selects one edge by default and toggles connected edges additively', () => {
     const [first, second, far] = useEditorStore.getState().document.scene.faces
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: first.id,
-      edge: 'top',
-    })
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: second.id,
-      edge: 'top',
-    })
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: first.id, edge: 'top' }, false)
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: second.id, edge: 'top' }, false)
+    expect(useEditorStore.getState().selectedEdges).toEqual([
+      { faceId: second.id, edge: 'top' },
+    ])
+
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: first.id, edge: 'top' }, true)
     expect(useEditorStore.getState()).toMatchObject({
       tool: 'select',
-      selectedEdges: [{ faceId: first.id }, { faceId: second.id }],
+      selectedEdges: [{ faceId: second.id }, { faceId: first.id }],
     })
 
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: far.id,
-      edge: 'bottom',
-    })
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: first.id, edge: 'top' }, true)
+    expect(useEditorStore.getState().selectedEdges).toEqual([
+      { faceId: second.id, edge: 'top' },
+    ])
+
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: far.id, edge: 'bottom' }, true)
     expect(useEditorStore.getState().selectedEdges).toHaveLength(1)
   })
 
@@ -214,10 +225,9 @@ describe('unit-face geometry', () => {
   // non-coplanar camera without recalibrating already resolved scenes.
   it('uses two rigidly translated anchors to create the six-point camera', () => {
     const face = useEditorStore.getState().document.scene.faces[0]
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: face.id,
-      edge: 'top',
-    })
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: face.id, edge: 'top' }, false)
     useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
 
     const scene = useEditorStore.getState().document.scene
@@ -231,10 +241,9 @@ describe('unit-face geometry', () => {
     const scene = useEditorStore.getState().document.scene
     const face = scene.faces[0]
     const pointer = projectScenePoint(scene, { x: 0.5, y: -3, z: 0 })!
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: face.id,
-      edge: 'top',
-    })
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: face.id, edge: 'top' }, false)
 
     useEditorStore.getState().extrudeSelectedEdges(pointer)
 
@@ -272,10 +281,9 @@ describe('unit-face geometry', () => {
 
   it('extrudes through an existing camera without recalibrating it', () => {
     const face = useEditorStore.getState().document.scene.faces[0]
-    useEditorStore.getState().toggleSelectedEdge({
-      faceId: face.id,
-      edge: 'top',
-    })
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: face.id, edge: 'top' }, false)
     useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
     const calibrated = useEditorStore.getState().document.scene
     const projection = structuredClone(calibrated.projection)

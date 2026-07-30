@@ -230,10 +230,10 @@ function GeometryInspector() {
         </button>
       </div>
       <div className="hint-card">
-        Click individual connected edges to toggle their selection, then press
-        E. Move toward the intended axis and distance, then click to extrude.
-        Before a 3D camera exists, moving near the plane keeps the extrusion
-        planar; moving away creates the third axis.
+        Click an edge to select it. Shift-click connected edges to add or remove
+        them, then press E. Move toward the intended axis and distance, then
+        click to extrude. Before a 3D camera exists, moving near the plane keeps
+        the extrusion planar; moving away creates the third axis.
       </div>
     </>
   )

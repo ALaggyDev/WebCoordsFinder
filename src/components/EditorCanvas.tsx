@@ -423,7 +423,7 @@ export function EditorCanvas() {
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
   const setTool = useEditorStore((state) => state.setTool)
-  const toggleSelectedEdge = useEditorStore((state) => state.toggleSelectedEdge)
+  const selectEdge = useEditorStore((state) => state.selectEdge)
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
   const selectFace = useEditorStore((state) => state.selectFace)
   const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
@@ -989,7 +989,7 @@ export function EditorCanvas() {
                 listening={tool === 'select'}
                 onClick={(event) => {
                   event.cancelBubble = true
-                  toggleSelectedEdge(selection)
+                  selectEdge(selection, event.evt.shiftKey)
                 }}
               />
             )
