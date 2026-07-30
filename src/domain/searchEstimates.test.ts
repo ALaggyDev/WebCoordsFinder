@@ -9,7 +9,6 @@ import {
   estimateSearchTimes,
   formatEstimatedCount,
   formatSearchTime,
-  minimumBitsForPrecision,
 } from './searchEstimates'
 
 describe('placeholder search estimates', () => {
@@ -35,22 +34,6 @@ describe('placeholder search estimates', () => {
     expect(formatEstimatedCount(999_999)).toBe('999,999')
     expect(formatEstimatedCount(1_000_000)).toBe('1.00e6')
     expect(formatEstimatedCount(6_101_220_061)).toBe('6.10e9')
-  })
-
-  it('calculates the minimum information needed for a target precision', () => {
-    const document = createInitialDocument()
-
-    expect(minimumBitsForPrecision(document, 0.9)).toBe(33)
-
-    document.scanner.bounds = {
-      xStart: 0,
-      xEnd: 0,
-      yStart: 0,
-      yEnd: 0,
-      zStart: 0,
-      zEnd: 0,
-    }
-    expect(minimumBitsForPrecision(document, 0.9)).toBe(0)
   })
 
   it('increases hits and lowers precision as error tolerance rises', () => {

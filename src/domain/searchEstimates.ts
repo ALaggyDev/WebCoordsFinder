@@ -11,27 +11,25 @@ export interface SearchTimeEstimate {
 }
 
 const PLACEHOLDER_CHECKS_PER_SECOND: Record<SearchRuntime, number> = {
-  web: 2_000_000,
-  cpu: 25_000_000,
-  cuda: 2_000_000_000,
+  web: 150_000_000,
+  cpu: 1_000_000_000,
+  cuda: 70_000_000_000,
 }
 
 export function estimateSearchVolume(document: EditorDocument): number {
-  const { bounds } = document.scanner
+  const { bounds, directions } = document.scanner
   const width = Math.max(0, bounds.xEnd - bounds.xStart + 1)
   const height = Math.max(0, bounds.yEnd - bounds.yStart + 1)
   const depth = Math.max(0, bounds.zEnd - bounds.zStart + 1)
-  return width * height * depth
+  return width * height * depth * directions.length
 }
 
 export function estimateSearchTimes(
   document: EditorDocument,
 ): SearchTimeEstimate[] {
   const volume = estimateSearchVolume(document)
-  const constraintCount = confirmedUniqueEvidence(document).length
-  const toleranceFactor = 1 + document.scanner.maxBadBlocks * 0.12
-  const constraintFactor = 1 + Math.min(constraintCount, 256) / 128
-  const work = volume * toleranceFactor * constraintFactor
+  const toleranceFactor = 1 + document.scanner.maxBadBlocks
+  const work = volume * toleranceFactor
 
   return (['web', 'cpu', 'cuda'] as const).map((runtime) => ({
     runtime,
@@ -45,7 +43,7 @@ export function estimateHitCount(document: EditorDocument): number {
 
   const tolerance = Math.min(
     constraints.length,
-    Math.max(0, Math.floor(document.scanner.maxBadBlocks)),
+    Math.max(0, document.scanner.maxBadBlocks),
   )
   let mismatchProbabilities: number[] = Array.from(
     { length: tolerance + 1 },
@@ -78,9 +76,7 @@ export function estimateHitCount(document: EditorDocument): number {
 }
 
 export function estimateHitPrecision(document: EditorDocument): number {
-  const expectedHits = estimateHitCount(document)
-  if (expectedHits <= 0) return 0
-  return Math.min(1, 1 / expectedHits)
+  return 1 / (1 + estimateHitCount(document))
 }
 
 export function minimumBitsForPrecision(
@@ -88,16 +84,16 @@ export function minimumBitsForPrecision(
   targetPrecision: number,
 ): number {
   const volume = estimateSearchVolume(document)
-  const precision = Math.min(1, Math.max(0, targetPrecision))
-  if (volume <= 1 || precision === 0) return 0
+  const estimatedCount = (1 - targetPrecision) / targetPrecision
+  if (volume <= 1 || estimatedCount === 0) return 0
   // With ideal independent evidence, b bits leave volume / 2^b candidates.
-  return Math.max(0, Math.ceil(Math.log2(volume * precision)))
+  return Math.max(0, Math.ceil(Math.log2(volume / estimatedCount)))
 }
 
 export function formatEstimatedCount(value: number): string {
   if (!Number.isFinite(value)) return 'Over 1e308'
   if (value < 1) return '<1'
-  if (value >= 1e6) return value.toExponential(2).replace('e+', 'e')
+  if (value >= 1e6) return value.toExponential(2)
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: value < 10 ? 1 : 0,
   }).format(value)

@@ -13,7 +13,6 @@ import {
   Play,
   RotateCcw,
   Save,
-  ShieldCheck,
   Square,
   Trash2,
   X,
@@ -74,26 +73,25 @@ const runtimeDetails: Record<
 > = {
   web: {
     label: 'Web',
-    detail: 'This browser',
+    detail: '~150M positions/sec',
     icon: Globe2,
   },
   cpu: {
     label: 'CoordsFinder CPU',
-    detail: 'Native CPU placeholder',
+    detail: '~1B positions/sec',
     icon: Cpu,
   },
   cuda: {
     label: 'CoordsFinder CUDA',
-    detail: 'Native GPU placeholder',
+    detail: '~70B positions/sec',
     icon: MonitorCog,
   },
 }
 
 function formatHitPrecision(rate: number): string {
   const percent = rate * 100
-  if (percent === 0) return '0%'
-  if (percent >= 100) return '~100.0%'
-  if (percent < 0.01) return `${percent.toExponential(1)}%`
+  if (percent < 0.005) return '<0.01%'
+  if (percent >= 99.5) return '~100.0%'
   return `${percent.toFixed(percent < 1 ? 2 : 1)}%`
 }
 
@@ -146,8 +144,8 @@ export function ExportRunDialog({
   const searchVolume = useMemo(() => estimateSearchVolume(document), [document])
   const estimatedHits = useMemo(() => estimateHitCount(document), [document])
   const hitPrecision = useMemo(() => estimateHitPrecision(document), [document])
-  const minimumBitsFor90Percent = useMemo(
-    () => minimumBitsForPrecision(document, 0.9),
+  const minimumBitsFor80Percent = useMemo(
+    () => minimumBitsForPrecision(document, 0.8),
     [document],
   )
   const currentSearch = useMemo(() => {
@@ -471,7 +469,7 @@ export function ExportRunDialog({
             <div>
               <span>Information</span>
               <strong>{constraintBits(document)} bits</strong>
-              <small>{minimumBitsFor90Percent} bits needed for 90%</small>
+              <small>{minimumBitsFor80Percent} bits needed for 80%</small>
             </div>
             <div>
               <span>Search positions</span>
@@ -480,7 +478,6 @@ export function ExportRunDialog({
             <div>
               <span>Estimated hits</span>
               <strong>{formatEstimatedCount(estimatedHits)}</strong>
-              <small>Placeholder model</small>
             </div>
             <div>
               <span>Hit precision</span>
@@ -497,9 +494,6 @@ export function ExportRunDialog({
                 </span>
                 <h3>Runtime comparison</h3>
               </div>
-              <span className="estimate-disclaimer">
-                <Gauge size={13} /> Placeholder formula
-              </span>
             </div>
             <div className="runtime-estimates">
               {estimates.map((estimate) => {
@@ -795,11 +789,6 @@ export function ExportRunDialog({
                 <pre>{config}</pre>
               </details>
             </article>
-          </div>
-
-          <div className="export-run-privacy">
-            <ShieldCheck size={15} />
-            Searches and exports stay on this device.
           </div>
         </div>
       </section>

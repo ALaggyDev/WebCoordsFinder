@@ -158,14 +158,6 @@ body.export-run-dialog-open {
   font-size: 13px;
 }
 
-.estimate-disclaimer {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 9px;
-}
-
 .runtime-estimates {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -445,7 +437,7 @@ body.export-run-dialog-open {
 }
 
 .export-run-config-preview pre {
-  max-height: 170px;
+  max-height: 160px;
   margin: 10px 0 0;
   padding: 10px;
   overflow: auto;
@@ -455,15 +447,6 @@ body.export-run-dialog-open {
   border-radius: 7px;
   font: 8px/1.55 var(--mono);
   white-space: pre;
-}
-
-.export-run-privacy {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 9px;
 }
 
 .export-inspector {
