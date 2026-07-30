@@ -425,6 +425,18 @@ body.export-run-dialog-open {
 }
 
 /* Native CoordsFinder handoff and shared inspector helpers. */
+.coordsfinder-actions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.coordsfinder-actions button {
+  width: 100%;
+  min-width: 0;
+}
+
 .export-run-config-preview {
   border-top: 1px solid var(--border-soft);
 }

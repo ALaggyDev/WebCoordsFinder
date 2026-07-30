@@ -1,7 +1,14 @@
 // Export/Run tests pin modal workflow, search readiness, and checkpoint
 // restoration without starting the real background scanner.
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { generateCoordsFinderConfig } from '../domain/exportConfig'
 import {
   createWebSearchCheckpoint,
   createWebSearchRequest,
@@ -138,6 +145,38 @@ describe('Export / Run workspace', () => {
     )
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('copies the generated CoordsFinder configuration', async () => {
+    const document = documentWithSavedSearch()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    useEditorStore.setState({
+      document,
+      step: 'export',
+    })
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+
+    expect(writeText).toHaveBeenCalledWith(
+      generateCoordsFinderConfig(document),
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Copied' }),
+      ).toBeInTheDocument(),
+    )
   })
 
   it('restores saved progress and candidates as a resumable search', () => {

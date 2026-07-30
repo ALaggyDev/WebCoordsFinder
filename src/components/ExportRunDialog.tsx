@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Cpu,
   Download,
   Gauge,
@@ -133,6 +134,9 @@ export function ExportRunDialog({
   const [webSearch, setWebSearch] = useState(() =>
     restoreWebSearchCheckpoint(savedCheckpoint),
   )
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>(
+    'idle',
+  )
   // Worker callbacks can outlive the render that installed them; mirror state
   // in a ref to merge progress and result batches without stale closures.
   const webSearchRef = useRef(webSearch)
@@ -157,6 +161,19 @@ export function ExportRunDialog({
       return undefined
     }
   }, [document])
+
+  useEffect(() => {
+    setCopyStatus('idle')
+  }, [config, open])
+
+  const copyConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(config)
+      setCopyStatus('copied')
+    } catch {
+      setCopyStatus('failed')
+    }
+  }
   const progressPercent = searchProgressPercent(
     webSearch.processed,
     webSearch.total,
@@ -776,14 +793,33 @@ export function ExportRunDialog({
                 Download the exact configuration for your local CoordsFinder
                 executable.
               </p>
-              <button
-                className="primary-button full"
-                disabled={validation.errors.length > 0}
-                onClick={onDownload}
-                type="button"
-              >
-                <Download size={16} /> Download coordsfinder.conf
-              </button>
+              <div className="coordsfinder-actions">
+                <button
+                  className="primary-button"
+                  disabled={validation.errors.length > 0}
+                  onClick={onDownload}
+                  type="button"
+                >
+                  <Download size={16} /> Download coordsfinder.conf
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={validation.errors.length > 0}
+                  onClick={copyConfig}
+                  type="button"
+                >
+                  {copyStatus === 'copied' ? (
+                    <CheckCircle2 size={16} />
+                  ) : (
+                    <Copy size={16} />
+                  )}
+                  {copyStatus === 'copied'
+                    ? 'Copied'
+                    : copyStatus === 'failed'
+                      ? 'Retry copy'
+                      : 'Copy'}
+                </button>
+              </div>
               <details className="export-run-config-preview">
                 <summary>Preview configuration</summary>
                 <pre>{config}</pre>
