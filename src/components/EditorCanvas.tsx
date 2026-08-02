@@ -428,6 +428,7 @@ export function EditorCanvas() {
     y: 0,
   })
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
+  const [hoverCursor, setHoverCursor] = useState<string>()
   const [draggedObservation, setDraggedObservation] = useState<DraggedObservation>()
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
@@ -774,13 +775,13 @@ export function EditorCanvas() {
   }
 
   const onStageClick = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    if (event.target !== event.currentTarget && event.target.draggable()) return
     // After the fourth corner, the next unobstructed canvas click confirms the
     // visible grid-size dialog as a deliberate second step.
     if (draft.length === 4 && draftGridSize) {
       confirmDraftGrid()
       return
     }
-    if (event.target !== event.currentTarget && event.target.draggable()) return
     const point = pointerInImage()
     if (!point) return
     if (tool === 'extrude' && selectedEdges.length > 0) {
@@ -890,7 +891,9 @@ export function EditorCanvas() {
         onMouseLeave={() => setPointerPoint(undefined)}
         onWheel={onWheel}
         onClick={onStageClick}
-        style={{ cursor: isDraggingCanvas ? 'grabbing' : idleCursor }}
+        style={{
+          cursor: isDraggingCanvas ? 'grabbing' : hoverCursor ?? idleCursor,
+        }}
       >
         <Layer>
           <Rect
@@ -982,6 +985,8 @@ export function EditorCanvas() {
                 strokeWidth={(active ? 3 : 1.05) / view.scale}
                 hitStrokeWidth={12 / view.scale}
                 listening={tool === 'select'}
+                onMouseEnter={() => setHoverCursor('pointer')}
+                onMouseLeave={() => setHoverCursor(undefined)}
                 onClick={(event) => {
                   event.cancelBubble = true
                   selectEdge(selection, event.evt.shiftKey)
@@ -1168,13 +1173,47 @@ export function EditorCanvas() {
                 strokeWidth={1.5 / view.scale}
                 dash={[5 / view.scale, 4 / view.scale]}
               />
-              {draft.map((point) => (
+              {draft.map((point, index) => (
                 <Circle
-                  key={`${point.x}-${point.y}`}
+                  key={`draft-corner-${index}`}
                   x={point.x}
                   y={point.y}
-                  radius={4 / view.scale}
+                  radius={6 / view.scale}
                   fill={PROPOSED}
+                  stroke="#071014"
+                  strokeWidth={1.5 / view.scale}
+                  draggable={draft.length === 4}
+                  onMouseEnter={() => {
+                    if (draft.length === 4) setHoverCursor('move')
+                  }}
+                  onMouseLeave={() => setHoverCursor(undefined)}
+                  onDragStart={() => setHoverCursor('grabbing')}
+                  onClick={(event) => {
+                    event.cancelBubble = true
+                  }}
+                  onDragMove={(event) => {
+                    const nextPoint = {
+                      x: event.target.x(),
+                      y: event.target.y(),
+                    }
+                    setDraft((current) =>
+                      current.map((entry, entryIndex) =>
+                        entryIndex === index ? nextPoint : entry,
+                      ),
+                    )
+                  }}
+                  onDragEnd={(event) => {
+                    setHoverCursor('move')
+                    const nextPoint = {
+                      x: event.target.x(),
+                      y: event.target.y(),
+                    }
+                    setDraft((current) =>
+                      current.map((entry, entryIndex) =>
+                        entryIndex === index ? nextPoint : entry,
+                      ),
+                    )
+                  }}
                 />
               ))}
             </>
@@ -1198,7 +1237,7 @@ export function EditorCanvas() {
             onPointerCancel={stopDraftControlDrag}
           >
             <strong>Grid size</strong>
-            <span>Click canvas to apply</span>
+            <span>Drag corners if needed</span>
           </div>
           <div className="plane-size-fields">
             <label>
@@ -1264,7 +1303,7 @@ export function EditorCanvas() {
             {draft.length === 0
               ? 'Click top-left, top-right, bottom-right, then bottom-left'
               : draftGridSize
-                ? 'Set the grid size, then confirm the base surface'
+                ? 'Drag corners to adjust, set the grid size, then confirm'
                 : `${4 - draft.length} corners remaining`}
           </strong>
         )}
