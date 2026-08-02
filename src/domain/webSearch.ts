@@ -107,7 +107,7 @@ export function createWebSearchRequest(
   const zStart = requireInt32(bounds.zStart, 'Z start')
   const zEnd = requireInt32(bounds.zEnd, 'Z end')
   const maxBadBlocks = requireInt32(
-    document.scanner.maxBadBlocks,
+    document.scanner.errorTolerance,
     'Error tolerance',
   )
 

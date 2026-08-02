@@ -220,6 +220,7 @@ function createDefaultScanner(): ScannerSettings {
   // orientation unresolved until the user supplies a valid world mapping.
   return {
     textureAlgorithm: 'Vanilla-3',
+    scanOrder: 'spiral',
     directions: [0],
     compassResolved: false,
     bounds: {
@@ -230,10 +231,10 @@ function createDefaultScanner(): ScannerSettings {
       zStart: -5000,
       zEnd: 5000,
     },
-    chunkBlocksX: 16384,
-    chunkBlocksZ: 64,
-    maxBadBlocks: 0,
-    printChunks: true,
+    cpuTileSize: { x: 1024, z: 1024 },
+    cudaTileSize: { x: 16384, z: 16384 },
+    errorTolerance: 0,
+    verbose: false,
     confidenceThreshold: 0.08,
     webSearch: null,
   }
@@ -391,6 +392,16 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     throw new Error('This project uses an unsupported document schema.')
   }
   const normalized = structuredClone(input as EditorDocument)
+  const defaults = createDefaultScanner()
+  // Current-format fields default independently so existing project bundles
+  // remain usable without interpreting superseded scanner settings.
+  normalized.scanner = {
+    ...defaults,
+    ...normalized.scanner,
+    bounds: { ...defaults.bounds, ...normalized.scanner.bounds },
+    cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
+    cudaTileSize: { ...defaults.cudaTileSize, ...normalized.scanner.cudaTileSize },
+  }
   normalized.scanner.compassResolved = isAxisMappingComplete(
     normalized.scene.axisMapping,
   )

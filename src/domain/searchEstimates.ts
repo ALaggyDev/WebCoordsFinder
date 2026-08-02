@@ -28,7 +28,7 @@ export function estimateSearchTimes(
   document: EditorDocument,
 ): SearchTimeEstimate[] {
   const volume = estimateSearchVolume(document)
-  const toleranceFactor = 1 + document.scanner.maxBadBlocks
+  const toleranceFactor = 1 + document.scanner.errorTolerance
   const work = volume * toleranceFactor
 
   return (['web', 'cpu', 'cuda'] as const).map((runtime) => ({
@@ -43,7 +43,7 @@ export function estimateHitCount(document: EditorDocument): number {
 
   const tolerance = Math.min(
     constraints.length,
-    Math.max(0, document.scanner.maxBadBlocks),
+    Math.max(0, document.scanner.errorTolerance),
   )
   let mismatchProbabilities: number[] = Array.from(
     { length: tolerance + 1 },

@@ -427,6 +427,29 @@ describe('unit-face geometry', () => {
     expect(normalizeEditorDocument(document).scanner.directions).toEqual([])
   })
 
+  it('defaults newly added CoordsFinder settings without reading superseded ones', () => {
+    const legacy = structuredClone(createInitialDocument()) as unknown as {
+      scanner: Record<string, unknown>
+    }
+    delete legacy.scanner.scanOrder
+    delete legacy.scanner.cpuTileSize
+    delete legacy.scanner.cudaTileSize
+    delete legacy.scanner.errorTolerance
+    delete legacy.scanner.verbose
+    legacy.scanner.chunkBlocksX = 7
+    legacy.scanner.chunkBlocksZ = 9
+    legacy.scanner.maxBadBlocks = 3
+    legacy.scanner.printChunks = true
+
+    expect(normalizeEditorDocument(legacy).scanner).toMatchObject({
+      scanOrder: 'spiral',
+      cpuTileSize: { x: 1024, z: 1024 },
+      cudaTileSize: { x: 16384, z: 16384 },
+      errorTolerance: 0,
+      verbose: false,
+    })
+  })
+
   it('undoes and redoes a committed calibration drag in one step', () => {
     const observation = useEditorStore.getState().document.scene.observations[0]
     const moved = {

@@ -37,6 +37,8 @@ export const textureAlgorithms = [
   'Sodium-2',
 ] as const
 export type TextureAlgorithm = (typeof textureAlgorithms)[number]
+export const scanOrders = ['linear', 'spiral'] as const
+export type ScanOrder = (typeof scanOrders)[number]
 export const searchDirections = [0, 90, 180, 270] as const
 export type SearchDirection = (typeof searchDirections)[number]
 
@@ -195,13 +197,14 @@ export interface WebSearchCheckpoint {
 
 export interface ScannerSettings {
   textureAlgorithm: TextureAlgorithm
+  scanOrder: ScanOrder
   directions: SearchDirection[]
   compassResolved: boolean
   bounds: SearchBounds
-  chunkBlocksX: number
-  chunkBlocksZ: number
-  maxBadBlocks: number
-  printChunks: boolean
+  cpuTileSize: { x: number; z: number }
+  cudaTileSize: { x: number; z: number }
+  errorTolerance: number
+  verbose: boolean
   confidenceThreshold: number
   // Search progress is document state but intentionally bypasses undo history.
   webSearch: WebSearchCheckpoint | null

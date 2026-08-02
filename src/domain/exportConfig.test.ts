@@ -96,7 +96,14 @@ describe('CoordsFinder export', () => {
     ])
     const config = generateCoordsFinderConfig(document)
 
-    expect(config).toContain('mode = Vanilla-3')
+    expect(config).toContain('algorithm = Vanilla-3')
+    expect(config).toContain('scanOrder = spiral')
+    expect(config).toContain('xRange = (-5000, 5000)')
+    expect(config).toContain('cpuTileSize = (1024, 1024)')
+    expect(config).toContain('cudaTileSize = (16384, 16384)')
+    expect(config).toContain('errorTolerance = 0')
+    expect(config).toContain('verbose = false')
+    expect(config).not.toMatch(/\b(mode|xStart|xEnd|chunkBlocksX|maxBadBlocks|printChunks)\s*=/)
     expect(config).toContain('directions = [0]')
     expect(config).toContain('[filter]\n# x y z | variant [side]')
     expect(config).not.toContain('# Anchor block:')
@@ -138,11 +145,11 @@ describe('CoordsFinder export', () => {
     )
   })
 
-  it('writes the user-selected texture algorithm to the scanner mode setting', () => {
+  it('writes the user-selected texture algorithm to the scanner algorithm setting', () => {
     const document = documentWith([])
     document.scanner.textureAlgorithm = 'Sodium-2'
 
-    expect(generateCoordsFinderConfig(document)).toContain('mode = Sodium-2')
+    expect(generateCoordsFinderConfig(document)).toContain('algorithm = Sodium-2')
   })
 
   it('writes every selected compass rotation to the scanner settings', () => {

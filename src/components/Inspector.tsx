@@ -46,11 +46,13 @@ import {
   sharedStatesForFaces,
 } from '../domain/references'
 import {
+  scanOrders,
   searchDirections,
   textureAlgorithms,
   type CandidateTransform,
   type FaceDirection,
   type SearchDirection,
+  type ScanOrder,
   type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
@@ -1146,6 +1148,19 @@ function ExportInspector() {
           ))}
         </select>
       </label>
+      <label className="field">
+        <span>Scan order</span>
+        <select
+          value={document.scanner.scanOrder}
+          onChange={(event) =>
+            updateScanner({ scanOrder: event.target.value as ScanOrder })
+          }
+        >
+          {scanOrders.map((scanOrder) => (
+            <option key={scanOrder} value={scanOrder}>{scanOrder}</option>
+          ))}
+        </select>
+      </label>
       <details className="algorithm-reference">
         <summary>Algorithm version reference</summary>
         <div className="algorithm-reference-content">
@@ -1153,13 +1168,13 @@ function ExportInspector() {
             <thead>
               <tr>
                 <th>MC Version</th>
-                <th>Mode</th>
+                <th>Algorithm</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>&lt;=1.12.2</td><td>vanilla-1</td></tr>
-              <tr><td>1.13-1.21.1</td><td>vanilla-2</td></tr>
-              <tr><td>1.21.2+</td><td>vanilla-3</td></tr>
+              <tr><td>&lt;=1.12.2</td><td>Vanilla-1</td></tr>
+              <tr><td>1.13-1.21.1</td><td>Vanilla-2</td></tr>
+              <tr><td>1.21.2+</td><td>Vanilla-3</td></tr>
             </tbody>
           </table>
           <table>
@@ -1167,12 +1182,12 @@ function ExportInspector() {
               <tr>
                 <th>MC Version</th>
                 <th>Sodium Version</th>
-                <th>Mode</th>
+                <th>Algorithm</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>1.16-1.18.2</td><td>1.0-4.1</td><td>sodium-1</td></tr>
-              <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>sodium-2</td></tr>
+              <tr><td>1.16-1.18.2</td><td>1.0-4.1</td><td>Sodium-1</td></tr>
+              <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>Sodium-2</td></tr>
             </tbody>
           </table>
         </div>
@@ -1234,9 +1249,9 @@ function ExportInspector() {
       <div className="subsection">
         <NumberField
           label="Error tolerance"
-          value={document.scanner.maxBadBlocks}
+          value={document.scanner.errorTolerance}
           min={0}
-          onChange={(maxBadBlocks) => updateScanner({ maxBadBlocks })}
+          onChange={(errorTolerance) => updateScanner({ errorTolerance })}
         />
         <p className="field-help">
           Maximum number of confirmed observations that may disagree. Zero
@@ -1249,11 +1264,13 @@ function ExportInspector() {
           These options affect only the downloaded CoordsFinder configuration.
         </p>
         <div className="field-grid two">
-          <NumberField label="Chunk blocks X" value={document.scanner.chunkBlocksX} min={1} onChange={(chunkBlocksX) => updateScanner({ chunkBlocksX })} />
-          <NumberField label="Chunk blocks Z" value={document.scanner.chunkBlocksZ} min={1} onChange={(chunkBlocksZ) => updateScanner({ chunkBlocksZ })} />
+          <NumberField label="CPU tile size X" value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
+          <NumberField label="CPU tile size Z" value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
+          <NumberField label="CUDA tile size X" value={document.scanner.cudaTileSize.x} min={1} onChange={(x) => updateScanner({ cudaTileSize: { ...document.scanner.cudaTileSize, x } })} />
+          <NumberField label="CUDA tile size Z" value={document.scanner.cudaTileSize.z} min={1} onChange={(z) => updateScanner({ cudaTileSize: { ...document.scanner.cudaTileSize, z } })} />
           <label className="check-field">
-            <input type="checkbox" checked={document.scanner.printChunks} onChange={(event) => updateScanner({ printChunks: event.target.checked })} />
-            Print chunks
+            <input type="checkbox" checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
+            verbose logging
           </label>
         </div>
       </details>

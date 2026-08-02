@@ -106,10 +106,15 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   ) {
     errors.push('Every search start bound must be less than or equal to its end bound.')
   }
-  if (document.scanner.chunkBlocksX <= 0 || document.scanner.chunkBlocksZ <= 0) {
-    errors.push('Chunk dimensions must be positive.')
+  if (
+    document.scanner.cpuTileSize.x <= 0 ||
+    document.scanner.cpuTileSize.z <= 0 ||
+    document.scanner.cudaTileSize.x <= 0 ||
+    document.scanner.cudaTileSize.z <= 0
+  ) {
+    errors.push('CPU and CUDA tile dimensions must be positive.')
   }
-  if (document.scanner.maxBadBlocks < 0) {
+  if (document.scanner.errorTolerance < 0) {
     errors.push('Error tolerance cannot be negative.')
   }
 
@@ -162,20 +167,19 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
   const lines = [
     '# Generated locally by WebCoordsFinder.',
     '',
-    `mode = ${scanner.textureAlgorithm}`,
+    `algorithm = ${scanner.textureAlgorithm}`,
+    `scanOrder = ${scanner.scanOrder}`,
     `directions = [${scanner.directions.join(', ')}]`,
     '',
-    `xStart = ${scanner.bounds.xStart}`,
-    `xEnd = ${scanner.bounds.xEnd}`,
-    `yStart = ${scanner.bounds.yStart}`,
-    `yEnd = ${scanner.bounds.yEnd}`,
-    `zStart = ${scanner.bounds.zStart}`,
-    `zEnd = ${scanner.bounds.zEnd}`,
+    `xRange = (${scanner.bounds.xStart}, ${scanner.bounds.xEnd})`,
+    `yRange = (${scanner.bounds.yStart}, ${scanner.bounds.yEnd})`,
+    `zRange = (${scanner.bounds.zStart}, ${scanner.bounds.zEnd})`,
     '',
-    `chunkBlocksX = ${scanner.chunkBlocksX}`,
-    `chunkBlocksZ = ${scanner.chunkBlocksZ}`,
-    `maxBadBlocks = ${scanner.maxBadBlocks}`,
-    `printChunks = ${scanner.printChunks ? 'true' : 'false'}`,
+    `errorTolerance = ${scanner.errorTolerance}`,
+    '',
+    `cpuTileSize = (${scanner.cpuTileSize.x}, ${scanner.cpuTileSize.z})`,
+    `cudaTileSize = (${scanner.cudaTileSize.x}, ${scanner.cudaTileSize.z})`,
+    `verbose = ${scanner.verbose ? 'true' : 'false'}`,
     '',
     '[filter]',
     '# x y z | variant [side]',

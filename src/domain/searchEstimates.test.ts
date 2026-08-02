@@ -66,7 +66,7 @@ describe('placeholder search estimates', () => {
 
     const strictHits = estimateHitCount(document)
     const strictPrecision = estimateHitPrecision(document)
-    document.scanner.maxBadBlocks = 1
+    document.scanner.errorTolerance = 1
 
     expect(estimateHitCount(document)).toBeGreaterThan(strictHits)
     expect(estimateHitPrecision(document)).toBeLessThan(strictPrecision)
