@@ -91,6 +91,46 @@ describe('unit-face geometry', () => {
     expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
   })
 
+  it('removes an extra calibration anchor and refits the camera in one transaction', () => {
+    const state = useEditorStore.getState()
+    const extra = {
+      id: 'extra-anchor',
+      lattice: { x: 3, y: 0, z: 1 },
+      image: { x: 550, y: 430 },
+      weight: 1,
+    }
+    state.upsertObservation(extra.lattice, extra.image)
+    const historyBeforeDelete = useEditorStore.getState().past.length
+    const extraId = useEditorStore
+      .getState()
+      .document.scene.observations.find(
+        (observation) => observation.lattice.x === 3 &&
+          observation.lattice.y === 0 &&
+          observation.lattice.z === 1,
+      )!.id
+
+    useEditorStore.getState().deleteObservation(extraId)
+
+    const updated = useEditorStore.getState()
+    expect(updated.document.scene.observations).toHaveLength(6)
+    expect(updated.document.scene.observations.map((observation) => observation.id))
+      .not.toContain(extraId)
+    expect(updated.document.scene.projection?.kind).toBe('camera')
+    expect(updated.past).toHaveLength(historyBeforeDelete + 1)
+  })
+
+  it('keeps the six calibration anchors required by the camera solve', () => {
+    const state = useEditorStore.getState()
+    const observation = state.document.scene.observations[0]
+
+    state.deleteObservation(observation.id)
+
+    const updated = useEditorStore.getState()
+    expect(updated.document.scene.observations).toHaveLength(6)
+    expect(updated.document.scene.projection?.kind).toBe('camera')
+    expect(updated.past).toHaveLength(0)
+  })
+
   it('keeps in-plane extrusion inside the partial solve', () => {
     useEditorStore.setState({ document: createEmptyDocument() })
     useEditorStore.getState().addBaseFaces(

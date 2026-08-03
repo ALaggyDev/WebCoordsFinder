@@ -418,6 +418,7 @@ export function EditorCanvas() {
   const setOrientationFace = useEditorStore((state) => state.setOrientationFace)
   const setOrientationEdge = useEditorStore((state) => state.setOrientationEdge)
   const moveObservation = useEditorStore((state) => state.moveObservation)
+  const deleteObservation = useEditorStore((state) => state.deleteObservation)
   const upsertObservation = useEditorStore((state) => state.upsertObservation)
   const extrudeSelectedEdges = useEditorStore((state) => state.extrudeSelectedEdges)
   const image = useCanvasImage(document.image.src)
@@ -1118,6 +1119,11 @@ export function EditorCanvas() {
                     moveObservation(observation.id, point)
                   }
                   setDraggedObservation(undefined)
+                }}
+                onContextMenu={(event) => {
+                  event.evt.preventDefault()
+                  event.cancelBubble = true
+                  deleteObservation(observation.id)
                 }}
               />
             ))}

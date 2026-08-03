@@ -363,6 +363,7 @@ interface EditorState {
     rows?: number,
   ) => void
   moveObservation: (id: string, point: Point2) => void
+  deleteObservation: (id: string) => void
   upsertObservation: (lattice: Point3, point: Point2) => void
   extrudeSelectedEdges: (point: Point2, secondPoint?: Point2) => void
   deleteFace: (faceId: string) => void
@@ -587,6 +588,27 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scene.projection = refitProjection(document.scene)
       }),
     ),
+  deleteObservation: (id) =>
+    set((state) => {
+      const observations = state.document.scene.observations
+      // A planar solve needs four paired anchors and a 3D camera needs six.
+      // Never leave a solved camera with fewer observations than its fit
+      // requires.
+      const minimumObservations =
+        state.document.scene.projection?.kind === 'camera' ? 6 : 4
+      if (
+        observations.length <= minimumObservations ||
+        !observations.some((observation) => observation.id === id)
+      ) {
+        return state
+      }
+      return mutateDocument(state, (document) => {
+        document.scene.observations = document.scene.observations.filter(
+          (observation) => observation.id !== id,
+        )
+        document.scene.projection = refitProjection(document.scene)
+      })
+    }),
   upsertObservation: (lattice, point) =>
     set((state) =>
       mutateDocument(state, (document) => {
