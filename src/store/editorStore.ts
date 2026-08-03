@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import {
-  add3,
   axisMappingFromReferences,
   blockCoordinateForFace,
   cameraFacingNormal,
@@ -8,6 +7,7 @@ import {
   createEdgeExtrusionFaces,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
+  initialCameraForPlanarExtrusion,
   isAxisMappingComplete,
   mappedAnchorOffset,
   meshEdgeKey,
@@ -18,11 +18,8 @@ import {
   possibleFacesForLocalNormal,
   projectionInfo,
   refitProjection,
-  scale3,
   selectedEdgeGeometry,
-  selectedEdgeEndpoints,
   same3,
-  translatedExtrusionAnchors,
   validAxisMappingCompletions,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
@@ -635,20 +632,18 @@ export const useEditorStore = create<EditorState>((set) => ({
         state.selectedEdges,
         point,
       )
-      const endpoints = selectedEdgeEndpoints(
-        state.document.scene,
-        state.selectedEdges,
-      )
       const projection = projectionInfo(state.document.scene)
-      const planarAnchors =
+      const planarCamera =
         projection.resolvedAxes === 3 || !extrusion?.createsAxis
           ? undefined
-          : translatedExtrusionAnchors(
+          : initialCameraForPlanarExtrusion(
               state.document.scene,
               state.selectedEdges,
+              extrusion.axis,
+              extrusion.blocks,
               point,
             )
-      if (!extrusion || !endpoints) return state
+      if (!extrusion) return state
       const faces = createEdgeExtrusionFaces(
         state.document.scene,
         state.selectedEdges,
@@ -668,20 +663,17 @@ export const useEditorStore = create<EditorState>((set) => ({
           document.scene.faces.push(...faces)
           if (
             projectionInfo(document.scene).resolvedAxes < 3 &&
-            planarAnchors
+            planarCamera
           ) {
-            planarAnchors.endpoints.forEach((endpoint, index) => {
+            planarCamera.endpoints.forEach((endpoint, index) => {
               document.scene.observations.push({
                 id: crypto.randomUUID(),
-                lattice: add3(
-                  endpoint,
-                  scale3(extrusion.axis, extrusion.blocks),
-                ),
-                image: planarAnchors.images[index],
+                lattice: endpoint,
+                image: planarCamera.images[index],
                 weight: 1,
               })
             })
-            document.scene.projection = refitProjection(document.scene)
+            document.scene.projection = planarCamera.projection
             if (document.scene.projection?.kind === 'camera') {
               document.scene.faces.forEach((face) => {
                 face.normal = cameraFacingNormal(document.scene, face)

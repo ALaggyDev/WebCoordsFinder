@@ -28,6 +28,7 @@ import {
   faceQuad,
   fitHomography,
   flattenPoints,
+  initialCameraForPlanarExtrusion,
   meshEdgeKey,
   orientationEdgeGeometry,
   projectionInfo,
@@ -36,9 +37,7 @@ import {
   refitProjection,
   scale3,
   selectedEdgeGeometry,
-  selectedEdgeEndpoints,
   same3,
-  translatedExtrusionAnchors,
 } from '../domain/geometry'
 import type {
   AbstractAxis,
@@ -172,16 +171,21 @@ function makeExtrusionPreview(
     faces: [...scene.faces, ...faces],
     observations: [...scene.observations],
   }
-  const endpoints = selectedEdgeEndpoints(scene, selections)
-  const translated = extrusion.createsAxis
-    ? translatedExtrusionAnchors(scene, selections, pointer)
+  const planarCamera = extrusion.createsAxis
+    ? initialCameraForPlanarExtrusion(
+        scene,
+        selections,
+        extrusion.axis,
+        extrusion.blocks,
+        pointer,
+      )
     : undefined
-  if (extrusion.createsAxis && (!endpoints || !translated)) return undefined
-  if (translated) {
-    const anchors = translated.endpoints.map((endpoint, index) => ({
+  if (extrusion.createsAxis && !planarCamera) return undefined
+  if (planarCamera) {
+    const anchors = planarCamera.endpoints.map((endpoint, index) => ({
       id: `__preview_anchor_${index}__`,
-      lattice: add3(endpoint, scale3(extrusion.axis, extrusion.blocks)),
-      image: translated.images[index],
+      lattice: endpoint,
+      image: planarCamera.images[index],
       weight: 1,
     }))
     previewScene.observations = [
@@ -192,7 +196,7 @@ function makeExtrusionPreview(
       ...anchors,
     ]
     try {
-      previewScene.projection = refitProjection(previewScene)
+      previewScene.projection = planarCamera.projection
       previewScene.faces.forEach((face) => {
         face.normal = cameraFacingNormal(previewScene, face)
       })

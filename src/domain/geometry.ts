@@ -1262,6 +1262,88 @@ export function translatedExtrusionAnchors(
   }
 }
 
+/**
+ * Promotes a planar solve without moving it.  The depth anchors are first
+ * treated as soft targets, then reprojected from a camera whose depth-zero
+ * slice is exactly the existing homography.  Once committed this is an
+ * ordinary camera projection; later handle edits use the usual global fit.
+ */
+export function initialCameraForPlanarExtrusion(
+  scene: SceneGeometry,
+  selections: SelectedEdge[],
+  depthAxis: Point3,
+  blocks: number,
+  pointer: Point2,
+): { projection: CameraProjection; endpoints: [Point3, Point3]; images: [Point2, Point2] } | undefined {
+  if (scene.projection?.kind !== 'planar') return undefined
+  const targets = translatedExtrusionAnchors(scene, selections, pointer)
+  if (!targets) return undefined
+  const { origin, uAxis, vAxis, homography } = scene.projection
+  const depthLength = dot3(depthAxis, depthAxis)
+  if (depthLength <= EPSILON) return undefined
+  const rows: number[][] = []
+  const values: number[] = []
+  const endpoints = targets.endpoints.map((endpoint) =>
+    add3(endpoint, scale3(depthAxis, blocks)),
+  ) as [Point3, Point3]
+  endpoints.forEach((point, index) => {
+    const delta = subtract3(point, origin)
+    const a = dot3(delta, uAxis) / dot3(uAxis, uAxis)
+    const b = dot3(delta, vAxis) / dot3(vAxis, vAxis)
+    const c = dot3(delta, depthAxis) / depthLength
+    const denominator = homography[6] * a + homography[7] * b + homography[8]
+    const xNumerator = homography[0] * a + homography[1] * b + homography[2]
+    const yNumerator = homography[3] * a + homography[4] * b + homography[5]
+    const target = targets.images[index]
+    rows.push([c, 0, -target.x * c])
+    values.push(target.x * denominator - xNumerator)
+    rows.push([0, c, -target.y * c])
+    values.push(target.y * denominator - yNumerator)
+  })
+  const [depthX, depthY, depthW] = solveLeastSquares(rows, values)
+  const localCamera: Matrix3x4 = [
+    homography[0], homography[1], depthX, homography[2],
+    homography[3], homography[4], depthY, homography[5],
+    homography[6], homography[7], depthW, homography[8],
+  ]
+  const axes = [uAxis, vAxis, depthAxis]
+  const basisRows = axes.map((axis) => {
+    const length = dot3(axis, axis)
+    return [
+      axis.x / length,
+      axis.y / length,
+      axis.z / length,
+      -dot3(origin, axis) / length,
+    ]
+  })
+  const matrix = ([0, 1, 2] as const).flatMap((row) =>
+    [0, 1, 2, 3].map(
+      (column) =>
+        localCamera[row * 4] * basisRows[0][column] +
+        localCamera[row * 4 + 1] * basisRows[1][column] +
+        localCamera[row * 4 + 2] * basisRows[2][column] +
+        localCamera[row * 4 + 3] * (column === 3 ? 1 : 0),
+    ),
+  ) as Matrix3x4
+  const scale = matrix[11]
+  if (!Number.isFinite(scale) || Math.abs(scale) <= EPSILON) return undefined
+  const normalized = matrix.map((value) => value / scale) as Matrix3x4
+  const images = endpoints.map((endpoint) => projectCamera(normalized, endpoint)) as [Point2, Point2]
+  const errors = scene.observations.map((observation) =>
+    distance(projectCamera(normalized, observation.lattice), observation.image),
+  )
+  return {
+    projection: {
+      kind: 'camera',
+      matrix: normalized,
+      rmsError: Math.sqrt(errors.reduce((sum, error) => sum + error * error, 0) / Math.max(1, errors.length)),
+      maxError: Math.max(0, ...errors),
+    },
+    endpoints,
+    images,
+  }
+}
+
 export function createEdgeExtrusionFaces(
   scene: SceneGeometry,
   selections: SelectedEdge[],

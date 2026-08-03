@@ -82,6 +82,9 @@ describe('unit-face geometry', () => {
     useEditorStore
       .getState()
       .selectEdge({ faceId: face.id, edge: 'top' }, false)
+    const planarAnchors = structuredClone(
+      useEditorStore.getState().document.scene.observations,
+    )
     useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
 
     const state = useEditorStore.getState()
@@ -89,6 +92,16 @@ describe('unit-face geometry', () => {
     expect(state.document.scene.observations).toHaveLength(6)
     expect(state.document.scene.faces).toHaveLength(25)
     expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
+    planarAnchors.forEach((anchor) => {
+      const projected = projectScenePoint(state.document.scene, anchor.lattice)!
+      expect(projected.x).toBeCloseTo(anchor.image.x, 6)
+      expect(projected.y).toBeCloseTo(anchor.image.y, 6)
+    })
+    state.document.scene.observations.slice(-2).forEach((anchor) => {
+      const projected = projectScenePoint(state.document.scene, anchor.lattice)!
+      expect(projected.x).toBeCloseTo(anchor.image.x, 6)
+      expect(projected.y).toBeCloseTo(anchor.image.y, 6)
+    })
   })
 
   it('removes an extra calibration anchor and refits the camera in one transaction', () => {
