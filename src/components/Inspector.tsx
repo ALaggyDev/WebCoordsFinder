@@ -92,15 +92,32 @@ function NumberField({
   min?: number
   max?: number
 }) {
+  const [draft, setDraft] = useState(() => String(value))
+
+  useEffect(() => {
+    setDraft(String(value))
+  }, [value])
+
+  const commitIfCompleteInteger = (nextValue: string) => {
+    if (/^-?\d+$/.test(nextValue)) onChange(Number(nextValue))
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
       <input
         type="number"
-        value={value}
+        value={draft}
         min={min}
         max={max}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => {
+          const nextValue = event.target.value
+          setDraft(nextValue)
+          commitIfCompleteInteger(nextValue)
+        }}
+        onBlur={() => {
+          if (!/^-?\d+$/.test(draft)) setDraft(String(value))
+        }}
       />
     </label>
   )
