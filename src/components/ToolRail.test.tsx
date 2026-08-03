@@ -4,13 +4,13 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createEmptyDocument,
-  createInitialDocument,
   useEditorStore,
 } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import { ToolRail } from './ToolRail'
 
 beforeEach(() => {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({

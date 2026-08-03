@@ -1,10 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   Download,
   FileImage,
   FolderOpen,
   ImagePlus,
+  LoaderCircle,
+  Pencil,
+  Search,
   Sparkles,
   Trash2,
   Upload,
@@ -14,12 +17,25 @@ import {
   exampleProjects,
   type ExampleProjectId,
 } from '../domain/examples'
+import type { EditorDocument, TextureAlgorithm } from '../domain/types'
 import type { ProjectSummary } from '../storage/db'
 
-// The dialog presents saved and example projects without owning persistence;
-// App performs each action and supplies refreshed summaries and preview URLs.
+export type ProjectDialogTab = 'projects' | 'examples'
+
+export type ExampleProjectState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | {
+      status: 'ready'
+      document: EditorDocument
+      imageBlob?: Blob
+      preview?: string
+    }
+
 interface ProjectDialogProps {
   activeProjectId: string | null
+  exampleStates: Partial<Record<ExampleProjectId, ExampleProjectState>>
+  initialTab: ProjectDialogTab
   open: boolean
   previews: Record<string, string | undefined>
   projects: ProjectSummary[]
@@ -27,9 +43,25 @@ interface ProjectDialogProps {
   onSelectProject: (id: string) => void
   onNewProject: () => void
   onImportProject: () => void
-  onImportExample: (id: ExampleProjectId) => void
-  onExportProject: () => void
+  onImportExample: (id: ExampleProjectId, includeAnnotations: boolean) => void
+  onExportProject: (id: string) => void
+  onRenameProject: (id: string, name: string) => void
+  onRequestDeleteProject: (id: string) => void
   onRequestClearData: () => void
+}
+
+interface ProjectDetails {
+  name: string
+  imageName: string
+  imageWidth: number
+  imageHeight: number
+  faceCount: number
+  evidenceCount: number
+  confirmedCount: number
+  proposedCount: number
+  anchorSet: boolean
+  compassResolved: boolean
+  textureAlgorithm: TextureAlgorithm
 }
 
 function updatedLabel(timestamp: number): string {
@@ -41,8 +73,173 @@ function updatedLabel(timestamp: number): string {
   }).format(timestamp)
 }
 
+function detailsFromDocument(document: EditorDocument): ProjectDetails {
+  return {
+    name: document.projectName.trim() || 'Untitled project',
+    imageName: document.image.name || 'No image',
+    imageWidth: document.image.width,
+    imageHeight: document.image.height,
+    faceCount: document.scene.faces.length,
+    evidenceCount: document.evidence.length,
+    confirmedCount: document.evidence.filter(
+      (entry) => entry.reviewStatus === 'confirmed',
+    ).length,
+    proposedCount: document.evidence.filter(
+      (entry) => entry.reviewStatus === 'proposed',
+    ).length,
+    anchorSet: Boolean(document.anchorFaceId),
+    compassResolved: document.scanner.compassResolved,
+    textureAlgorithm: document.scanner.textureAlgorithm,
+  }
+}
+
+function ProjectPreview({ source, name }: { source?: string; name: string }) {
+  return (
+    <div className="project-detail-preview">
+      {source ? (
+        <img src={source} alt={`${name} preview`} />
+      ) : (
+        <div className="project-detail-preview-empty">
+          <FileImage size={28} />
+          <span>Preview unavailable</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProjectInformation({
+  details,
+  current,
+  description,
+  preview,
+  renameEditor,
+  onBeginRename,
+  updatedAt,
+}: {
+  details: ProjectDetails
+  current?: boolean
+  description?: string
+  preview?: string
+  renameEditor?: {
+    value: string
+    onChange: (value: string) => void
+    onCancel: () => void
+    onSave: () => void
+  }
+  onBeginRename?: () => void
+  updatedAt?: number
+}) {
+  const completion = details.evidenceCount
+    ? Math.round((details.confirmedCount / details.evidenceCount) * 100)
+    : 0
+
+  return (
+    <>
+      <ProjectPreview source={preview} name={details.name} />
+      <div className="project-detail-heading">
+        <div>
+          {renameEditor ? (
+            <form
+              className="project-rename-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                renameEditor.onSave()
+              }}
+            >
+              <input
+                autoFocus
+                aria-label="Project name"
+                maxLength={120}
+                value={renameEditor.value}
+                onChange={(event) => renameEditor.onChange(event.target.value)}
+              />
+              <button
+                className="icon-button"
+                type="submit"
+                disabled={!renameEditor.value.trim()}
+                aria-label="Save project name"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Cancel rename"
+                onClick={renameEditor.onCancel}
+              >
+                <X size={14} />
+              </button>
+            </form>
+          ) : (
+            <div className="project-detail-name-row">
+              <h3>{details.name}</h3>
+              {onBeginRename && (
+                <button
+                  className="icon-button project-rename-button"
+                  type="button"
+                  aria-label={`Rename ${details.name}`}
+                  onClick={onBeginRename}
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
+            </div>
+          )}
+          <p>
+            {details.imageName}
+            {details.imageWidth > 0 && details.imageHeight > 0
+              ? ` · ${details.imageWidth} × ${details.imageHeight}`
+              : ''}
+          </p>
+        </div>
+        {current && (
+          <span className="project-current-badge">
+            <Check size={11} /> Current
+          </span>
+        )}
+      </div>
+      {description && <p className="project-detail-description">{description}</p>}
+      {updatedAt && (
+        <time
+          className="project-detail-updated"
+          dateTime={new Date(updatedAt).toISOString()}
+        >
+          Updated {updatedLabel(updatedAt)}
+        </time>
+      )}
+      <div className="project-detail-stats">
+        <span><strong>{details.faceCount}</strong>Faces</span>
+        <span><strong>{details.evidenceCount}</strong>Evidence</span>
+        <span><strong>{details.confirmedCount}</strong>Confirmed</span>
+        <span><strong>{details.proposedCount}</strong>Proposed</span>
+      </div>
+      <div className="project-review-progress">
+        <div>
+          <span>Review progress</span>
+          <strong>{completion}%</strong>
+        </div>
+        <span aria-hidden="true">
+          <i style={{ width: `${completion}%` }} />
+        </span>
+      </div>
+      <div className="project-detail-status">
+        <span className={details.anchorSet ? 'ready' : ''}>
+          Anchor {details.anchorSet ? 'set' : 'not set'}
+        </span>
+        <span className={details.compassResolved ? 'ready' : ''}>
+          Compass {details.compassResolved ? 'resolved' : 'unresolved'}
+        </span>
+        <span>{details.textureAlgorithm}</span>
+      </div>
+    </>
+  )
+}
+
 export function ProjectDialog({
   activeProjectId,
+  exampleStates,
+  initialTab,
   open,
   previews,
   projects,
@@ -52,24 +249,106 @@ export function ProjectDialog({
   onImportProject,
   onImportExample,
   onExportProject,
+  onRenameProject,
+  onRequestDeleteProject,
   onRequestClearData,
 }: ProjectDialogProps) {
+  const [tab, setTab] = useState<ProjectDialogTab>(initialTab)
+  const [query, setQuery] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [selectedExampleId, setSelectedExampleId] =
+    useState<ExampleProjectId>(exampleProjects[0].id)
+  const [includeExampleAnnotations, setIncludeExampleAnnotations] = useState(true)
+  const wasOpenRef = useRef(false)
+
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      wasOpenRef.current = false
+      return
+    }
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true
+      setTab(initialTab)
+      setQuery('')
+      setSelectedProjectId(activeProjectId ?? projects[0]?.id ?? null)
+      setRenamingProjectId(null)
+      setSelectedExampleId(exampleProjects[0].id)
+      setIncludeExampleAnnotations(true)
+    }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [onClose, open])
+  }, [activeProjectId, initialTab, onClose, open, projects])
+
+  useEffect(() => {
+    if (
+      selectedProjectId &&
+      !projects.some((project) => project.id === selectedProjectId)
+    ) {
+      setSelectedProjectId(activeProjectId ?? projects[0]?.id ?? null)
+    }
+  }, [activeProjectId, projects, selectedProjectId])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredProjects = useMemo(
+    () =>
+      projects.filter((project) =>
+        `${project.name} ${project.imageName}`
+          .toLowerCase()
+          .includes(normalizedQuery),
+      ),
+    [normalizedQuery, projects],
+  )
+  const filteredExamples = useMemo(
+    () =>
+      exampleProjects.filter((example) =>
+        `${example.name} ${example.description}`
+          .toLowerCase()
+          .includes(normalizedQuery),
+      ),
+    [normalizedQuery],
+  )
 
   if (!open) return null
 
+  const selectedProject =
+    filteredProjects.find((project) => project.id === selectedProjectId) ??
+    filteredProjects[0]
+  const selectedExample =
+    filteredExamples.find((example) => example.id === selectedExampleId) ??
+    filteredExamples[0]
+  const selectedExampleState = selectedExample
+    ? exampleStates[selectedExample.id]
+    : undefined
+
   const runAction = (action: () => void) => {
-    // Close first so file pickers and project switches never leave a stale
-    // modal over the newly active workspace.
     onClose()
     action()
+  }
+  const changeTab = (nextTab: ProjectDialogTab) => {
+    setTab(nextTab)
+    setQuery('')
+  }
+  const openProject = (id: string) => {
+    if (id !== activeProjectId) runAction(() => onSelectProject(id))
+  }
+  const beginRename = (project: ProjectSummary) => {
+    setRenamingProjectId(project.id)
+    setRenameDraft(project.name)
+  }
+  const cancelRename = () => {
+    setRenamingProjectId(null)
+    setRenameDraft('')
+  }
+  const saveRename = (project: ProjectSummary) => {
+    const nextName = renameDraft.trim()
+    if (!nextName) return
+    if (nextName !== project.name) onRenameProject(project.id, nextName)
+    cancelRename()
   }
 
   return (
@@ -90,144 +369,288 @@ export function ProjectDialog({
             <div aria-hidden="true"><FolderOpen size={20} /></div>
             <div>
               <span>Local workspace</span>
-              <h2 id="project-dialog-title">Projects</h2>
+              <h2 id="project-dialog-title">Project library</h2>
             </div>
           </div>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Close project menu"
-            onClick={onClose}
-          >
-            <X size={16} />
-          </button>
+          <div className="project-dialog-header-actions">
+            <button
+              className="primary-button compact"
+              type="button"
+              onClick={() => runAction(onNewProject)}
+            >
+              <ImagePlus size={15} /> New from image
+            </button>
+            <button
+              className="secondary-button compact"
+              type="button"
+              onClick={() => runAction(onImportProject)}
+            >
+              <Upload size={15} /> Import .wcf
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Close project menu"
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </header>
 
-        <div className="project-dialog-toolbar">
+        <div className="project-dialog-tabs" role="tablist" aria-label="Project source">
           <button
-            className="primary-button"
             type="button"
-            onClick={() => runAction(onNewProject)}
+            role="tab"
+            aria-selected={tab === 'projects'}
+            className={tab === 'projects' ? 'active' : ''}
+            onClick={() => changeTab('projects')}
           >
-            <ImagePlus size={15} />
-            New from image
+            Projects <small>{projects.length}</small>
           </button>
           <button
-            className="secondary-button"
             type="button"
-            onClick={() => runAction(onImportProject)}
+            role="tab"
+            aria-selected={tab === 'examples'}
+            className={tab === 'examples' ? 'active' : ''}
+            onClick={() => changeTab('examples')}
           >
-            <Upload size={15} />
-            Load project
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={!activeProjectId}
-            onClick={() => runAction(onExportProject)}
-          >
-            <Download size={15} />
-            Export current
+            Examples <small>{exampleProjects.length}</small>
           </button>
         </div>
 
         <div className="project-dialog-content">
-          <section className="project-library-section">
-            <div className="project-library-heading">
-              <div>
-                <span>Your workspace</span>
-                <h3>Saved projects</h3>
-              </div>
-              <small>{projects.length}</small>
-            </div>
-            {projects.length === 0 ? (
-              <div className="project-library-empty">
-                <FileImage size={22} />
-                <strong>No saved projects yet</strong>
-                <span>Start from an image or import an example below.</span>
-              </div>
-            ) : (
-              <div className="project-card-grid">
-                {projects.map((project) => (
-                  <button
-                    key={project.id}
-                    className={
-                      project.id === activeProjectId
-                        ? 'project-card active'
-                        : 'project-card'
-                    }
-                    type="button"
-                    onClick={() =>
-                      runAction(() => onSelectProject(project.id))
-                    }
-                  >
-                    <div className="project-card-preview">
-                      {previews[project.id] ? (
-                        <img src={previews[project.id]} alt="" />
-                      ) : (
-                        <FileImage size={24} />
-                      )}
+          <aside className="project-list-pane">
+            <label className="project-search">
+              <Search size={14} />
+              <input
+                type="search"
+                value={query}
+                placeholder={`Search ${tab}`}
+                aria-label={`Search ${tab}`}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <div className="project-list" aria-label={tab === 'projects' ? 'Saved projects' : 'Example projects'}>
+              {tab === 'projects' ? (
+                filteredProjects.length ? (
+                  filteredProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      className={
+                        project.id === selectedProject?.id
+                          ? 'project-list-row selected'
+                          : 'project-list-row'
+                      }
+                      type="button"
+                      onClick={() => {
+                        cancelRename()
+                        setSelectedProjectId(project.id)
+                      }}
+                      onDoubleClick={() => openProject(project.id)}
+                    >
+                      <span className="project-list-thumbnail">
+                        {previews[project.id] ? (
+                          <img src={previews[project.id]} alt="" />
+                        ) : (
+                          <FileImage size={18} />
+                        )}
+                      </span>
+                      <span className="project-list-copy">
+                        <strong>{project.name}</strong>
+                        <small>{project.imageName}</small>
+                        <time dateTime={new Date(project.updatedAt).toISOString()}>
+                          Updated {updatedLabel(project.updatedAt)}
+                        </time>
+                      </span>
                       {project.id === activeProjectId && (
-                        <span className="project-card-current">
-                          <Check size={11} />
-                          Current
-                        </span>
+                        <span className="project-list-current" title="Current project" />
                       )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="project-list-empty">
+                    <FileImage size={22} />
+                    <strong>{projects.length ? 'No matching projects' : 'No saved projects yet'}</strong>
+                    <span>{projects.length ? 'Try a different search.' : 'Start from an image or import a project.'}</span>
+                  </div>
+                )
+              ) : filteredExamples.length ? (
+                filteredExamples.map((example) => {
+                  const state = exampleStates[example.id]
+                  return (
+                    <button
+                      key={example.id}
+                      className={
+                        example.id === selectedExample?.id
+                          ? 'project-list-row selected'
+                          : 'project-list-row'
+                      }
+                      type="button"
+                      onClick={() => setSelectedExampleId(example.id)}
+                    >
+                      <span className="project-list-thumbnail">
+                        {state?.status === 'ready' && state.preview ? (
+                          <img src={state.preview} alt="" />
+                        ) : (
+                          <Sparkles size={18} />
+                        )}
+                      </span>
+                      <span className="project-list-copy">
+                        <strong>{example.name}</strong>
+                      </span>
+                    </button>
+                  )
+                })
+              ) : (
+                <div className="project-list-empty">
+                  <Search size={22} />
+                  <strong>No matching examples</strong>
+                  <span>Try a different search.</span>
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <section className="project-detail-pane">
+            {tab === 'projects' ? (
+              selectedProject ? (
+                <>
+                  <div className="project-detail-scroll">
+                    <ProjectInformation
+                      details={selectedProject}
+                      current={selectedProject.id === activeProjectId}
+                      onBeginRename={() => beginRename(selectedProject)}
+                      preview={previews[selectedProject.id]}
+                      renameEditor={
+                        renamingProjectId === selectedProject.id
+                          ? {
+                              value: renameDraft,
+                              onChange: setRenameDraft,
+                              onCancel: cancelRename,
+                              onSave: () => saveRename(selectedProject),
+                            }
+                          : undefined
+                      }
+                      updatedAt={selectedProject.updatedAt}
+                    />
+                  </div>
+                  <div className="project-detail-actions">
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={() => onRequestDeleteProject(selectedProject.id)}
+                    >
+                      <Trash2 size={14} /> Delete
+                    </button>
+                    <span />
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => runAction(() => onExportProject(selectedProject.id))}
+                    >
+                      <Download size={14} /> Export
+                    </button>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={selectedProject.id === activeProjectId}
+                      onClick={() => openProject(selectedProject.id)}
+                    >
+                      <FolderOpen size={14} />
+                      {selectedProject.id === activeProjectId ? 'Already open' : 'Open project'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="project-detail-empty">
+                  <ImagePlus size={30} />
+                  <h3>{projects.length ? 'No project selected' : 'Create your first project'}</h3>
+                  <p>{projects.length ? 'Choose a project from the list.' : 'Open a Minecraft screenshot or import a portable project bundle.'}</p>
+                  {!projects.length && (
+                    <div>
+                      <button className="primary-button" type="button" onClick={() => runAction(onNewProject)}>
+                        <ImagePlus size={14} /> New from image
+                      </button>
+                      <button className="secondary-button" type="button" onClick={() => runAction(onImportProject)}>
+                        <Upload size={14} /> Import .wcf
+                      </button>
                     </div>
-                    <span className="project-card-copy">
-                      <strong>{project.name}</strong>
-                      <small>{project.imageName}</small>
-                      <time dateTime={new Date(project.updatedAt).toISOString()}>
-                        Updated {updatedLabel(project.updatedAt)}
-                      </time>
-                    </span>
-                  </button>
-                ))}
+                  )}
+                </div>
+              )
+            ) : selectedExample ? (
+              selectedExampleState?.status === 'ready' ? (
+                <>
+                  <div className="project-detail-scroll">
+                    <ProjectInformation
+                      details={detailsFromDocument(selectedExampleState.document)}
+                      description={selectedExample.description}
+                      preview={selectedExampleState.preview}
+                    />
+                  </div>
+                  <div className="project-detail-actions example-actions">
+                    <label className="check-field example-import-option">
+                      <input
+                        type="checkbox"
+                        checked={includeExampleAnnotations}
+                        onChange={(event) =>
+                          setIncludeExampleAnnotations(event.target.checked)
+                        }
+                      />
+                      Include analysis
+                    </label>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() =>
+                        runAction(() =>
+                          onImportExample(
+                            selectedExample.id,
+                            includeExampleAnnotations,
+                          ),
+                        )
+                      }
+                    >
+                      <Sparkles size={14} /> Use example
+                    </button>
+                  </div>
+                </>
+              ) : selectedExampleState?.status === 'error' ? (
+                <div className="project-detail-empty">
+                  <FileImage size={30} />
+                  <h3>Example unavailable</h3>
+                  <p>The bundled project could not be read.</p>
+                </div>
+              ) : (
+                <div className="project-detail-empty">
+                  <LoaderCircle className="spin" size={28} />
+                  <h3>Loading example…</h3>
+                  <p>Reading the bundled project and source image.</p>
+                </div>
+              )
+            ) : (
+              <div className="project-detail-empty">
+                <Search size={30} />
+                <h3>No example selected</h3>
+                <p>Choose an example from the list.</p>
               </div>
             )}
-          </section>
-
-          <section className="project-library-section examples">
-            <div className="project-library-heading">
-              <div>
-                <span>Learn by exploring</span>
-                <h3>Example projects</h3>
-              </div>
-              <small>{exampleProjects.length}</small>
-            </div>
-            <div className="example-project-grid">
-              {exampleProjects.map((example) => (
-                <button
-                  key={example.id}
-                  className="example-project-card"
-                  type="button"
-                  onClick={() =>
-                    runAction(() => onImportExample(example.id))
-                  }
-                >
-                  <img src={example.imageSrc} alt="" />
-                  <span>
-                    <strong>{example.name}</strong>
-                    <small>{example.description}</small>
-                    <b><Sparkles size={12} /> Import example</b>
-                  </span>
-                </button>
-              ))}
-            </div>
           </section>
         </div>
 
         <footer className="project-dialog-footer">
           <span>Projects and source images stay in this browser.</span>
-          <button
-            className="danger-button"
-            type="button"
-            disabled={projects.length === 0}
-            onClick={() => runAction(onRequestClearData)}
-          >
-            <Trash2 size={14} />
-            Clear all data
-          </button>
+          {tab === 'projects' && (
+            <button
+              className="danger-button compact"
+              type="button"
+              disabled={projects.length === 0}
+              onClick={() => runAction(onRequestClearData)}
+            >
+              <Trash2 size={14} /> Clear all data
+            </button>
+          )}
         </footer>
       </section>
     </div>

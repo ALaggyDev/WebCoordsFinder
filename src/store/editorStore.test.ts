@@ -5,14 +5,14 @@ import { projectScenePoint } from '../domain/geometry'
 import type { WebSearchCheckpoint } from '../domain/types'
 import {
   createEmptyDocument,
-  createInitialDocument,
   evidenceWorldCoordinate,
   normalizeEditorDocument,
   useEditorStore,
 } from './editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 
 beforeEach(() => {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
@@ -393,7 +393,7 @@ describe('unit-face geometry', () => {
   })
 
   it('rejects unsigned legacy axis labels', () => {
-    const legacy = structuredClone(createInitialDocument()) as unknown as {
+    const legacy = structuredClone(createTestDocument()) as unknown as {
       scene: { axisMapping: Record<string, string> }
     }
     legacy.scene.axisMapping.a = 'x'
@@ -404,7 +404,7 @@ describe('unit-face geometry', () => {
   })
 
   it('rejects malformed planar projections without their lattice basis', () => {
-    const legacy = structuredClone(createInitialDocument()) as unknown as {
+    const legacy = structuredClone(createTestDocument()) as unknown as {
       scene: { projection: unknown }
     }
     legacy.scene.projection = {
@@ -418,7 +418,7 @@ describe('unit-face geometry', () => {
   })
 
   it('accepts projects without the 0° X/Z rotation', () => {
-    const document = createInitialDocument()
+    const document = createTestDocument()
     document.scanner.directions = [180]
 
     expect(normalizeEditorDocument(document).scanner.directions).toEqual([180])
@@ -428,7 +428,7 @@ describe('unit-face geometry', () => {
   })
 
   it('defaults newly added CoordsFinder settings without reading superseded ones', () => {
-    const legacy = structuredClone(createInitialDocument()) as unknown as {
+    const legacy = structuredClone(createTestDocument()) as unknown as {
       scanner: Record<string, unknown>
     }
     delete legacy.scanner.scanOrder

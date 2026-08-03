@@ -1,7 +1,7 @@
 // Estimate tests pin the intentionally approximate UI model and its compact
 // formatting separately from measured worker throughput.
 import { describe, expect, it } from 'vitest'
-import { createInitialDocument } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import type { FaceEvidence } from './types'
 import {
   estimateHitCount,
@@ -13,7 +13,7 @@ import {
 
 describe('placeholder search estimates', () => {
   it('orders web, CPU, and CUDA estimates by placeholder throughput', () => {
-    const estimates = estimateSearchTimes(createInitialDocument())
+    const estimates = estimateSearchTimes(createTestDocument())
 
     expect(estimates.map((estimate) => estimate.runtime)).toEqual([
       'web',
@@ -37,7 +37,7 @@ describe('placeholder search estimates', () => {
   })
 
   it('increases hits and lowers precision as error tolerance rises', () => {
-    const document = createInitialDocument()
+    const document = createTestDocument()
     document.anchorFaceId = document.scene.faces[0].id
     document.scene.axisMapping = { a: 'x+', b: 'y-', c: 'z+' }
     document.scanner.compassResolved = true

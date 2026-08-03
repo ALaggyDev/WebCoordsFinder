@@ -2,7 +2,7 @@
 // including resumable uint64 counters and native CoordsFinder reference cases.
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { createInitialDocument } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import { blockCoordinateForFace } from './geometry'
 import type { EditorDocument, FaceEvidence } from './types'
 import {
@@ -16,7 +16,7 @@ import {
 } from './webSearch'
 
 function searchableDocument(): EditorDocument {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   const anchor = document.scene.faces[0]
   const evidence: FaceEvidence = {
     id: 'side',

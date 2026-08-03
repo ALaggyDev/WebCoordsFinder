@@ -99,7 +99,7 @@ export async function buildProjectBundle(
   })
 }
 
-export async function readProjectBundle(file: File): Promise<{
+export async function readProjectBundle(file: Blob): Promise<{
   document: EditorDocument
   imageBlob?: Blob
 }> {

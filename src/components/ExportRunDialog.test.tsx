@@ -16,12 +16,13 @@ import {
 } from '../domain/webSearch'
 import { blockCoordinateForFace } from '../domain/geometry'
 import type { FaceEvidence } from '../domain/types'
-import { createInitialDocument, useEditorStore } from '../store/editorStore'
+import { useEditorStore } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import { Inspector } from './Inspector'
 
 beforeEach(() => {
   useEditorStore.setState({
-    document: createInitialDocument(),
+    document: createTestDocument(),
     step: 'export',
   })
 })
@@ -29,7 +30,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 function documentWithSavedSearch() {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   const anchor = document.scene.faces[0]
   const evidence: FaceEvidence = {
     id: anchor.id,

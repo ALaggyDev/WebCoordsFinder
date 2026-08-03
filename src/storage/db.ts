@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { EditorDocument } from '../domain/types'
+import type { EditorDocument, TextureAlgorithm } from '../domain/types'
 
 // Project JSON and image bytes have separate lifecycles: documents reference
 // arbitrary asset keys while blobs remain in the shared IndexedDB asset table.
@@ -20,6 +20,15 @@ export interface ProjectSummary {
   name: string
   imageName: string
   imageKey: string
+  imageWidth: number
+  imageHeight: number
+  faceCount: number
+  evidenceCount: number
+  confirmedCount: number
+  proposedCount: number
+  anchorSet: boolean
+  compassResolved: boolean
+  textureAlgorithm: TextureAlgorithm
   updatedAt: number
 }
 
@@ -55,11 +64,25 @@ export const db = new WebCoordsDatabase()
 
 function projectSummary(record: ProjectRecord): ProjectSummary {
   const document = record.document as Partial<EditorDocument>
+  const evidence = Array.isArray(document.evidence) ? document.evidence : []
   return {
     id: record.id,
     name: document.projectName?.trim() || 'Untitled project',
     imageName: document.image?.name || 'No image',
     imageKey: document.image?.key || '',
+    imageWidth: document.image?.width || 0,
+    imageHeight: document.image?.height || 0,
+    faceCount: document.scene?.faces?.length || 0,
+    evidenceCount: evidence.length,
+    confirmedCount: evidence.filter(
+      (entry) => entry.reviewStatus === 'confirmed',
+    ).length,
+    proposedCount: evidence.filter(
+      (entry) => entry.reviewStatus === 'proposed',
+    ).length,
+    anchorSet: Boolean(document.anchorFaceId),
+    compassResolved: Boolean(document.scanner?.compassResolved),
+    textureAlgorithm: document.scanner?.textureAlgorithm || 'Vanilla-3',
     updatedAt: record.updatedAt,
   }
 }
@@ -103,6 +126,24 @@ export async function listProjects(): Promise<ProjectSummary[]> {
   return records
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .map(projectSummary)
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await db.transaction('rw', db.projects, db.assets, async () => {
+    const record = await db.projects.get(id)
+    if (!record) return
+    const document = record.document as Partial<EditorDocument>
+    const imageKey = document.image?.key
+    await db.projects.delete(id)
+    if (!imageKey) return
+
+    const remaining = await db.projects.toArray()
+    const imageStillUsed = remaining.some((candidate) => {
+      const candidateDocument = candidate.document as Partial<EditorDocument>
+      return candidateDocument.image?.key === imageKey
+    })
+    if (!imageStillUsed) await db.assets.delete(imageKey)
+  })
 }
 
 export function getActiveProjectId(): string | null {

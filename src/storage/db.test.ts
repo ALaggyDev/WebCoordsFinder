@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createEmptyDocument } from '../store/editorStore'
 import {
   clearAllData,
+  db,
+  deleteProject,
   getActiveProjectId,
   listProjects,
   loadProject,
@@ -101,5 +103,35 @@ describe('project storage', () => {
     expect(getActiveProjectId()).toBeNull()
     expect(await listProjects()).toEqual([])
     expect(await loadProject('only-project')).toBeNull()
+  })
+
+  it('deletes one project and removes only its unreferenced image', async () => {
+    const first = createEmptyDocument()
+    first.projectName = 'First'
+    first.image.key = 'shared-image'
+    const second = createEmptyDocument()
+    second.projectName = 'Second'
+    second.image.key = 'shared-image'
+    const third = createEmptyDocument()
+    third.projectName = 'Third'
+    third.image.key = 'third-image'
+    await persistImage('shared-image', new Blob(['shared']))
+    await persistImage('third-image', new Blob(['third']))
+    await persistProject('first', first)
+    await persistProject('second', second)
+    await persistProject('third', third)
+
+    await deleteProject('first')
+
+    expect(await loadProject('first')).toBeNull()
+    expect((await loadProject('second'))?.imageBlob).toBeDefined()
+    expect(await db.assets.get('shared-image')).toBeDefined()
+
+    await deleteProject('second')
+    await deleteProject('third')
+
+    expect(await listProjects()).toEqual([])
+    expect(await db.assets.get('shared-image')).toBeUndefined()
+    expect(await db.assets.get('third-image')).toBeUndefined()
   })
 })

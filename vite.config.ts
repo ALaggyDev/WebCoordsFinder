@@ -28,7 +28,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webp,wasm}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,wasm,wcf}'],
         // The bundled demo is intentionally larger than Workbox's default
         // limit and must remain available to an offline installation.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,

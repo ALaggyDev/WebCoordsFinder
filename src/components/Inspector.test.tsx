@@ -11,13 +11,13 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createEmptyDocument,
-  createInitialDocument,
   useEditorStore,
 } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import { Inspector } from './Inspector'
 
 beforeEach(() => {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
@@ -69,7 +69,7 @@ describe('partial perspective inspector', () => {
 
 describe('face inspector batch selection', () => {
   it('selects a face while world orientation is unresolved', () => {
-    const document = createInitialDocument()
+    const document = createTestDocument()
     useEditorStore.setState({ document, step: 'faces', faceTab: 'selection' })
     const face = useEditorStore.getState().document.scene.faces[0]
     useEditorStore.getState().selectFace(face.id, false)
@@ -226,7 +226,7 @@ describe('face inspector batch selection', () => {
 
 describe('geometry deletion', () => {
   it('derives world orientation from a labeled face and directed edge', () => {
-    const document = createInitialDocument()
+    const document = createTestDocument()
     document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
     document.scanner.compassResolved = false
     document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }

@@ -3,12 +3,9 @@ import {
   add3,
   axisMappingFromReferences,
   blockCoordinateForFace,
-  cameraFitDiagnostics,
   cameraFacingNormal,
   chooseEdgeExtrusion,
-  cross3,
   createEdgeExtrusionFaces,
-  fitCameraProjection,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
   isAxisMappingComplete,
@@ -25,12 +22,10 @@ import {
   selectedEdgeGeometry,
   selectedEdgeEndpoints,
   same3,
-  subtract3,
   translatedExtrusionAnchors,
   validAxisMappingCompletions,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
-import type { ExampleProjectId } from '../domain/examples'
 import { searchDirections, worldAxisLabels } from '../domain/types'
 import type {
   AxisMapping,
@@ -57,12 +52,6 @@ import type {
  * Canvas-only previews stay in component state and commit here once at the end
  * of a gesture, keeping each user action to one undoable document snapshot.
  */
-const demoCorners: [Point2, Point2, Point2, Point2] = [
-  { x: 0, y: 644 },
-  { x: 1058, y: 574 },
-  { x: 1450, y: 1000 },
-  { x: 0, y: 1102 },
-]
 function createFaceGrid(
   columns: number,
   rows: number,
@@ -76,15 +65,6 @@ function createFaceGrid(
       normal,
     })),
   )
-}
-
-interface CameraSetup {
-  baseCorners: [Point2, Point2, Point2, Point2]
-  columns: number
-  rows: number
-  edge: { start: Point3; end: Point3 }
-  depth: number
-  outerCorners: [Point2, Point2]
 }
 
 function createPlanarScene(
@@ -124,97 +104,6 @@ function createPlanarScene(
   }
 }
 
-function createCalibrationDepthFaces(
-  draft: CameraSetup,
-  prefix: string,
-): MeshFace[] {
-  if (!draft.edge) return []
-  const direction = subtract3(draft.edge.end, draft.edge.start)
-  const span = Math.abs(direction.x) + Math.abs(direction.y)
-  const step = scale3(direction, 1 / span)
-  return Array.from({ length: draft.depth }).flatMap((_, depthIndex) =>
-    Array.from({ length: span }, (__, index) => {
-      const start = add3(draft.edge!.start, scale3(step, index))
-      const end = add3(start, step)
-      return {
-        id: `${prefix}-depth-${depthIndex}-${index}`,
-        blockCoordinate: {
-          x: Math.min(start.x, end.x),
-          y: Math.min(start.y, end.y),
-          z: depthIndex,
-        },
-        normal: cross3(step, { x: 0, y: 0, z: 1 }),
-      }
-    }),
-  )
-}
-
-function createCalibratedScene(
-  draft: CameraSetup,
-  prefix: string,
-): EditorDocument['scene'] {
-  if (!draft.edge || draft.outerCorners.length !== 2) {
-    throw new Error('Choose a grid edge and extrude the depth reference.')
-  }
-  const baseLattice: [Point3, Point3, Point3, Point3] = [
-    { x: 0, y: 0, z: 0 },
-    { x: draft.columns, y: 0, z: 0 },
-    { x: draft.columns, y: draft.rows, z: 0 },
-    { x: 0, y: draft.rows, z: 0 },
-  ]
-  const { start: edgeStart, end: edgeEnd } = draft.edge
-  const outerLattice: [Point3, Point3] = [edgeStart, edgeEnd].map(
-    (point) => ({ ...point, z: draft.depth }),
-  ) as [Point3, Point3]
-  const observations = [
-    ...baseLattice.map((lattice, index) => ({
-      id: crypto.randomUUID(),
-      lattice,
-      image: draft.baseCorners[index],
-      weight: 1,
-    })),
-    ...outerLattice.map((lattice, index) => ({
-      id: crypto.randomUUID(),
-      lattice,
-      image: draft.outerCorners[index],
-      weight: 1,
-    })),
-  ]
-  const projection = fitCameraProjection(observations)
-  const diagnostics = cameraFitDiagnostics(projection, {
-    x: draft.columns / 2,
-    y: draft.rows / 2,
-    z: 0,
-  })
-  if (!diagnostics.finite || diagnostics.minAxisLength < 0.25) {
-    throw new Error('The depth reference produces an unstable camera fit.')
-  }
-  if (diagnostics.minAxisSeparationDegrees < 1) {
-    throw new Error(
-      'The depth face is too flat in the image. Choose a clearer perpendicular face.',
-    )
-  }
-
-  const scene: EditorDocument['scene'] = {
-    faces: [
-      ...createFaceGrid(
-        draft.columns,
-        draft.rows,
-        `${prefix}-base`,
-        { x: 0, y: 0, z: 1 },
-      ),
-      ...createCalibrationDepthFaces(draft, prefix),
-    ],
-    observations,
-    projection,
-    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-  }
-  scene.faces.forEach((face) => {
-    face.normal = cameraFacingNormal(scene, face)
-  })
-  return scene
-}
-
 function createDefaultScanner(): ScannerSettings {
   // Defaults target current CoordsFinder behavior while leaving compass
   // orientation unresolved until the user supplies a valid world mapping.
@@ -224,12 +113,12 @@ function createDefaultScanner(): ScannerSettings {
     directions: [0],
     compassResolved: false,
     bounds: {
-      xStart: -5000,
-      xEnd: 5000,
+      xStart: -2000,
+      xEnd: 2000,
       yStart: -60,
       yEnd: 0,
-      zStart: -5000,
-      zEnd: 5000,
+      zStart: -2000,
+      zEnd: 2000,
     },
     cpuTileSize: { x: 1024, z: 1024 },
     cudaTileSize: { x: 16384, z: 16384 },
@@ -237,47 +126,6 @@ function createDefaultScanner(): ScannerSettings {
     verbose: false,
     confidenceThreshold: 0.08,
     webSearch: null,
-  }
-}
-
-export const createExampleDocument = (
-  exampleId: ExampleProjectId = 'cavern',
-): EditorDocument => {
-  if (exampleId !== 'cavern') {
-    throw new Error(`Unknown example project: ${exampleId}`)
-  }
-  const scene = createCalibratedScene(
-    {
-      baseCorners: demoCorners,
-      columns: 6,
-      rows: 4,
-      edge: {
-        start: { x: 0, y: 0, z: 0 },
-        end: { x: 6, y: 0, z: 0 },
-      },
-      depth: 2,
-      outerCorners: [
-        { x: 210, y: 310 },
-        { x: 970, y: 300 },
-      ],
-    },
-    'cavern-demo',
-  )
-  return {
-    schemaVersion: 1,
-    projectName: 'Example cavern',
-    anchorFaceId: scene.faces[0]?.id ?? null,
-    image: {
-      key: 'demo',
-      name: 'Example cavern screenshot',
-      src: '/demo/demo.png',
-      width: 2560,
-      height: 1494,
-      mime: 'image/png',
-    },
-    scene,
-    evidence: [],
-    scanner: createDefaultScanner(),
   }
 }
 
@@ -302,9 +150,6 @@ export const createEmptyDocument = (): EditorDocument => ({
   evidence: [],
   scanner: createDefaultScanner(),
 })
-
-// Retained as the fixture factory used by domain and component tests.
-export const createInitialDocument = createExampleDocument
 
 function isValidAxisMapping(input: unknown): input is AxisMapping {
   if (!input || typeof input !== 'object') return false

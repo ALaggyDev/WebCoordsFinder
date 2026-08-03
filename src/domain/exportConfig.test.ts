@@ -1,7 +1,7 @@
 // Export tests pin the scanner text contract and every validation invariant at
 // the boundary between reviewed editor evidence and CoordsFinder.
 import { describe, expect, it } from 'vitest'
-import { createInitialDocument } from '../store/editorStore'
+import { createTestDocument } from '../test/createTestDocument'
 import { blockCoordinateForFace } from './geometry'
 import type { EditorDocument, FaceEvidence, MeshFace } from './types'
 import type { Point3 } from './types'
@@ -32,7 +32,7 @@ const evidence = (
 })
 
 const documentWith = (entries: FaceEvidence[]): EditorDocument => {
-  const document = createInitialDocument()
+  const document = createTestDocument()
   document.scene.faces.forEach((face) => {
     face.normal = { x: 0, y: 0, z: -1 }
   })
@@ -98,7 +98,7 @@ describe('CoordsFinder export', () => {
 
     expect(config).toContain('algorithm = Vanilla-3')
     expect(config).toContain('scanOrder = spiral')
-    expect(config).toContain('xRange = (-5000, 5000)')
+    expect(config).toContain('xRange = (-2000, 2000)')
     expect(config).toContain('cpuTileSize = (1024, 1024)')
     expect(config).toContain('cudaTileSize = (16384, 16384)')
     expect(config).toContain('errorTolerance = 0')

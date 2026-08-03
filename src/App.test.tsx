@@ -11,18 +11,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   createEmptyDocument,
-  createInitialDocument,
   useEditorStore,
 } from './store/editorStore'
+import { createTestDocument } from './test/createTestDocument'
 
 const storageMocks = vi.hoisted(() => ({
   clearAllData: vi.fn(),
+  deleteProject: vi.fn(),
   getActiveProjectId: vi.fn(),
   listProjects: vi.fn(),
   loadProject: vi.fn(),
   persistImage: vi.fn(),
   persistProject: vi.fn(),
   setActiveProjectId: vi.fn(),
+}))
+
+const exampleMocks = vi.hoisted(() => ({
+  loadExampleProject: vi.fn(),
 }))
 
 vi.mock('./components/EditorCanvas', () => ({ EditorCanvas: () => null }))
@@ -47,25 +52,54 @@ vi.mock('./components/TopBar', () => ({
   ),
 }))
 vi.mock('./storage/db', () => storageMocks)
+vi.mock('./domain/examples', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./domain/examples')>()),
+  loadExampleProject: exampleMocks.loadExampleProject,
+}))
+
+function summaryFor(
+  id: string,
+  nextDocument: ReturnType<typeof createEmptyDocument>,
+  updatedAt = Date.now(),
+) {
+  return {
+    id,
+    name: nextDocument.projectName,
+    imageName: nextDocument.image.name,
+    imageKey: nextDocument.image.key,
+    imageWidth: nextDocument.image.width,
+    imageHeight: nextDocument.image.height,
+    faceCount: nextDocument.scene.faces.length,
+    evidenceCount: nextDocument.evidence.length,
+    confirmedCount: nextDocument.evidence.filter(
+      (entry) => entry.reviewStatus === 'confirmed',
+    ).length,
+    proposedCount: nextDocument.evidence.filter(
+      (entry) => entry.reviewStatus === 'proposed',
+    ).length,
+    anchorSet: Boolean(nextDocument.anchorFaceId),
+    compassResolved: nextDocument.scanner.compassResolved,
+    textureAlgorithm: nextDocument.scanner.textureAlgorithm,
+    updatedAt,
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   storageMocks.clearAllData.mockResolvedValue(undefined)
+  storageMocks.deleteProject.mockResolvedValue(undefined)
   storageMocks.getActiveProjectId.mockReturnValue(null)
   storageMocks.listProjects.mockResolvedValue([])
   storageMocks.loadProject.mockResolvedValue(null)
   storageMocks.persistImage.mockResolvedValue(undefined)
   storageMocks.persistProject.mockImplementation(
-    async (id, nextDocument) => ({
-      id,
-      name: nextDocument.projectName,
-      imageName: nextDocument.image.name,
-      imageKey: nextDocument.image.key,
-      updatedAt: Date.now(),
-    }),
+    async (id, nextDocument) => summaryFor(id, nextDocument),
+  )
+  exampleMocks.loadExampleProject.mockRejectedValue(
+    new Error('Example not requested in this test.'),
   )
 
-  const document = createInitialDocument()
+  const document = createTestDocument()
   document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
@@ -103,7 +137,7 @@ describe('face keyboard shortcuts', () => {
     expect(useEditorStore.getState().document.image.src).toBe('')
   })
 
-  it('opens examples in the centered project library', async () => {
+  it('opens the centered project library on the Projects tab', async () => {
     render(<App />)
 
     fireEvent.click(
@@ -111,24 +145,21 @@ describe('face keyboard shortcuts', () => {
     )
 
     expect(
-      screen.getByRole('dialog', { name: 'Projects' }),
+      screen.getByRole('dialog', { name: 'Project library' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Example projects')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Projects 0/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   })
 
   it('creates and switches to a new project when opening an image', async () => {
-    const currentDocument = createInitialDocument()
+    const currentDocument = createTestDocument()
     currentDocument.projectName = 'Existing project'
     const currentImageKey = currentDocument.image.key
     storageMocks.getActiveProjectId.mockReturnValue('project-existing')
     storageMocks.listProjects.mockResolvedValue([
-      {
-        id: 'project-existing',
-        name: currentDocument.projectName,
-        imageName: currentDocument.image.name,
-        imageKey: currentImageKey,
-        updatedAt: 1,
-      },
+      summaryFor('project-existing', currentDocument, 1),
     ])
     storageMocks.loadProject.mockResolvedValue({
       id: 'project-existing',
@@ -238,5 +269,161 @@ describe('face keyboard shortcuts', () => {
     )
     expect(state.selectedEvidenceIds).toEqual([])
     expect(state.tool).toBe('anchor')
+  })
+
+  it('imports the bundled example document without regenerating it', async () => {
+    const bundledDocument = createTestDocument()
+    bundledDocument.projectName = 'bundle demo'
+    bundledDocument.image = {
+      key: 'bundle-image',
+      name: 'bundle-demo.png',
+      src: '',
+      width: 2560,
+      height: 1494,
+      mime: 'image/png',
+    }
+    const imageBlob = new Blob(['bundle-image'], { type: 'image/png' })
+    exampleMocks.loadExampleProject.mockResolvedValue({
+      document: bundledDocument,
+      imageBlob,
+    })
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:bundle-demo'),
+      revokeObjectURL: vi.fn(),
+    })
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000010')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000011')
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse examples' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use example' }))
+
+    await waitFor(() =>
+      expect(storageMocks.persistProject).toHaveBeenCalledWith(
+        '00000000-0000-4000-8000-000000000011',
+        expect.objectContaining({
+          projectName: 'bundle demo',
+          image: expect.objectContaining({
+            name: 'bundle-demo.png',
+            width: 2560,
+            height: 1494,
+          }),
+          scene: bundledDocument.scene,
+        }),
+      ),
+    )
+    expect(storageMocks.persistImage).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000010',
+      imageBlob,
+    )
+  })
+
+  it('imports only the example image when faces and analysis are excluded', async () => {
+    const bundledDocument = createTestDocument()
+    bundledDocument.projectName = 'bundle demo'
+    const imageBlob = new Blob(['bundle-image'], { type: 'image/png' })
+    exampleMocks.loadExampleProject.mockResolvedValue({
+      document: bundledDocument,
+      imageBlob,
+    })
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:bundle-demo'),
+      revokeObjectURL: vi.fn(),
+    })
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse examples' }))
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Include analysis' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Use example' }))
+
+    await waitFor(() =>
+      expect(storageMocks.persistProject).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          projectName: 'bundle demo',
+          image: expect.objectContaining({
+            name: 'test-image.png',
+            width: 2560,
+            height: 1494,
+          }),
+          scene: expect.objectContaining({ faces: [] }),
+          evidence: [],
+        }),
+      ),
+    )
+  })
+
+  it('confirms deletion by project name and clears an active project', async () => {
+    const currentDocument = createTestDocument()
+    currentDocument.projectName = 'Existing project'
+    storageMocks.getActiveProjectId.mockReturnValue('project-existing')
+    storageMocks.listProjects.mockResolvedValue([
+      summaryFor('project-existing', currentDocument, 1),
+    ])
+    storageMocks.loadProject.mockResolvedValue({
+      id: 'project-existing',
+      document: currentDocument,
+    })
+
+    render(<App />)
+    await waitFor(() =>
+      expect(useEditorStore.getState().document.projectName).toBe(
+        'Existing project',
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open project library' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Existing project?' }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(storageMocks.deleteProject).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
+
+    await waitFor(() =>
+      expect(storageMocks.deleteProject).toHaveBeenCalledWith('project-existing'),
+    )
+    expect(storageMocks.setActiveProjectId).toHaveBeenCalledWith(null)
+    expect(useEditorStore.getState().document.image.src).toBe('')
+  })
+
+  it('deletes an inactive project without changing the open document', async () => {
+    const currentDocument = createTestDocument()
+    currentDocument.projectName = 'Current project'
+    const otherDocument = createEmptyDocument()
+    otherDocument.projectName = 'Other project'
+    otherDocument.image.name = 'other.png'
+    storageMocks.getActiveProjectId.mockReturnValue('current')
+    storageMocks.listProjects.mockResolvedValue([
+      summaryFor('current', currentDocument, 2),
+      summaryFor('other', otherDocument, 1),
+    ])
+    storageMocks.loadProject.mockImplementation(async (id) => ({
+      id,
+      document: id === 'current' ? currentDocument : otherDocument,
+    }))
+
+    render(<App />)
+    await waitFor(() =>
+      expect(useEditorStore.getState().document.projectName).toBe(
+        'Current project',
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open project library' }))
+    fireEvent.click(screen.getByRole('button', { name: /Other project.*other.png/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
+
+    await waitFor(() =>
+      expect(storageMocks.deleteProject).toHaveBeenCalledWith('other'),
+    )
+    expect(useEditorStore.getState().document.projectName).toBe('Current project')
+    expect(storageMocks.setActiveProjectId).not.toHaveBeenCalledWith(null)
   })
 })

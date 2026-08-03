@@ -13,11 +13,16 @@ import {
 import './App.css'
 import { EditorCanvas } from './components/EditorCanvas'
 import { Inspector } from './components/Inspector'
-import { ProjectDialog } from './components/ProjectDialog'
+import {
+  ProjectDialog,
+  type ExampleProjectState,
+  type ProjectDialogTab,
+} from './components/ProjectDialog'
 import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
 import {
   exampleProjects,
+  loadExampleProject,
   type ExampleProjectId,
 } from './domain/examples'
 import {
@@ -38,6 +43,7 @@ import { blockProfileMap, referenceTextureForFace } from './domain/references'
 import type { CandidateScore, EditorDocument } from './domain/types'
 import {
   clearAllData,
+  deleteProject,
   getActiveProjectId,
   listProjects,
   loadProject,
@@ -49,7 +55,6 @@ import {
 } from './storage/db'
 import {
   createEmptyDocument,
-  createExampleDocument,
   normalizeEditorDocument,
   useEditorStore,
 } from './store/editorStore'
@@ -104,6 +109,9 @@ function uniqueProjectName(base: string, projects: ProjectSummary[]): string {
 function App() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
+  const examplePreviewUrlsRef = useRef<string[]>([])
+  const requestedExampleIdsRef = useRef(new Set<ExampleProjectId>())
+  const deletingProjectIdsRef = useRef(new Set<string>())
   const [busy, setBusy] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
@@ -112,13 +120,21 @@ function App() {
     Record<string, string | undefined>
   >({})
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
+  const [projectDialogInitialTab, setProjectDialogInitialTab] =
+    useState<ProjectDialogTab>('projects')
+  const [exampleStates, setExampleStates] = useState<
+    Partial<Record<ExampleProjectId, ExampleProjectState>>
+  >({})
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] =
+    useState<string | null>(null)
   const [toast, setToast] = useState<ToastState>()
   const document = useEditorStore((state) => state.document)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
   const loadDocument = useEditorStore((state) => state.loadDocument)
   const applyAnalysisResults = useEditorStore((state) => state.applyAnalysisResults)
   const setFaceTab = useEditorStore((state) => state.setFaceTab)
+  const setProjectName = useEditorStore((state) => state.setProjectName)
   const setTool = useEditorStore((state) => state.setTool)
   const selectAllFaces = useEditorStore((state) => state.selectAllFaces)
   const deleteSelectedFaces = useEditorStore(
@@ -177,6 +193,7 @@ function App() {
     // Debounce document writes so rapid form edits collapse into one IndexedDB
     // update.
     const timeout = window.setTimeout(() => {
+      if (deletingProjectIdsRef.current.has(activeProjectId)) return
       persistProject(activeProjectId, document)
         .then((summary) =>
           setProjects((current) =>
@@ -227,6 +244,52 @@ function App() {
       generatedUrls.forEach((source) => URL.revokeObjectURL(source))
     }
   }, [projectPreviewSignature])
+
+  useEffect(() => {
+    if (!projectDialogOpen) return
+    exampleProjects.forEach((example) => {
+      if (requestedExampleIdsRef.current.has(example.id)) return
+      requestedExampleIdsRef.current.add(example.id)
+      setExampleStates((current) => ({
+        ...current,
+        [example.id]: { status: 'loading' },
+      }))
+      loadExampleProject(example.id)
+        .then(({ document: importedDocument, imageBlob }) => {
+          const restored = normalizeEditorDocument(importedDocument)
+          const preview = imageBlob
+            ? URL.createObjectURL(imageBlob)
+            : restored.image.src || undefined
+          if (preview?.startsWith('blob:')) {
+            examplePreviewUrlsRef.current.push(preview)
+          }
+          setExampleStates((current) => ({
+            ...current,
+            [example.id]: {
+              status: 'ready',
+              document: restored,
+              imageBlob,
+              preview,
+            },
+          }))
+        })
+        .catch(() => {
+          setExampleStates((current) => ({
+            ...current,
+            [example.id]: { status: 'error' },
+          }))
+        })
+    })
+  }, [projectDialogOpen])
+
+  useEffect(
+    () => () => {
+      examplePreviewUrlsRef.current.forEach((source) =>
+        URL.revokeObjectURL(source),
+      )
+    },
+    [],
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -346,12 +409,23 @@ function App() {
     }
   }
 
-  const exportProject = async () => {
-    if (!activeProjectId) return
+  const exportProject = async (projectId: string) => {
     try {
-      const imageBlob = await fetch(document.image.src).then((response) => response.blob())
-      const bundle = await buildProjectBundle(document, imageBlob)
-      downloadBlob(bundle, `${document.projectName.replace(/[^\w-]+/g, '-').toLowerCase() || 'webcoordsfinder'}.wcf`)
+      let exportDocument: EditorDocument
+      let imageBlob: Blob | undefined
+      if (projectId === activeProjectId) {
+        exportDocument = document
+        imageBlob = await fetch(document.image.src).then((response) =>
+          response.blob(),
+        )
+      } else {
+        const saved = await loadProject(projectId)
+        if (!saved) throw new Error('This project is no longer available.')
+        exportDocument = normalizeEditorDocument(saved.document)
+        imageBlob = saved.imageBlob
+      }
+      const bundle = await buildProjectBundle(exportDocument, imageBlob)
+      downloadBlob(bundle, `${exportDocument.projectName.replace(/[^\w-]+/g, '-').toLowerCase() || 'webcoordsfinder'}.wcf`)
       notify('Project bundle saved.', 'success')
     } catch {
       notify('The project bundle could not be created.', 'warning')
@@ -390,23 +464,40 @@ function App() {
     }
   }
 
-  const importExampleProject = async (exampleId: ExampleProjectId) => {
+  const importExampleProject = async (
+    exampleId: ExampleProjectId,
+    includeAnnotations: boolean,
+  ) => {
     try {
       const example = exampleProjects.find((candidate) => candidate.id === exampleId)
       if (!example) throw new Error('Example project unavailable.')
-      const response = await fetch(example.imageSrc)
-      if (!response.ok) throw new Error('Example image unavailable.')
-      const imageBlob = await response.blob()
+      const loaded = exampleStates[exampleId]
+      if (loaded?.status !== 'ready') {
+        throw new Error('Example project unavailable.')
+      }
+      const exampleDocument = normalizeEditorDocument(loaded.document)
+      const imageBlob = loaded.imageBlob
+      if (!imageBlob && !exampleDocument.image.src) {
+        throw new Error('The example does not contain its source image.')
+      }
       const key = crypto.randomUUID()
       const projectId = crypto.randomUUID()
-      const source = URL.createObjectURL(imageBlob)
-      const restored = createExampleDocument(exampleId)
-      restored.projectName = uniqueProjectName(example.name, projects)
-      restored.image.key = key
-      restored.image.name = example.imageName
-      restored.image.src = source
-      restored.image.mime = imageBlob.type || example.imageMime
-      await persistImage(key, imageBlob)
+      const source = imageBlob
+        ? URL.createObjectURL(imageBlob)
+        : exampleDocument.image.src
+      const restored = includeAnnotations
+        ? exampleDocument
+        : createEmptyDocument()
+      restored.projectName = uniqueProjectName(exampleDocument.projectName, projects)
+      restored.image = {
+        ...exampleDocument.image,
+        key,
+        src: source,
+      }
+      if (imageBlob) {
+        restored.image.mime = imageBlob.type || restored.image.mime
+        await persistImage(key, imageBlob)
+      }
       const summary = await persistProject(projectId, restored)
       revokeObjectUrl(document.image.src)
       loadDocument(restored)
@@ -416,7 +507,12 @@ function App() {
         summary,
         ...current.filter((project) => project.id !== projectId),
       ])
-      notify('Example imported and saved as a project.', 'success')
+      notify(
+        includeAnnotations
+          ? 'Example imported and saved as a project.'
+          : 'Example image imported and saved as a new project.',
+        'success',
+      )
     } catch {
       notify('The example project could not be imported.', 'warning')
     }
@@ -587,13 +683,71 @@ function App() {
     }
   }
 
+  const renameProject = async (projectId: string, name: string) => {
+    const nextName = name.trim()
+    if (!nextName) return
+    try {
+      let renamedDocument: EditorDocument
+      if (projectId === activeProjectId) {
+        setProjectName(nextName)
+        renamedDocument = useEditorStore.getState().document
+      } else {
+        const saved = await loadProject(projectId)
+        if (!saved) throw new Error('This project is no longer available.')
+        renamedDocument = normalizeEditorDocument(saved.document)
+        renamedDocument.projectName = nextName
+      }
+      const summary = await persistProject(projectId, renamedDocument)
+      setProjects((current) =>
+        [summary, ...current.filter((project) => project.id !== projectId)]
+          .sort((left, right) => right.updatedAt - left.updatedAt),
+      )
+      notify(`Renamed project to ${nextName}.`, 'success')
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : 'The project could not be renamed.',
+        'warning',
+      )
+    }
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!pendingDeleteProjectId) return
+    const projectId = pendingDeleteProjectId
+    const project = projects.find((candidate) => candidate.id === projectId)
+    deletingProjectIdsRef.current.add(projectId)
+    try {
+      await deleteProject(projectId)
+      if (projectId === activeProjectId) {
+        revokeObjectUrl(document.image.src)
+        resetProject()
+        setActiveProjectId(null)
+        rememberActiveProject(null)
+      }
+      setProjects((current) =>
+        current.filter((candidate) => candidate.id !== projectId),
+      )
+      setPendingDeleteProjectId(null)
+      notify(`${project?.name ?? 'Project'} deleted.`, 'info')
+    } catch {
+      notify('The project could not be deleted.', 'warning')
+    } finally {
+      deletingProjectIdsRef.current.delete(projectId)
+    }
+  }
+
+  const openProjectDialog = (tab: ProjectDialogTab = 'projects') => {
+    setProjectDialogInitialTab(tab)
+    setProjectDialogOpen(true)
+  }
+
   return (
     <div className="app">
       <TopBar
         activeProjectId={activeProjectId}
         projects={projects}
         onOpenImage={openImagePicker}
-        onOpenProjects={() => setProjectDialogOpen(true)}
+        onOpenProjects={() => openProjectDialog('projects')}
       />
       <main className={activeProjectId ? 'workspace' : 'workspace no-project'}>
         {hydrated && activeProjectId ? (
@@ -633,7 +787,7 @@ function App() {
                     <button
                       className="secondary-button project-start-action"
                       type="button"
-                      onClick={() => setProjectDialogOpen(true)}
+                      onClick={() => openProjectDialog('examples')}
                     >
                       <Sparkles size={17} />
                       Browse examples
@@ -677,6 +831,8 @@ function App() {
       />
       <ProjectDialog
         activeProjectId={activeProjectId}
+        exampleStates={exampleStates}
+        initialTab={projectDialogInitialTab}
         open={projectDialogOpen}
         previews={projectPreviews}
         projects={projects}
@@ -684,10 +840,53 @@ function App() {
         onSelectProject={(projectId) => void selectProject(projectId)}
         onNewProject={openImagePicker}
         onImportProject={() => projectInputRef.current?.click()}
-        onImportExample={(exampleId) => void importExampleProject(exampleId)}
-        onExportProject={() => void exportProject()}
+        onImportExample={(exampleId, includeAnnotations) =>
+          void importExampleProject(exampleId, includeAnnotations)
+        }
+        onExportProject={(projectId) => void exportProject(projectId)}
+        onRenameProject={(projectId, name) => void renameProject(projectId, name)}
+        onRequestDeleteProject={setPendingDeleteProjectId}
         onRequestClearData={() => setClearDialogOpen(true)}
       />
+      {pendingDeleteProjectId && (
+        <div className="modal-backdrop">
+          <section
+            className="warning-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+          >
+            <div className="warning-dialog-icon danger" aria-hidden="true">
+              <AlertTriangle size={22} />
+            </div>
+            <div>
+              <span className="warning-dialog-eyebrow danger">Permanent action</span>
+              <h2 id="delete-project-title">Delete {projects.find((project) => project.id === pendingDeleteProjectId)?.name ?? 'this project'}?</h2>
+            </div>
+            <p>
+              This permanently removes the project and its source image from
+              this browser. This action cannot be undone.
+            </p>
+            <div className="warning-dialog-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                autoFocus
+                onClick={() => setPendingDeleteProjectId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => void confirmDeleteProject()}
+              >
+                Delete project
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {clearDialogOpen && (
         <div className="modal-backdrop">
           <section
