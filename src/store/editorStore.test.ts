@@ -1,11 +1,7 @@
 // Store tests assert both document results and transaction semantics: geometry,
 // evidence, history, and runtime checkpoints must evolve together correctly.
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  projectScenePoint,
-  projectionInfo,
-  selectedEdgeGeometry,
-} from '../domain/geometry'
+import { projectScenePoint } from '../domain/geometry'
 import type { WebSearchCheckpoint } from '../domain/types'
 import {
   createEmptyDocument,
@@ -16,11 +12,15 @@ import {
 } from './editorStore'
 
 beforeEach(() => {
+  const document = createInitialDocument()
+  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scanner.compassResolved = true
   useEditorStore.setState({
-    document: createInitialDocument(),
+    document,
     step: 'grid',
     faceTab: 'selection',
     tool: 'select',
+    orientationDraft: null,
     past: [],
     future: [],
     selectedEdges: [],
@@ -31,9 +31,9 @@ beforeEach(() => {
 describe('unit-face geometry', () => {
   // Base construction and mesh selection establish the canonical unit-face
   // representation used by every later action.
-  it('stores the initial 6x4 base as 24 independent faces', () => {
+  it('stores a 6x4 base and its perpendicular depth reference as unit faces', () => {
     const scene = useEditorStore.getState().document.scene
-    expect(scene.faces).toHaveLength(24)
+    expect(scene.faces).toHaveLength(36)
     expect(scene.faces.every((face) => !('columns' in face))).toBe(true)
     expect(scene.faces.every((face) => !('uAxis' in face) && !('vAxis' in face))).toBe(
       true,
@@ -41,42 +41,80 @@ describe('unit-face geometry', () => {
     expect(scene.faces[0].blockCoordinate).toEqual({ x: 0, y: 0, z: 0 })
   })
 
-  it('uses trapezoid perspective for the initial visible-side normal', () => {
-    useEditorStore.setState({ document: createEmptyDocument() })
-    useEditorStore.getState().addBaseFaces([
-      { x: 40, y: 100 },
-      { x: 360, y: 100 },
-      { x: 300, y: 300 },
-      { x: 100, y: 300 },
-    ])
-
-    const faces = useEditorStore.getState().document.scene.faces
-    expect(faces).toHaveLength(16)
-    expect(faces.every((entry) => entry.normal.z === -1)).toBe(true)
-  })
-
-  it('creates the initial base with the requested grid dimensions', () => {
+  it('commits the base as a persistent partial homography', () => {
     useEditorStore.setState({ document: createEmptyDocument() })
     useEditorStore.getState().addBaseFaces(
       [
-        { x: 40, y: 100 },
-        { x: 360, y: 100 },
-        { x: 300, y: 300 },
-        { x: 100, y: 300 },
+        { x: 0, y: 644 },
+        { x: 1058, y: 574 },
+        { x: 1450, y: 1000 },
+        { x: 0, y: 1102 },
       ],
-      7,
-      3,
+      6,
+      4,
     )
 
+    const state = useEditorStore.getState()
+    expect(state.document.scene.projection?.kind).toBe('planar')
+    expect(state.document.scene.observations).toHaveLength(4)
+    expect(state.document.scene.faces).toHaveLength(24)
+    expect(state.document.anchorFaceId).toBeNull()
+    expect(state.tool).toBe('select')
+    expect(state.past).toHaveLength(1)
+    expect(normalizeEditorDocument(state.document).scene.projection?.kind).toBe(
+      'planar',
+    )
+  })
+
+  it('promotes the partial solve through the original outward extrusion gesture', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces(
+      [
+        { x: 0, y: 644 },
+        { x: 1058, y: 574 },
+        { x: 1450, y: 1000 },
+        { x: 0, y: 1102 },
+      ],
+      6,
+      4,
+    )
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: face.id, edge: 'top' }, false)
+    useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
+
+    const state = useEditorStore.getState()
+    expect(state.document.scene.projection?.kind).toBe('camera')
+    expect(state.document.scene.observations).toHaveLength(6)
+    expect(state.document.scene.faces).toHaveLength(25)
+    expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
+  })
+
+  it('keeps in-plane extrusion inside the partial solve', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces(
+      [
+        { x: 0, y: 644 },
+        { x: 1058, y: 574 },
+        { x: 1450, y: 1000 },
+        { x: 0, y: 1102 },
+      ],
+      6,
+      4,
+    )
     const scene = useEditorStore.getState().document.scene
-    expect(scene.faces).toHaveLength(21)
-    expect(scene.faces.at(-1)?.blockCoordinate).toEqual({ x: 6, y: 2, z: 0 })
-    expect(scene.observations.map((entry) => entry.lattice)).toEqual([
-      { x: 0, y: 0, z: 0 },
-      { x: 7, y: 0, z: 0 },
-      { x: 7, y: 3, z: 0 },
-      { x: 0, y: 3, z: 0 },
-    ])
+    const face = scene.faces[0]
+    const pointer = projectScenePoint(scene, { x: 0.5, y: -3, z: 0 })!
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: face.id, edge: 'top' }, false)
+    useEditorStore.getState().extrudeSelectedEdges(pointer)
+
+    const updated = useEditorStore.getState().document.scene
+    expect(updated.projection?.kind).toBe('planar')
+    expect(updated.observations).toHaveLength(4)
+    expect(updated.faces).toHaveLength(27)
   })
 
   it('selects one edge by default and toggles connected edges additively', () => {
@@ -121,7 +159,7 @@ describe('unit-face geometry', () => {
     useEditorStore.getState().deleteSelectedFaces()
 
     const state = useEditorStore.getState()
-    expect(state.document.scene.faces).toHaveLength(22)
+    expect(state.document.scene.faces).toHaveLength(34)
     expect(state.document.scene.faces.map((face) => face.id)).not.toContain(first.id)
     expect(state.document.scene.faces.map((face) => face.id)).not.toContain(second.id)
     expect(state.document.evidence).toHaveLength(0)
@@ -131,7 +169,10 @@ describe('unit-face geometry', () => {
 
   it('flips and aligns every flat-connected face in one transaction', () => {
     const document = structuredClone(useEditorStore.getState().document)
-    const planeIds = document.scene.faces.map((face) => face.id)
+    const expectedZ = -document.scene.faces[0].normal.z
+    const planeIds = document.scene.faces
+      .filter((face) => face.normal.z !== 0)
+      .map((face) => face.id)
     document.scene.faces[1].normal = { x: 0, y: 0, z: -1 }
     document.scene.faces.push(
       {
@@ -157,7 +198,7 @@ describe('unit-face geometry', () => {
     expect(
       state.document.scene.faces
         .filter((face) => planeIds.includes(face.id))
-        .every((face) => face.normal.z === -1),
+        .every((face) => face.normal.z === expectedZ),
     ).toBe(true)
     expect(
       state.document.scene.faces.find((face) => face.id === 'disconnected')
@@ -168,8 +209,8 @@ describe('unit-face geometry', () => {
         ?.normal,
     ).toEqual({ x: 0, y: 1, z: 0 })
     expect(state.document.evidence[0]).toMatchObject({
-      latticeCoordinate: { x: 0, y: 0, z: 0 },
-      localNormal: { x: 0, y: 0, z: -1 },
+      latticeCoordinate: { x: 0, y: 0, z: expectedZ > 0 ? -1 : 0 },
+      localNormal: { x: 0, y: 0, z: expectedZ },
       reviewStatus: 'unlabeled',
       selectedVariant: undefined,
     })
@@ -219,64 +260,12 @@ describe('unit-face geometry', () => {
     const scene = useEditorStore.getState().document.scene
     expect(scene.faces).toHaveLength(0)
     expect(scene.observations).toHaveLength(0)
-  })
-
-  // Extrusion tests cover the staged transition from a planar homography to a
-  // non-coplanar camera without recalibrating already resolved scenes.
-  it('uses two rigidly translated anchors to create the six-point camera', () => {
-    const face = useEditorStore.getState().document.scene.faces[0]
-    useEditorStore
-      .getState()
-      .selectEdge({ faceId: face.id, edge: 'top' }, false)
-    useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
-
-    const scene = useEditorStore.getState().document.scene
-    expect(scene.faces).toHaveLength(25)
-    expect(scene.observations).toHaveLength(6)
-    expect(scene.projection.kind).toBe('camera')
-    expect(scene.faces.at(-1)?.normal).toEqual({ x: 0, y: 1, z: 0 })
-  })
-
-  it('extends within the plane without creating a camera or new anchors', () => {
-    const scene = useEditorStore.getState().document.scene
-    const face = scene.faces[0]
-    const pointer = projectScenePoint(scene, { x: 0.5, y: -3, z: 0 })!
-    useEditorStore
-      .getState()
-      .selectEdge({ faceId: face.id, edge: 'top' }, false)
-
-    useEditorStore.getState().extrudeSelectedEdges(pointer)
-
-    const updated = useEditorStore.getState().document.scene
-    expect(updated.faces).toHaveLength(27)
-    expect(updated.observations).toHaveLength(4)
-    expect(updated.projection.kind).toBe('planar')
-    expect(
-      updated.faces.slice(-3).every((entry) => entry.normal.z === face.normal.z),
-    ).toBe(true)
-    const [outerSelection] = useEditorStore.getState().selectedEdges
-    const outerEdge = selectedEdgeGeometry(updated, outerSelection)
-    expect(outerEdge?.start.y).toBe(-3)
-    expect(outerEdge?.end.y).toBe(-3)
-  })
-
-  it('adds planar calibration anchors without promoting to a camera', () => {
-    const scene = useEditorStore.getState().document.scene
-    const latticePoints = [
-      { x: 1, y: 1, z: 0 },
-      { x: 5, y: 3, z: 0 },
-    ]
-    latticePoints.forEach((lattice) => {
-      useEditorStore
-        .getState()
-        .upsertObservation(lattice, projectScenePoint(scene, lattice)!)
+    expect(scene.projection).toBeNull()
+    expect(scene.axisMapping).toEqual({
+      a: 'unknown',
+      b: 'unknown',
+      c: 'unknown',
     })
-
-    const updated = useEditorStore.getState().document.scene
-    expect(updated.observations).toHaveLength(6)
-    expect(updated.projection.kind).toBe('planar')
-    expect(projectionInfo(updated).resolvedAxes).toBe(2)
-    expect(projectionInfo(updated).rmsError).toBeLessThan(0.01)
   })
 
   it('extrudes through an existing camera without recalibrating it', () => {
@@ -303,7 +292,7 @@ describe('unit-face geometry', () => {
   })
 
   // Evidence actions deliberately create or invalidate derived state as
-  // selection, axis mappings, and block profiles change.
+  // selection, world orientation, and block profiles change.
   it('sets a clicked face as the anchor without creating evidence', () => {
     const face = useEditorStore.getState().document.scene.faces[5]
     useEditorStore.getState().setTool('anchor')
@@ -329,7 +318,7 @@ describe('unit-face geometry', () => {
     const selected = useEditorStore.getState()
     expect(selected.selectedEvidenceIds).toEqual(faceIds)
     expect(selected.document.evidence.map((entry) => entry.id)).toEqual(faceIds)
-    expect(selected.document.evidence.every((entry) => entry.blockId === 'stone')).toBe(true)
+    expect(selected.document.evidence.every((entry) => entry.blockId === 'deepslate')).toBe(true)
     expect(selected.faceTab).toBe('selection')
     expect(selected.past).toHaveLength(1)
 
@@ -337,17 +326,31 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().past).toHaveLength(1)
   })
 
-  it('applies profiles and invalidates variants when axis mapping changes', () => {
-    const [first, second] = useEditorStore.getState().document.scene.faces
-    useEditorStore.getState().updateAxisMapping('c', 'y+')
+  it('derives orientation from a face and edge and invalidates variants once', () => {
+    const document = structuredClone(useEditorStore.getState().document)
+    document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
+    useEditorStore.setState({ document })
+    const [first, second] = document.scene.faces
+    useEditorStore.getState().setAnchorFace(first.id)
     useEditorStore.getState().selectFace(first.id, false)
     useEditorStore.getState().selectFace(second.id, true)
     useEditorStore.getState().setBlockForSelection('dirt')
     const selectedId = useEditorStore.getState().selectedEvidenceIds[0]
     useEditorStore.getState().setVariant(selectedId, 2)
+    const historyBeforeOrientation = useEditorStore.getState().past.length
 
-    useEditorStore.getState().updateAxisMapping('a', 'x+')
+    useEditorStore.getState().startOrientation()
+    useEditorStore.getState().setOrientationFace(first.id)
+    useEditorStore.getState().setOrientationFaceDirection('up')
+    useEditorStore.getState().setOrientationEdge('top')
+    useEditorStore.getState().setOrientationEdgeDirection('west')
+    useEditorStore.getState().confirmOrientation()
 
+    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+      a: 'x-',
+      b: 'z-',
+      c: 'y+',
+    })
     expect(
       useEditorStore
         .getState()
@@ -358,29 +361,35 @@ describe('unit-face geometry', () => {
             entry.selectedVariant === undefined,
         ),
     ).toBe(true)
+    expect(useEditorStore.getState().past).toHaveLength(
+      historyBeforeOrientation + 1,
+    )
+    expect(useEditorStore.getState().orientationDraft).toBeNull()
+    expect(useEditorStore.getState().tool).toBe('select')
   })
 
-  it('rejects an opposite-handed axis mapping without adding history', () => {
-    useEditorStore.getState().updateAxisMapping('a', 'x+')
-    useEditorStore.getState().updateAxisMapping('c', 'y+')
+  it('rejects an edge direction parallel to the reference face normal', () => {
+    const document = structuredClone(useEditorStore.getState().document)
+    document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
+    useEditorStore.setState({ document })
+    const face = document.scene.faces[0]
+    useEditorStore.getState().setAnchorFace(face.id)
+    useEditorStore.getState().startOrientation()
+    useEditorStore.getState().setOrientationFace(face.id)
+    useEditorStore.getState().setOrientationFaceDirection('up')
+    useEditorStore.getState().setOrientationEdge('top')
+    useEditorStore.getState().setOrientationEdgeDirection('down')
     const historyBefore = useEditorStore.getState().past.length
 
-    useEditorStore.getState().updateAxisMapping('b', 'z-')
+    useEditorStore.getState().confirmOrientation()
 
-    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-      a: 'x+',
-      b: 'unknown',
-      c: 'y+',
-    })
-    expect(useEditorStore.getState().past).toHaveLength(historyBefore)
-
-    useEditorStore.getState().updateAxisMapping('b', 'z+')
     expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
       a: 'x+',
       b: 'z+',
       c: 'y+',
     })
-    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+    expect(useEditorStore.getState().past).toHaveLength(historyBefore)
+    expect(useEditorStore.getState().orientationDraft).not.toBeNull()
   })
 
   it('rejects unsigned legacy axis labels', () => {
@@ -388,6 +397,20 @@ describe('unit-face geometry', () => {
       scene: { axisMapping: Record<string, string> }
     }
     legacy.scene.axisMapping.a = 'x'
+
+    expect(() => normalizeEditorDocument(legacy)).toThrow(
+      'This project uses an unsupported document schema.',
+    )
+  })
+
+  it('rejects malformed planar projections without their lattice basis', () => {
+    const legacy = structuredClone(createInitialDocument()) as unknown as {
+      scene: { projection: unknown }
+    }
+    legacy.scene.projection = {
+      kind: 'planar',
+      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    }
 
     expect(() => normalizeEditorDocument(legacy)).toThrow(
       'This project uses an unsupported document schema.',

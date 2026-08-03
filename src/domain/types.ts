@@ -42,7 +42,7 @@ export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
 export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
-export type EditorTool = 'select' | 'anchor' | 'plane' | 'extrude'
+export type EditorTool = 'select' | 'anchor' | 'plane' | 'orient' | 'extrude'
 
 export type CandidateTransform =
   | 'identity'
@@ -123,8 +123,17 @@ export interface AxisMapping {
 export interface SceneGeometry {
   faces: MeshFace[]
   observations: CalibrationObservation[]
-  projection: SceneProjection
+  // Empty projects have no projection. A committed base surface has a planar
+  // homography until non-coplanar observations promote it to a camera fit.
+  projection: SceneProjection | null
   axisMapping: AxisMapping
+}
+
+export interface OrientationDraft {
+  faceId: string | null
+  faceDirection: FaceDirection | null
+  edge: FaceEdge | null
+  edgeDirection: FaceDirection | null
 }
 
 export interface CandidateScore {

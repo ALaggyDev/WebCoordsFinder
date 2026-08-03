@@ -2,15 +2,23 @@
 // dispatch itself is exercised at the App boundary.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createInitialDocument, useEditorStore } from '../store/editorStore'
+import {
+  createEmptyDocument,
+  createInitialDocument,
+  useEditorStore,
+} from '../store/editorStore'
 import { ToolRail } from './ToolRail'
 
 beforeEach(() => {
+  const document = createInitialDocument()
+  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scanner.compassResolved = true
   useEditorStore.setState({
-    document: createInitialDocument(),
+    document,
     step: 'grid',
     faceTab: 'selection',
     tool: 'select',
+    orientationDraft: null,
     past: [],
     future: [],
     selectedEdges: [],
@@ -21,6 +29,22 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('delete selected faces action', () => {
+  it('allows planar editing while keeping the anchor tool locked', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+
+    render(<ToolRail />)
+
+    expect(screen.getByRole('button', { name: 'Select faces or edges' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Select anchor block' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Calibrate perspective' })).toBeDisabled()
+  })
+
   it('is enabled by a face selection and preserves the edit mode when clicked', () => {
     render(<ToolRail />)
     const deleteButton = screen.getByRole('button', {

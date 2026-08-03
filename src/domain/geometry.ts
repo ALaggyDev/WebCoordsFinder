@@ -144,29 +144,6 @@ export function validAxisMappingCompletions(
   )
 }
 
-export function updatedAxisMapping(
-  mapping: AxisMapping,
-  axis: AbstractAxis,
-  label: WorldAxisLabel,
-): AxisMapping {
-  const next: AxisMapping = { ...mapping, [axis]: label }
-  const worldAxis = worldAxisPart(label)
-  if (worldAxis) {
-    // A world axis may be assigned once only; editing one abstract axis clears
-    // a conflicting assignment rather than creating an impossible basis.
-    for (const other of ['a', 'b', 'c'] as const) {
-      if (
-        other !== axis &&
-        worldAxisPart(next[other]) === worldAxis
-      ) {
-        next[other] = 'unknown'
-      }
-    }
-  }
-  // Preserve the last valid mapping when handedness leaves no completion.
-  return validAxisMappingCompletions(next).length > 0 ? next : mapping
-}
-
 export function mappedVector(
   mapping: AxisMapping,
   local: Point3,
@@ -222,6 +199,69 @@ export function faceForLocalNormal(
   if (world.x === 1) return 'east'
   if (world.x === -1) return 'west'
   return undefined
+}
+
+export function vectorForFaceDirection(direction: FaceDirection): Point3 {
+  return {
+    up: { x: 0, y: 1, z: 0 },
+    down: { x: 0, y: -1, z: 0 },
+    north: { x: 0, y: 0, z: -1 },
+    south: { x: 0, y: 0, z: 1 },
+    east: { x: 1, y: 0, z: 0 },
+    west: { x: -1, y: 0, z: 0 },
+  }[direction]
+}
+
+export function compatibleEdgeDirections(
+  faceDirection: FaceDirection,
+): FaceDirection[] {
+  const normal = vectorForFaceDirection(faceDirection)
+  return (['up', 'down', 'north', 'south', 'east', 'west'] as const).filter(
+    (direction) => dot3(normal, vectorForFaceDirection(direction)) === 0,
+  )
+}
+
+function cardinalAssignment(
+  local: Point3,
+  worldDirection: FaceDirection,
+): { axis: AbstractAxis; label: WorldAxisLabel } | undefined {
+  const localParts: Array<[AbstractAxis, number]> = [
+    ['a', local.x],
+    ['b', local.y],
+    ['c', local.z],
+  ]
+  const populated = localParts.filter(([, amount]) => Math.abs(amount) > EPSILON)
+  if (populated.length !== 1 || Math.abs(populated[0][1]) !== 1) return undefined
+
+  const [axis, localSign] = populated[0]
+  const world = scale3(vectorForFaceDirection(worldDirection), localSign)
+  const worldParts: Array<['x' | 'y' | 'z', number]> = [
+    ['x', world.x],
+    ['y', world.y],
+    ['z', world.z],
+  ]
+  const [worldAxis, worldSign] = worldParts.find(([, amount]) => amount !== 0)!
+  return {
+    axis,
+    label: `${worldAxis}${worldSign > 0 ? '+' : '-'}` as WorldAxisLabel,
+  }
+}
+
+export function axisMappingFromReferences(
+  localNormal: Point3,
+  faceDirection: FaceDirection,
+  localEdgeDirection: Point3,
+  edgeDirection: FaceDirection,
+): AxisMapping | undefined {
+  const normal = cardinalAssignment(localNormal, faceDirection)
+  const edge = cardinalAssignment(localEdgeDirection, edgeDirection)
+  if (!normal || !edge || normal.axis === edge.axis) return undefined
+
+  const mapping: AxisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+  mapping[normal.axis] = normal.label
+  mapping[edge.axis] = edge.label
+  const completions = validAxisMappingCompletions(mapping)
+  return completions.length === 1 ? completions[0] : undefined
 }
 
 export function possibleFacesForLocalNormal(
@@ -524,7 +564,7 @@ export function faceCornersLattice(
 }
 
 export function cameraCenter(scene: SceneGeometry): Point3 | undefined {
-  if (scene.projection.kind !== 'camera') return undefined
+  if (scene.projection?.kind !== 'camera') return undefined
   const matrix = scene.projection.matrix
   try {
     // The camera center is the finite null point of the 3x4 projection matrix.
@@ -583,8 +623,6 @@ export function planarProjectionForPlane(
   cornerLattice: [Point3, Point3, Point3, Point3],
   observations: CalibrationObservation[],
 ): PlanarProjection {
-  // Observations off this plane cannot constrain a homography and are retained
-  // only for a later promotion to the full camera model.
   const planarObservations = observations.flatMap((observation) => {
     const local = localCoordinatesOnPlane(
       origin,
@@ -632,6 +670,7 @@ export function projectScenePoint(
   point: Point3,
 ): Point2 | undefined {
   const projection = scene.projection
+  if (!projection) return undefined
   if (projection.kind === 'camera') {
     const projected = projectCamera(projection.matrix, point)
     return Number.isFinite(projected.x) && Number.isFinite(projected.y)
@@ -648,34 +687,37 @@ export function projectScenePoint(
 }
 
 export interface ProjectionInfo {
-  resolvedAxes: 2 | 3
+  resolvedAxes: 0 | 2 | 3
   rmsError: number
   maxError: number
 }
 
 export function projectionInfo(scene: SceneGeometry): ProjectionInfo {
-  if (scene.projection.kind === 'camera') {
+  if (scene.projection?.kind === 'camera') {
     return {
       resolvedAxes: 3,
       rmsError: scene.projection.rmsError,
       maxError: scene.projection.maxError,
     }
   }
-  const errors = scene.observations.flatMap((observation) => {
-    const predicted = projectScenePoint(scene, observation.lattice)
-    return predicted ? [distance(predicted, observation.image)] : []
-  })
-  return {
-    resolvedAxes: 2,
-    rmsError:
-      errors.length === 0
-        ? 0
-        : Math.sqrt(
-            errors.reduce((sum, error) => sum + error * error, 0) /
-              errors.length,
-          ),
-    maxError: errors.length === 0 ? 0 : Math.max(...errors),
+  if (scene.projection) {
+    const errors = scene.observations.flatMap((observation) => {
+      const predicted = projectScenePoint(scene, observation.lattice)
+      return predicted ? [distance(predicted, observation.image)] : []
+    })
+    return {
+      resolvedAxes: 2,
+      rmsError:
+        errors.length === 0
+          ? 0
+          : Math.sqrt(
+              errors.reduce((sum, error) => sum + error * error, 0) /
+                errors.length,
+            ),
+      maxError: errors.length === 0 ? 0 : Math.max(...errors),
+    }
   }
+  return { resolvedAxes: 0, rmsError: 0, maxError: 0 }
 }
 
 function solveLeastSquares(rows: number[][], values: number[]): number[] {
@@ -751,9 +793,59 @@ export function fitCameraProjection(
   }
 }
 
+export interface CameraFitDiagnostics {
+  finite: boolean
+  minAxisLength: number
+  minAxisSeparationDegrees: number
+}
+
+export function cameraFitDiagnostics(
+  projection: CameraProjection,
+  reference: Point3,
+): CameraFitDiagnostics {
+  const origin = projectCamera(projection.matrix, reference)
+  const vectors = (['a', 'b', 'c'] as const).map((axis) => {
+    const endpoint = projectCamera(
+      projection.matrix,
+      add3(reference, abstractAxisVector(axis)),
+    )
+    return { x: endpoint.x - origin.x, y: endpoint.y - origin.y }
+  })
+  const lengths = vectors.map((vector) => Math.hypot(vector.x, vector.y))
+  const separations: number[] = []
+  for (let left = 0; left < vectors.length; left += 1) {
+    for (let right = left + 1; right < vectors.length; right += 1) {
+      const denominator = lengths[left] * lengths[right]
+      const sine =
+        denominator <= EPSILON
+          ? 0
+          : Math.min(
+              1,
+              Math.abs(
+                vectors[left].x * vectors[right].y -
+                  vectors[left].y * vectors[right].x,
+              ) / denominator,
+            )
+      separations.push((Math.asin(sine) * 180) / Math.PI)
+    }
+  }
+  const values = [
+    ...projection.matrix,
+    origin.x,
+    origin.y,
+    ...vectors.flatMap((vector) => [vector.x, vector.y]),
+  ]
+  return {
+    finite: values.every(Number.isFinite),
+    minAxisLength: Math.min(...lengths),
+    minAxisSeparationDegrees: Math.min(...separations),
+  }
+}
+
 export function refitProjection(
   scene: SceneGeometry,
-): SceneProjection {
+): SceneProjection | null {
+  if (!scene.projection) return null
   if (scene.projection.kind === 'camera') {
     if (scene.observations.length < 6) return scene.projection
     try {
@@ -767,17 +859,11 @@ export function refitProjection(
     (observation) =>
       !localCoordinatesOnPlane(origin, uAxis, vAxis, observation.lattice),
   )
-  if (
-    scene.observations.length >= 6 &&
-    outOfPlaneObservations.length >= 2
-  ) {
-    // Two non-coplanar anchors are required before promoting the stable planar
-    // model; one stray point should not invent a third resolved axis.
+  if (scene.observations.length >= 6 && outOfPlaneObservations.length >= 2) {
     try {
       return fitCameraProjection(scene.observations)
     } catch {
-      // Keep the planar model until the non-coplanar observations are
-      // sufficiently well-conditioned.
+      // Retain the stable planar model until the new anchors are well-conditioned.
     }
   }
   return planarProjectionForPlane(
@@ -814,8 +900,6 @@ const MIN_TRAPEZOID_EDGE_RATIO = 1.1
 export function inferInitialFaceNormal(
   corners: [Point2, Point2, Point2, Point2],
 ): Point3 {
-  // A single quadrilateral cannot determine a full camera. Use trapezoid
-  // convergence when strong enough, with winding as the reversible fallback.
   const signedArea = corners.reduce((sum, corner, index) => {
     const next = corners[(index + 1) % corners.length]
     return sum + corner.x * next.y - next.x * corner.y
@@ -828,12 +912,9 @@ export function inferInitialFaceNormal(
   if (signedArea <= EPSILON || topMidpointY >= bottomMidpointY) {
     return windingFallback
   }
-
   const topLength = distance(corners[0], corners[1])
   const bottomLength = distance(corners[3], corners[2])
-  if (topLength <= EPSILON || bottomLength <= EPSILON) {
-    return windingFallback
-  }
+  if (topLength <= EPSILON || bottomLength <= EPSILON) return windingFallback
   if (bottomLength / topLength >= MIN_TRAPEZOID_EDGE_RATIO) {
     return { x: 0, y: 0, z: 1 }
   }
@@ -885,6 +966,21 @@ export function faceEdgeGeometry(
     direction: axes.vAxis,
     length: 1,
   }
+}
+
+export function orientationEdgeGeometry(
+  face: MeshFace,
+  edge: FaceEdge,
+): FaceEdgeGeometry {
+  const geometry = faceEdgeGeometry(face, edge)
+  return edge === 'bottom' || edge === 'left'
+    ? {
+        ...geometry,
+        start: geometry.end,
+        end: geometry.start,
+        direction: negate3(geometry.direction),
+      }
+    : geometry
 }
 
 const point3Key = (point: Point3): string => `${point.x},${point.y},${point.z}`
@@ -1015,12 +1111,11 @@ export function chooseEdgeExtrusion(
   const geometries = selections
     .map((selection) => selectedEdgeGeometry(scene, selection))
     .filter((entry): entry is FaceEdgeGeometry => entry !== undefined)
-  if (geometries.length === 0) return undefined
+  if (geometries.length === 0 || !scene.projection) return undefined
   const referenceGeometry = geometries[geometries.length - 1]
-  if (scene.projection.kind !== 'camera') {
-    // Under a homography, only in-plane rays are measurable. A pointer close
-    // to one snaps to an integer planar extension; moving away requests the
-    // first out-of-plane axis and a pair of calibration anchors.
+  if (scene.projection.kind === 'planar') {
+    // A homography measures only its plane. Snap near an in-plane ray; moving
+    // away requests the first perpendicular face and completes the 3D solve.
     const referenceSelection = selections[selections.length - 1]
     const face = scene.faces.find(
       (entry) => entry.id === referenceSelection.faceId,
@@ -1036,12 +1131,19 @@ export function chooseEdgeExtrusion(
       negate3(faceAxes.uAxis),
       faceAxes.vAxis,
       negate3(faceAxes.vAxis),
-    ].filter((axis, index, axes) =>
-      axes.findIndex((candidate) => same3(candidate, axis)) === index &&
-      geometries.every((geometry) => Math.abs(dot3(axis, geometry.direction)) < EPSILON),
+    ].filter(
+      (axis, index, axes) =>
+        axes.findIndex((candidate) => same3(candidate, axis)) === index &&
+        geometries.every(
+          (geometry) => Math.abs(dot3(axis, geometry.direction)) < EPSILON,
+        ),
     )
     let bestInPlane:
-      | (EdgeExtrusion & { pointerDistance: number; pathDistance: number; unitLength: number })
+      | (EdgeExtrusion & {
+          pointerDistance: number
+          pathDistance: number
+          unitLength: number
+        })
       | undefined
     for (const axis of inPlaneAxes) {
       let previous = projectScenePoint(scene, midpoint)
@@ -1101,8 +1203,7 @@ export function chooseEdgeExtrusion(
     }
     return { axis: face.normal, blocks: 1, createsAxis: true }
   }
-  // Once a camera exists, every perpendicular lattice direction can be
-  // projected and compared directly with the pointer.
+
   const candidates = extrusionDirections.filter((axis) =>
     geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
   )
@@ -1141,8 +1242,6 @@ export function translatedExtrusionAnchors(
   if (!endpoints) return undefined
   const projected = endpoints.map((point) => projectScenePoint(scene, point))
   if (!projected[0] || !projected[1]) return undefined
-  // Anchor the nearer endpoint at the pointer and translate the other by the
-  // same screen-space delta, preserving the observed edge as a rigid segment.
   if (distance(pointer, projected[1]) < distance(pointer, projected[0])) {
     endpoints.reverse()
     projected.reverse()
@@ -1225,100 +1324,9 @@ export function outerEdgeForExtrusion(
   return result?.edge
 }
 
-function normalizeProjectedAxes(
-  vectors: Partial<Record<AbstractAxis, Point2>>,
-): Partial<Record<AbstractAxis, Point2>> {
-  const maxLength = Math.max(
-    0,
-    ...(['a', 'b', 'c'] as const).map((axis) => {
-      const vector = vectors[axis]
-      return vector ? Math.hypot(vector.x, vector.y) : 0
-    }),
-  )
-  if (maxLength <= EPSILON) return {}
-
-  const result: Partial<Record<AbstractAxis, Point2>> = {}
-  for (const axis of ['a', 'b', 'c'] as const) {
-    const vector = vectors[axis]
-    if (!vector || Math.hypot(vector.x, vector.y) <= EPSILON) continue
-    result[axis] = {
-      x: vector.x / maxLength,
-      y: vector.y / maxLength,
-    }
-  }
-  return result
-}
-
-export function projectedAbstractAxesAtImagePoint(
-  scene: SceneGeometry,
-  imagePoint: Point2,
-): Partial<Record<AbstractAxis, Point2>> {
-  const result: Partial<Record<AbstractAxis, Point2>> = {}
-
-  if (scene.projection.kind === 'camera') {
-    const matrix = scene.projection.matrix
-    const reference =
-      scene.faces[0]?.blockCoordinate ??
-      scene.observations[0]?.lattice ??
-      { x: 0, y: 0, z: 0 }
-    const referenceVector = [reference.x, reference.y, reference.z, 1]
-    const referenceDepth = matrix
-      .slice(8, 12)
-      .reduce(
-        (sum, value, index) => sum + value * referenceVector[index],
-        0,
-      )
-    const orientation = referenceDepth < 0 ? -1 : 1
-
-    for (const [index, axis] of (['a', 'b', 'c'] as const).entries()) {
-      // Subtracting imagePoint * vanishingW yields the local screen direction
-      // toward each projective vanishing point without dividing near infinity.
-      const vanishingX = matrix[index]
-      const vanishingY = matrix[4 + index]
-      const vanishingW = matrix[8 + index]
-      result[axis] = {
-        x: (vanishingX - imagePoint.x * vanishingW) * orientation,
-        y: (vanishingY - imagePoint.y * vanishingW) * orientation,
-      }
-    }
-    return normalizeProjectedAxes(result)
-  }
-
-  const projection = scene.projection
-  const referenceDepth = projection.homography[8]
-  const orientation = referenceDepth < 0 ? -1 : 1
-  for (const axis of ['a', 'b', 'c'] as const) {
-    const vector = abstractAxisVector(axis)
-    const u =
-      dot3(vector, projection.uAxis) /
-      dot3(projection.uAxis, projection.uAxis)
-    const v =
-      dot3(vector, projection.vAxis) /
-      dot3(projection.vAxis, projection.vAxis)
-    const reconstructed = add3(
-      scale3(projection.uAxis, u),
-      scale3(projection.vAxis, v),
-    )
-    if (!same3(reconstructed, vector)) continue
-
-    const vanishingX =
-      projection.homography[0] * u + projection.homography[1] * v
-    const vanishingY =
-      projection.homography[3] * u + projection.homography[4] * v
-    const vanishingW =
-      projection.homography[6] * u + projection.homography[7] * v
-    result[axis] = {
-      x: (vanishingX - imagePoint.x * vanishingW) * orientation,
-      y: (vanishingY - imagePoint.y * vanishingW) * orientation,
-    }
-  }
-  return normalizeProjectedAxes(result)
-}
-
 export interface FaceNormalIndicator {
   origin: Point2
   direction: Point2
-  planarFallback: boolean
 }
 
 export function faceNormalIndicator(
@@ -1335,26 +1343,6 @@ export function faceNormalIndicator(
   const origin = projectScenePoint(scene, center)
   if (!origin) return undefined
 
-  if (scene.projection.kind === 'planar') {
-    const planeNormal = cross3(
-      scene.projection.uAxis,
-      scene.projection.vAxis,
-    )
-    const side = dot3(face.normal, planeNormal)
-    if (Math.abs(side) <= EPSILON) return undefined
-    const sign = Math.sign(side)
-    // A homography cannot project the plane normal. Use a reversible diagonal
-    // indicator solely to distinguish the two visible sides until 3D is fit.
-    return {
-      origin,
-      direction: {
-        x: Math.SQRT1_2 * sign,
-        y: -Math.SQRT1_2 * sign,
-      },
-      planarFallback: true,
-    }
-  }
-
   const endpoint = projectScenePoint(scene, add3(center, face.normal))
   if (!endpoint) return undefined
   const delta = {
@@ -1369,7 +1357,6 @@ export function faceNormalIndicator(
       x: delta.x / length,
       y: delta.y / length,
     },
-    planarFallback: false,
   }
 }
 

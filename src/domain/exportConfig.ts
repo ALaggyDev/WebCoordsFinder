@@ -71,6 +71,9 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 
+  if (document.scene.projection?.kind !== 'camera') {
+    errors.push('Solve the full 3D perspective before export.')
+  }
   if (
     !document.anchorFaceId ||
     !document.scene.faces.some((face) => face.id === document.anchorFaceId)
@@ -81,7 +84,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     !document.scanner.compassResolved ||
     !isAxisMappingComplete(document.scene.axisMapping)
   ) {
-    errors.push('Choose a valid global axis reference before export.')
+    errors.push('Set a valid world orientation before export.')
   }
   if (
     document.scanner.directions.length === 0 ||

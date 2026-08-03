@@ -2,7 +2,7 @@
 // the local project library.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useEditorStore } from '../store/editorStore'
+import { createEmptyDocument, useEditorStore } from '../store/editorStore'
 import { TopBar } from './TopBar'
 
 const projects = [
@@ -22,6 +22,29 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('top bar project actions', () => {
+  it('keeps Faces and Export locked for a partial perspective solve', () => {
+    useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+
+    render(
+      <TopBar
+        activeProjectId="project-a"
+        projects={projects}
+        onOpenImage={vi.fn()}
+        onOpenProjects={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Faces/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Export/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Geometry/ })).toBeEnabled()
+  })
+
   it('opens an image from the former privacy-badge position', () => {
     const onOpenImage = vi.fn()
     render(

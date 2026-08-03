@@ -1,15 +1,19 @@
 // Inspector tests cover selection batches, unresolved world orientation, and
 // the boundary between automatic proposals and user-confirmed evidence.
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
-  waitFor,
   within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createInitialDocument, useEditorStore } from '../store/editorStore'
+import {
+  createEmptyDocument,
+  createInitialDocument,
+  useEditorStore,
+} from '../store/editorStore'
 import { Inspector } from './Inspector'
 
 beforeEach(() => {
@@ -21,6 +25,7 @@ beforeEach(() => {
     step: 'grid',
     faceTab: 'selection',
     tool: 'select',
+    orientationDraft: null,
     past: [],
     future: [],
     selectedEdges: [],
@@ -30,8 +35,40 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+describe('partial perspective inspector', () => {
+  it('shows the resumable partial state without exposing 3D-only controls', () => {
+    useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
+    useEditorStore.getState().addBaseFaces(
+      [
+        { x: 40, y: 100 },
+        { x: 360, y: 100 },
+        { x: 300, y: 300 },
+        { x: 100, y: 300 },
+      ],
+      4,
+      4,
+    )
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Partial 2D perspective')).toBeInTheDocument()
+    expect(screen.getByText(/Saved and resumable/)).toBeInTheDocument()
+    expect(screen.getByText('Partial 2D perspective').closest('.compass-card'))
+      .toHaveClass('partial')
+    expect(screen.queryByText('World orientation')).not.toBeInTheDocument()
+    expect(screen.queryByText('Anchor selected')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Extrude selected/ })).toBeDisabled()
+  })
+})
+
 describe('face inspector batch selection', () => {
-  it('warns instead of loading forever when world orientation is unresolved', async () => {
+  it('selects a face while world orientation is unresolved', () => {
     const document = createInitialDocument()
     useEditorStore.setState({ document, step: 'faces', faceTab: 'selection' })
     const face = useEditorStore.getState().document.scene.faces[0]
@@ -45,71 +82,9 @@ describe('face inspector batch selection', () => {
       />,
     )
 
-    expect(
-      await screen.findByText('Resolve global axes to align this face'),
-    ).toBeInTheDocument()
-  })
-
-  it('keeps common references and variants visible while compass yaw is unknown', async () => {
-    const document = createInitialDocument()
-    document.scene.axisMapping = {
-      a: 'unknown',
-      b: 'unknown',
-      c: 'y+',
-    }
-    useEditorStore.setState({
-      document,
-      step: 'faces',
-      faceTab: 'selection',
-    })
-    const face = useEditorStore.getState().document.scene.faces[0]
-    useEditorStore.getState().selectFace(face.id, false)
-
-    const { container } = render(
-      <Inspector
-        busy={false}
-        onOpenImage={vi.fn()}
-        onAutoFill={vi.fn()}
-      />,
-    )
-
-    expect(
-      await screen.findByText('Resolve global axes to align this face'),
-    ).toBeInTheDocument()
-    expect(screen.getByAltText('Stone reference')).toBeInTheDocument()
-    expect(container.querySelectorAll('.candidate-image img')).toHaveLength(4)
-  })
-
-  it('keeps two-state side variants visible without a compass direction', async () => {
-    const document = createInitialDocument()
-    document.scene.axisMapping = {
-      a: 'unknown',
-      b: 'unknown',
-      c: 'y+',
-    }
-    document.scene.faces[0].normal = { x: 1, y: 0, z: 0 }
-    useEditorStore.setState({
-      document,
-      step: 'faces',
-      faceTab: 'selection',
-    })
-    const face = useEditorStore.getState().document.scene.faces[0]
-    useEditorStore.getState().selectFace(face.id, false)
-
-    const { container } = render(
-      <Inspector
-        busy={false}
-        onOpenImage={vi.fn()}
-        onAutoFill={vi.fn()}
-      />,
-    )
-
-    expect(
-      await screen.findByText('Side face · compass unresolved'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('2-state')).toBeInTheDocument()
-    expect(screen.getByAltText('Stone reference')).toBeInTheDocument()
-    expect(container.querySelectorAll('.candidate-image img')).toHaveLength(2)
+    expect(screen.queryByText('Select a block face')).not.toBeInTheDocument()
+    expect(useEditorStore.getState().selectedEvidenceIds).toEqual([face.id])
+    expect(useEditorStore.getState().document.evidence).toHaveLength(1)
   })
 
   it('shows Mixed, hides per-face imagery, and updates every selected profile', () => {
@@ -219,6 +194,7 @@ describe('face inspector batch selection', () => {
 
   it('flips the selected flat-connected faces from the Faces workspace', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
+    const expectedZ = -first.normal.z
     useEditorStore.getState().selectFace(first.id, false)
     useEditorStore.getState().selectFace(second.id, true)
     useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
@@ -233,9 +209,10 @@ describe('face inspector batch selection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Flip visible side' }))
     expect(
-      useEditorStore.getState().document.scene.faces.every(
-        (face) => face.normal.z === -1,
-      ),
+      useEditorStore
+        .getState()
+        .document.scene.faces.filter((face) => face.normal.z !== 0)
+        .every((face) => face.normal.z === expectedZ),
     ).toBe(true)
     expect(
       useEditorStore.getState().document.evidence.every(
@@ -248,13 +225,15 @@ describe('face inspector batch selection', () => {
 })
 
 describe('geometry deletion', () => {
-  it('projects the gizmo and recomputes around a movable anchored axis', async () => {
+  it('derives world orientation from a labeled face and directed edge', () => {
     const document = createInitialDocument()
     document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
     document.scanner.compassResolved = false
+    document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
+    document.anchorFaceId = document.scene.faces[0].id
     useEditorStore.setState({ document, step: 'grid' })
 
-    const { container } = render(
+    render(
       <Inspector
         busy={false}
         onOpenImage={vi.fn()}
@@ -262,82 +241,35 @@ describe('geometry deletion', () => {
       />,
     )
 
-    const initialArrow = container
-      .querySelector('[data-axis-arrow="a"]')
-      ?.getAttribute('d')
-    const rotated = structuredClone(useEditorStore.getState().document)
-    if (rotated.scene.projection.kind !== 'planar') {
-      throw new Error('Expected the example project to start planar.')
-    }
-    rotated.scene.projection.homography = [
-      0, -100, 500,
-      100, 0, 500,
-      0, 0, 1,
-    ]
-    useEditorStore.setState({ document: rotated })
-    await waitFor(() => {
-      expect(
-        container
-          .querySelector('[data-axis-arrow="a"]')
-          ?.getAttribute('d'),
-      ).not.toBe(initialArrow)
+    fireEvent.click(screen.getByRole('button', { name: 'Set world orientation' }))
+    act(() => {
+      useEditorStore
+        .getState()
+        .setOrientationFace(document.scene.faces[0].id)
     })
 
-    fireEvent.change(screen.getByLabelText('Abstract A direction'), {
-      target: { value: 'x+' },
+    fireEvent.change(screen.getByLabelText('Reference face world direction'), {
+      target: { value: 'up' },
     })
-    fireEvent.change(screen.getByLabelText('Abstract C direction'), {
-      target: { value: 'y+' },
+    act(() => {
+      useEditorStore.getState().setOrientationEdge('top')
     })
-
-    await waitFor(() => {
-      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-        a: 'x+',
-        b: 'z+',
-        c: 'y+',
-      })
-    })
-    expect(screen.getByLabelText('Abstract A direction')).toBeEnabled()
-    expect(screen.getByLabelText('Abstract B direction')).toBeEnabled()
-    expect(screen.getByLabelText('Abstract C direction')).toBeEnabled()
-    expect(screen.queryByRole('option', { name: 'X?' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Y?' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'Z?' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z+')
-    expect(
-      screen.getByRole('button', { name: 'Unanchor abstract A axis' }),
-    ).toHaveAttribute('aria-pressed', 'true')
-
-    fireEvent.change(screen.getByLabelText('Abstract C direction'), {
-      target: { value: 'y-' },
+    fireEvent.change(screen.getByLabelText('Reference edge world direction'), {
+      target: { value: 'east' },
     })
 
-    await waitFor(() => {
-      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-        a: 'x+',
-        b: 'z-',
-        c: 'y-',
-      })
-    })
-    expect(screen.getByLabelText('Abstract B direction')).toHaveValue('z-')
-
+    expect(screen.getByText('Derived right-handed orientation')).toBeInTheDocument()
     fireEvent.click(
-      screen.getByRole('button', { name: 'Anchor abstract C axis' }),
+      screen.getByRole('button', { name: 'Confirm orientation' }),
     )
-    fireEvent.change(screen.getByLabelText('Abstract B direction'), {
-      target: { value: 'z+' },
-    })
 
-    await waitFor(() => {
-      expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-        a: 'x-',
-        b: 'z+',
-        c: 'y-',
-      })
+    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
+      a: 'x+',
+      b: 'z+',
+      c: 'y+',
     })
-    expect(
-      screen.getByRole('button', { name: 'Unanchor abstract C axis' }),
-    ).toHaveAttribute('aria-pressed', 'true')
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+    expect(screen.getByRole('button', { name: 'Change orientation' })).toBeInTheDocument()
   })
 
   it('deletes all selected faces from the geometry inspector', () => {
@@ -416,8 +348,8 @@ describe('Auto Analyze queue', () => {
     ])
 
     const queueRows = screen.getAllByTitle('Inspect this face')
-    expect(within(queueRows[0]).getByText('2, 0, -1')).toBeInTheDocument()
-    expect(within(queueRows[1]).getByText('0, 0, -1')).toBeInTheDocument()
+    expect(within(queueRows[0]).getByText('2, 0, 0')).toBeInTheDocument()
+    expect(within(queueRows[1]).getByText('0, 0, 0')).toBeInTheDocument()
     expect(within(queueRows[0]).getByText('Δ 0.25')).toBeInTheDocument()
     expect(within(queueRows[1]).getByText('Variant —')).toBeInTheDocument()
 

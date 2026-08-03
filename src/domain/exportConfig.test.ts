@@ -184,7 +184,7 @@ describe('CoordsFinder export', () => {
     document.scanner.compassResolved = false
 
     expect(validateForExport(document).errors).toContain(
-      'Choose a valid global axis reference before export.',
+      'Set a valid world orientation before export.',
     )
   })
 })

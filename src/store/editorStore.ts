@@ -1,10 +1,14 @@
 import { create } from 'zustand'
 import {
   add3,
+  axisMappingFromReferences,
   blockCoordinateForFace,
+  cameraFitDiagnostics,
   cameraFacingNormal,
   chooseEdgeExtrusion,
+  cross3,
   createEdgeExtrusionFaces,
+  fitCameraProjection,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
   isAxisMappingComplete,
@@ -12,31 +16,33 @@ import {
   meshEdgeKey,
   negate3,
   outerEdgeForExtrusion,
+  orientationEdgeGeometry,
   planarProjectionForPlane,
   possibleFacesForLocalNormal,
   projectionInfo,
   refitProjection,
   scale3,
-  selectedEdgeEndpoints,
   selectedEdgeGeometry,
+  selectedEdgeEndpoints,
   same3,
+  subtract3,
   translatedExtrusionAnchors,
-  updatedAxisMapping,
   validAxisMappingCompletions,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
 import type { ExampleProjectId } from '../domain/examples'
 import { searchDirections, worldAxisLabels } from '../domain/types'
 import type {
-  AbstractAxis,
   AxisMapping,
   CandidateScore,
   EditorDocument,
   EditorStep,
   EditorTool,
   FaceDirection,
+  FaceEdge,
   FaceEvidence,
   MeshFace,
+  OrientationDraft,
   Point2,
   Point3,
   ScannerSettings,
@@ -57,10 +63,6 @@ const demoCorners: [Point2, Point2, Point2, Point2] = [
   { x: 1450, y: 1000 },
   { x: 0, y: 1102 },
 ]
-const planeOrigin = { x: 0, y: 0, z: 0 }
-const planeU = { x: 1, y: 0, z: 0 }
-const planeV = { x: 0, y: 1, z: 0 }
-
 function createFaceGrid(
   columns: number,
   rows: number,
@@ -76,6 +78,15 @@ function createFaceGrid(
   )
 }
 
+interface CameraSetup {
+  baseCorners: [Point2, Point2, Point2, Point2]
+  columns: number
+  rows: number
+  edge: { start: Point3; end: Point3 }
+  depth: number
+  outerCorners: [Point2, Point2]
+}
+
 function createPlanarScene(
   columns: number,
   rows: number,
@@ -83,7 +94,7 @@ function createPlanarScene(
   prefix: string,
 ): EditorDocument['scene'] {
   const cornerLattice: [Point3, Point3, Point3, Point3] = [
-    planeOrigin,
+    { x: 0, y: 0, z: 0 },
     { x: columns, y: 0, z: 0 },
     { x: columns, y: rows, z: 0 },
     { x: 0, y: rows, z: 0 },
@@ -103,14 +114,105 @@ function createPlanarScene(
     ),
     observations,
     projection: planarProjectionForPlane(
-      planeOrigin,
-      planeU,
-      planeV,
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
       cornerLattice,
       observations,
     ),
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
   }
+}
+
+function createCalibrationDepthFaces(
+  draft: CameraSetup,
+  prefix: string,
+): MeshFace[] {
+  if (!draft.edge) return []
+  const direction = subtract3(draft.edge.end, draft.edge.start)
+  const span = Math.abs(direction.x) + Math.abs(direction.y)
+  const step = scale3(direction, 1 / span)
+  return Array.from({ length: draft.depth }).flatMap((_, depthIndex) =>
+    Array.from({ length: span }, (__, index) => {
+      const start = add3(draft.edge!.start, scale3(step, index))
+      const end = add3(start, step)
+      return {
+        id: `${prefix}-depth-${depthIndex}-${index}`,
+        blockCoordinate: {
+          x: Math.min(start.x, end.x),
+          y: Math.min(start.y, end.y),
+          z: depthIndex,
+        },
+        normal: cross3(step, { x: 0, y: 0, z: 1 }),
+      }
+    }),
+  )
+}
+
+function createCalibratedScene(
+  draft: CameraSetup,
+  prefix: string,
+): EditorDocument['scene'] {
+  if (!draft.edge || draft.outerCorners.length !== 2) {
+    throw new Error('Choose a grid edge and extrude the depth reference.')
+  }
+  const baseLattice: [Point3, Point3, Point3, Point3] = [
+    { x: 0, y: 0, z: 0 },
+    { x: draft.columns, y: 0, z: 0 },
+    { x: draft.columns, y: draft.rows, z: 0 },
+    { x: 0, y: draft.rows, z: 0 },
+  ]
+  const { start: edgeStart, end: edgeEnd } = draft.edge
+  const outerLattice: [Point3, Point3] = [edgeStart, edgeEnd].map(
+    (point) => ({ ...point, z: draft.depth }),
+  ) as [Point3, Point3]
+  const observations = [
+    ...baseLattice.map((lattice, index) => ({
+      id: crypto.randomUUID(),
+      lattice,
+      image: draft.baseCorners[index],
+      weight: 1,
+    })),
+    ...outerLattice.map((lattice, index) => ({
+      id: crypto.randomUUID(),
+      lattice,
+      image: draft.outerCorners[index],
+      weight: 1,
+    })),
+  ]
+  const projection = fitCameraProjection(observations)
+  const diagnostics = cameraFitDiagnostics(projection, {
+    x: draft.columns / 2,
+    y: draft.rows / 2,
+    z: 0,
+  })
+  if (!diagnostics.finite || diagnostics.minAxisLength < 0.25) {
+    throw new Error('The depth reference produces an unstable camera fit.')
+  }
+  if (diagnostics.minAxisSeparationDegrees < 1) {
+    throw new Error(
+      'The depth face is too flat in the image. Choose a clearer perpendicular face.',
+    )
+  }
+
+  const scene: EditorDocument['scene'] = {
+    faces: [
+      ...createFaceGrid(
+        draft.columns,
+        draft.rows,
+        `${prefix}-base`,
+        { x: 0, y: 0, z: 1 },
+      ),
+      ...createCalibrationDepthFaces(draft, prefix),
+    ],
+    observations,
+    projection,
+    axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+  }
+  scene.faces.forEach((face) => {
+    face.normal = cameraFacingNormal(scene, face)
+  })
+  return scene
 }
 
 function createDefaultScanner(): ScannerSettings {
@@ -143,10 +245,27 @@ export const createExampleDocument = (
   if (exampleId !== 'cavern') {
     throw new Error(`Unknown example project: ${exampleId}`)
   }
+  const scene = createCalibratedScene(
+    {
+      baseCorners: demoCorners,
+      columns: 6,
+      rows: 4,
+      edge: {
+        start: { x: 0, y: 0, z: 0 },
+        end: { x: 6, y: 0, z: 0 },
+      },
+      depth: 2,
+      outerCorners: [
+        { x: 210, y: 310 },
+        { x: 970, y: 300 },
+      ],
+    },
+    'cavern-demo',
+  )
   return {
     schemaVersion: 1,
     projectName: 'Example cavern',
-    anchorFaceId: null,
+    anchorFaceId: scene.faces[0]?.id ?? null,
     image: {
       key: 'demo',
       name: 'Example cavern screenshot',
@@ -155,7 +274,7 @@ export const createExampleDocument = (
       height: 1494,
       mime: 'image/png',
     },
-    scene: createPlanarScene(6, 4, demoCorners, 'floor-demo'),
+    scene,
     evidence: [],
     scanner: createDefaultScanner(),
   }
@@ -176,14 +295,7 @@ export const createEmptyDocument = (): EditorDocument => ({
   scene: {
     faces: [],
     observations: [],
-    projection: {
-      kind: 'planar',
-      origin: planeOrigin,
-      uAxis: planeU,
-      vAxis: planeV,
-      cornerLattice: [planeOrigin, planeOrigin, planeOrigin, planeOrigin],
-      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    },
+    projection: null,
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
   },
   evidence: [],
@@ -208,6 +320,46 @@ function isValidAxisMapping(input: unknown): input is AxisMapping {
   return validAxisMappingCompletions(mapping as unknown as AxisMapping).length > 0
 }
 
+function isPoint3(input: unknown): input is Point3 {
+  if (!input || typeof input !== 'object') return false
+  const point = input as Record<string, unknown>
+  return ['x', 'y', 'z'].every(
+    (axis) => typeof point[axis] === 'number' && Number.isFinite(point[axis]),
+  )
+}
+
+function isValidCommittedProjection(input: unknown): boolean {
+  if (!input || typeof input !== 'object') return false
+  const projection = input as Record<string, unknown>
+  if (projection.kind === 'planar') {
+    return (
+      isPoint3(projection.origin) &&
+      isPoint3(projection.uAxis) &&
+      isPoint3(projection.vAxis) &&
+      Array.isArray(projection.cornerLattice) &&
+      projection.cornerLattice.length === 4 &&
+      projection.cornerLattice.every(isPoint3) &&
+      Array.isArray(projection.homography) &&
+      projection.homography.length === 9 &&
+      projection.homography.every(
+        (value) => typeof value === 'number' && Number.isFinite(value),
+      )
+    )
+  }
+  return (
+    projection.kind === 'camera' &&
+    Array.isArray(projection.matrix) &&
+    projection.matrix.length === 12 &&
+    projection.matrix.every(
+      (value) => typeof value === 'number' && Number.isFinite(value),
+    ) &&
+    typeof projection.rmsError === 'number' &&
+    Number.isFinite(projection.rmsError) &&
+    typeof projection.maxError === 'number' &&
+    Number.isFinite(projection.maxError)
+  )
+}
+
 export function normalizeEditorDocument(input: unknown): EditorDocument {
   const candidate = input as Record<string, unknown>
   const scanner = candidate.scanner as Record<string, unknown> | undefined
@@ -221,6 +373,11 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     typeof candidate.projectName !== 'string' ||
     !scene ||
     !isValidAxisMapping(scene.axisMapping) ||
+    !Array.isArray(scene.faces) ||
+    !Array.isArray(scene.observations) ||
+    (scene.faces.length === 0
+      ? scene.projection !== null
+      : !isValidCommittedProjection(scene.projection)) ||
     !Array.isArray(directions) ||
     new Set(directions).size !== directions.length ||
     directions.some(
@@ -233,7 +390,11 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   ) {
     throw new Error('This project uses an unsupported document schema.')
   }
-  return structuredClone(input as EditorDocument)
+  const normalized = structuredClone(input as EditorDocument)
+  normalized.scanner.compassResolved = isAxisMappingComplete(
+    normalized.scene.axisMapping,
+  )
+  return normalized
 }
 
 interface AnalysisResult {
@@ -287,8 +448,8 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
     faceId: face.id,
     latticeCoordinate: blockCoordinateForFace(face),
     localNormal: face.normal,
-    blockId: 'stone',
-    stateCount: sharedStatesForFaces('stone', faces) ?? 4,
+    blockId: 'deepslate',
+    stateCount: sharedStatesForFaces('deepslate', faces) ?? 4,
     reviewStatus: 'unlabeled',
   }
 }
@@ -311,7 +472,12 @@ function pruneGeometry(document: EditorDocument): void {
     // An anchor cannot outlive the face that identifies its owning block.
     document.anchorFaceId = null
   }
-  if (document.scene.faces.length === 0) document.scene.observations = []
+  if (document.scene.faces.length === 0) {
+    document.scene.observations = []
+    document.scene.projection = null
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
+  }
 }
 
 type FaceTab = 'selection' | 'review'
@@ -321,6 +487,7 @@ interface EditorState {
   step: EditorStep
   faceTab: FaceTab
   tool: EditorTool
+  orientationDraft: OrientationDraft | null
   selectedEdges: SelectedEdge[]
   selectedEvidenceIds: string[]
   past: EditorDocument[]
@@ -344,8 +511,13 @@ interface EditorState {
   deleteFace: (faceId: string) => void
   deleteSelectedFaces: () => void
   flipSelectedFaces: () => void
-  setAxisMapping: (mapping: AxisMapping) => void
-  updateAxisMapping: (axis: AbstractAxis, label: WorldAxisLabel) => void
+  startOrientation: () => void
+  setOrientationFace: (faceId: string) => void
+  setOrientationFaceDirection: (direction: FaceDirection) => void
+  setOrientationEdge: (edge: FaceEdge) => void
+  setOrientationEdgeDirection: (direction: FaceDirection) => void
+  confirmOrientation: () => void
+  cancelOrientation: () => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
   selectAllFaces: () => void
@@ -409,16 +581,34 @@ export const useEditorStore = create<EditorState>((set) => ({
   step: 'image',
   faceTab: 'selection',
   tool: 'select',
+  orientationDraft: null,
   selectedEdges: [],
   selectedEvidenceIds: [],
   past: [],
   future: [],
-  setStep: (step) => set({ step }),
+  setStep: (step) =>
+    set((state) => {
+      const fullCamera = state.document.scene.projection?.kind === 'camera'
+      const ready =
+        fullCamera &&
+        state.document.anchorFaceId !== null &&
+        isAxisMappingComplete(state.document.scene.axisMapping)
+      return (step === 'faces' || step === 'export') && !ready
+        ? state
+        : { step }
+    }),
   setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) =>
-    set((state) => ({
-      tool: tool === 'extrude' && state.selectedEdges.length === 0 ? 'select' : tool,
-    })),
+    set((state) => {
+      const fullCamera = state.document.scene.projection?.kind === 'camera'
+      if ((tool === 'anchor' || tool === 'orient') && !fullCamera) return state
+      return {
+        tool:
+          tool === 'extrude' && state.selectedEdges.length === 0
+            ? 'select'
+            : tool,
+      }
+    }),
   selectEdge: (edge, additive) =>
     set((state) => {
       const geometry = selectedEdgeGeometry(state.document.scene, edge)
@@ -473,6 +663,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       faceTab: 'selection',
       selectedEvidenceIds: [],
       selectedEdges: [],
+      orientationDraft: null,
       // Restored projects reopen at the earliest meaningful workflow stage.
       step: document.scene.faces.length > 0 ? 'grid' : 'image',
       tool: document.scene.faces.length > 0 ? 'select' : 'plane',
@@ -486,18 +677,28 @@ export const useEditorStore = create<EditorState>((set) => ({
         // carried onto a different screenshot.
         document.scene.faces = []
         document.scene.observations = []
+        document.scene.projection = null
+        document.scene.axisMapping = {
+          a: 'unknown',
+          b: 'unknown',
+          c: 'unknown',
+        }
         document.evidence = []
         document.anchorFaceId = null
+        document.scanner.compassResolved = false
       }),
       selectedEdges: [],
       selectedEvidenceIds: [],
+      orientationDraft: null,
       step: 'grid',
       faceTab: 'selection',
       tool: 'plane',
     })),
   addBaseFaces: (corners, columns = 4, rows = 4) =>
     set((state) => {
-      if (state.document.scene.faces.length > 0) return state
+      if (state.document.scene.faces.length > 0 || state.document.scene.projection) {
+        return state
+      }
       return {
         ...mutateDocument(state, (document) => {
           document.scene = createPlanarScene(
@@ -511,6 +712,8 @@ export const useEditorStore = create<EditorState>((set) => ({
           document.scanner.compassResolved = false
         }),
         selectedEdges: [],
+        selectedEvidenceIds: [],
+        orientationDraft: null,
         tool: 'select' as EditorTool,
       }
     }),
@@ -586,8 +789,6 @@ export const useEditorStore = create<EditorState>((set) => ({
             projectionInfo(document.scene).resolvedAxes < 3 &&
             planarAnchors
           ) {
-            // The first out-of-plane extrusion contributes two translated edge
-            // endpoints, enough to promote the planar fit to a 3D camera.
             planarAnchors.endpoints.forEach((endpoint, index) => {
               document.scene.observations.push({
                 id: crypto.randomUUID(),
@@ -600,9 +801,24 @@ export const useEditorStore = create<EditorState>((set) => ({
               })
             })
             document.scene.projection = refitProjection(document.scene)
-            faces.forEach((face) => {
-              face.normal = cameraFacingNormal(document.scene, face)
-            })
+            if (document.scene.projection?.kind === 'camera') {
+              document.scene.faces.forEach((face) => {
+                face.normal = cameraFacingNormal(document.scene, face)
+              })
+              document.evidence.forEach((entry) => {
+                const face = document.scene.faces.find(
+                  (candidate) => candidate.id === entry.faceId,
+                )
+                if (!face) return
+                entry.latticeCoordinate = blockCoordinateForFace(face)
+                entry.localNormal = face.normal
+                entry.selectedVariant = undefined
+                entry.reviewStatus = 'unlabeled'
+                entry.scores = undefined
+                entry.confidence = undefined
+              })
+              document.anchorFaceId ??= document.scene.faces[0]?.id ?? null
+            }
           }
         }),
         selectedEdges: outerEdges,
@@ -666,35 +882,111 @@ export const useEditorStore = create<EditorState>((set) => ({
           })
       })
     }),
-  setAxisMapping: (mapping) =>
+  startOrientation: () =>
     set((state) => {
-      if (validAxisMappingCompletions(mapping).length === 0) return state
       if (
-        (['a', 'b', 'c'] as const).every(
-          (axis) =>
-            state.document.scene.axisMapping[axis] === mapping[axis],
-        )
+        state.document.scene.projection?.kind !== 'camera' ||
+        !state.document.anchorFaceId
       ) {
         return state
       }
-      return mutateDocument(state, (document) => {
-        applyAxisMapping(document, mapping)
-      })
+      return {
+        orientationDraft: {
+          faceId: null,
+          faceDirection: null,
+          edge: null,
+          edgeDirection: null,
+        },
+        selectedEdges: [],
+        selectedEvidenceIds: [],
+        tool: 'orient' as EditorTool,
+      }
     }),
-  updateAxisMapping: (axis, label) =>
+  setOrientationFace: (faceId) =>
+    set((state) =>
+      state.orientationDraft &&
+      state.document.scene.faces.some((face) => face.id === faceId)
+        ? {
+            orientationDraft: {
+              faceId,
+              faceDirection: null,
+              edge: null,
+              edgeDirection: null,
+            },
+          }
+        : state,
+    ),
+  setOrientationFaceDirection: (faceDirection) =>
+    set((state) =>
+      state.orientationDraft?.faceId
+        ? {
+            orientationDraft: {
+              ...state.orientationDraft,
+              faceDirection,
+              edgeDirection: null,
+            },
+          }
+        : state,
+    ),
+  setOrientationEdge: (edge) =>
+    set((state) =>
+      state.orientationDraft?.faceId
+        ? {
+            orientationDraft: {
+              ...state.orientationDraft,
+              edge,
+              edgeDirection: null,
+            },
+          }
+        : state,
+    ),
+  setOrientationEdgeDirection: (edgeDirection) =>
+    set((state) =>
+      state.orientationDraft?.faceId && state.orientationDraft.edge
+        ? {
+            orientationDraft: {
+              ...state.orientationDraft,
+              edgeDirection,
+            },
+          }
+        : state,
+    ),
+  confirmOrientation: () =>
     set((state) => {
-      const next = updatedAxisMapping(
-        state.document.scene.axisMapping,
-        axis,
-        label,
+      const draft = state.orientationDraft
+      if (
+        !draft?.faceId ||
+        !draft.faceDirection ||
+        !draft.edge ||
+        !draft.edgeDirection
+      ) {
+        return state
+      }
+      const face = state.document.scene.faces.find(
+        (candidate) => candidate.id === draft.faceId,
       )
-      if (next === state.document.scene.axisMapping) return state
-      return mutateDocument(state, (document) => {
-        applyAxisMapping(document, next)
-      })
+      if (!face) return state
+      const edge = orientationEdgeGeometry(face, draft.edge)
+      const mapping = axisMappingFromReferences(
+        face.normal,
+        draft.faceDirection,
+        edge.direction,
+        draft.edgeDirection,
+      )
+      if (!mapping) return state
+      return {
+        ...mutateDocument(state, (document) => {
+          applyAxisMapping(document, mapping)
+        }),
+        orientationDraft: null,
+        tool: 'select' as EditorTool,
+      }
     }),
+  cancelOrientation: () =>
+    set({ orientationDraft: null, tool: 'select' as EditorTool }),
   setAnchorFace: (faceId) =>
     set((state) => {
+      if (state.document.scene.projection?.kind !== 'camera') return state
       if (!state.document.scene.faces.some((face) => face.id === faceId)) {
         return state
       }
@@ -882,6 +1174,10 @@ export const useEditorStore = create<EditorState>((set) => ({
         document,
         past: state.past.slice(0, -1),
         future: [state.document, ...state.future].slice(0, 60),
+        orientationDraft: null,
+        selectedEdges: [],
+        selectedEvidenceIds: [],
+        tool: document.scene.faces.length > 0 ? 'select' : 'plane',
       }
     }),
   redo: () =>
@@ -895,6 +1191,10 @@ export const useEditorStore = create<EditorState>((set) => ({
         document,
         past: [...state.past, state.document].slice(-60),
         future: state.future.slice(1),
+        orientationDraft: null,
+        selectedEdges: [],
+        selectedEvidenceIds: [],
+        tool: document.scene.faces.length > 0 ? 'select' : 'plane',
       }
     }),
   resetProject: () =>
@@ -903,6 +1203,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       past: [],
       future: [],
       faceTab: 'selection',
+      orientationDraft: null,
       selectedEdges: [],
       selectedEvidenceIds: [],
       step: 'image',

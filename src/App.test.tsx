@@ -65,11 +65,15 @@ beforeEach(() => {
     }),
   )
 
+  const document = createInitialDocument()
+  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scanner.compassResolved = true
   useEditorStore.setState({
-    document: createInitialDocument(),
+    document,
     step: 'faces',
     faceTab: 'selection',
     tool: 'select',
+    orientationDraft: null,
     past: [],
     future: [],
     selectedEdges: [],

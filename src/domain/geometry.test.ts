@@ -2,7 +2,9 @@
 // mesh construction, crop orientation, and right-handed axis completion.
 import { describe, expect, it } from 'vitest'
 import {
+  axisMappingFromReferences,
   blockCoordinateForFace,
+  cameraFitDiagnostics,
   cameraCenter,
   chooseEdgeExtrusion,
   computeHomography,
@@ -15,19 +17,13 @@ import {
   faceVertex,
   fitCameraProjection,
   fitHomography,
-  inferInitialFaceNormal,
   isAxisMappingComplete,
   mappedVector,
   negate3,
-  planarProjectionForPlane,
+  orientationEdgeGeometry,
   possibleFacesForLocalNormal,
   projectCamera,
   projectPoint,
-  projectScenePoint,
-  projectedAbstractAxesAtImagePoint,
-  projectionInfo,
-  refitProjection,
-  updatedAxisMapping,
   validAxisMappingCompletions,
   worldAlignedFaceCorners,
 } from './geometry'
@@ -50,45 +46,25 @@ const face: MeshFace = {
   blockCoordinate: { x: 0, y: 0, z: 0 },
   normal: { x: 0, y: 0, z: 1 },
 }
-const planeU = { x: 1, y: 0, z: 0 }
-const planeV = { x: 0, y: 1, z: 0 }
+const cameraMatrix: Matrix3x4 = [
+  800, 0, 320, 100,
+  0, 700, -100, 200,
+  0.1, 0.05, 1, 5,
+]
 
 describe('global perspective geometry', () => {
-  // Coordinate ownership and planar projection form the base representation.
-  it.each([
-    [
-      [
-        { x: 100, y: 100 },
-        { x: 300, y: 100 },
-        { x: 360, y: 300 },
-        { x: 40, y: 300 },
-      ],
-      { x: 0, y: 0, z: 1 },
-    ],
-    [
-      [
-        { x: 40, y: 100 },
-        { x: 360, y: 100 },
-        { x: 300, y: 300 },
-        { x: 100, y: 300 },
-      ],
-      { x: 0, y: 0, z: -1 },
-    ],
-    [
-      [
-        { x: 100, y: 100 },
-        { x: 300, y: 100 },
-        { x: 305, y: 300 },
-        { x: 95, y: 300 },
-      ],
-      { x: 0, y: 0, z: 1 },
-    ],
-  ] satisfies [[Point2, Point2, Point2, Point2], Point3][])(
-    'infers the initial visible side from trapezoid perspective %#',
-    (corners, expected) => {
-      expect(inferInitialFaceNormal(corners)).toEqual(expected)
-    },
-  )
+  it('directs orientation arrows around all four sides of a face', () => {
+    expect(
+      (['top', 'right', 'bottom', 'left'] as const).map(
+        (edge) => orientationEdgeGeometry(face, edge).direction,
+      ),
+    ).toEqual([
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 1, z: 0 },
+      { x: -1, y: 0, z: 0 },
+      { x: 0, y: -1, z: 0 },
+    ])
+  })
 
   it.each([
     [{ x: 1, y: 0, z: 0 }, { x: 2, y: 4, z: 5 }],
@@ -152,25 +128,14 @@ describe('global perspective geometry', () => {
       id: 'base-1-0',
       blockCoordinate: { x: 1, y: 0, z: 0 },
     }
-    const homography = computeHomography(
-      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
-    )
     const scene: SceneGeometry = {
       faces: [face, right],
       observations: [],
       projection: {
-        kind: 'planar',
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 4, y: 0, z: 0 },
-          { x: 4, y: 3, z: 0 },
-          { x: 0, y: 3, z: 0 },
-        ],
-        homography,
+        kind: 'camera',
+        matrix: cameraMatrix,
+        rmsError: 0,
+        maxError: 0,
       },
       axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
     }
@@ -181,131 +146,36 @@ describe('global perspective geometry', () => {
     expect(faceVertex(face, 1, 1)).toEqual({ x: 1, y: 1, z: 0 })
   })
 
-  it('preserves relative planar axis lengths at the requested image point', () => {
-    const scene: SceneGeometry = {
-      faces: [face],
-      observations: [],
-      projection: {
-        kind: 'planar',
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: 0 },
-          { x: 1, y: 1, z: 0 },
-          { x: 0, y: 1, z: 0 },
-        ],
-        homography: [100, 0, 0, 0, 100, 0, 0.1, 0.2, 1],
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-
-    const projectedAxes = projectedAbstractAxesAtImagePoint(scene, {
-      x: 200,
-      y: 100,
-    })
-
-    expectPointClose(projectedAxes.a!, {
-      x: 4 / Math.sqrt(20),
-      y: -1 / (2 * Math.sqrt(20)),
-    })
-    expectPointClose(projectedAxes.b!, {
-      x: -1 / Math.sqrt(5),
-      y: 2 / Math.sqrt(5),
-    })
-    expect(projectedAxes.c).toBeUndefined()
-  })
-
-  it('preserves relative camera axis lengths at the requested image point', () => {
-    const scene: SceneGeometry = {
-      faces: [face],
-      observations: [],
-      projection: {
-        kind: 'camera',
-        matrix: [
-          100, 0, 20, 0,
-          0, 100, -10, 0,
-          0.1, 0.2, 1, 1,
-        ],
-        rmsError: 0,
-        maxError: 0,
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-
-    const projectedAxes = projectedAbstractAxesAtImagePoint(scene, {
-      x: 200,
-      y: 100,
-    })
-
-    expectPointClose(projectedAxes.a!, {
-      x: 8 / Math.sqrt(445),
-      y: -1 / Math.sqrt(445),
-    })
-    expectPointClose(projectedAxes.b!, {
-      x: -4 / Math.sqrt(445),
-      y: 8 / Math.sqrt(445),
-    })
-    expectPointClose(projectedAxes.c!, {
-      x: -18 / Math.sqrt(445),
-      y: -11 / Math.sqrt(445),
-    })
-  })
-
-  it('uses a reversible screen-space normal indicator until a camera is fitted', () => {
-    const planarScene: SceneGeometry = {
-      faces: [face],
-      observations: [],
-      projection: {
-        kind: 'planar',
-        origin: { x: 0, y: 0, z: 0 },
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: 0 },
-          { x: 1, y: 1, z: 0 },
-          { x: 0, y: 1, z: 0 },
-        ],
-        homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-    const front = faceNormalIndicator(planarScene, face)!
-    const back = faceNormalIndicator(planarScene, {
-      ...face,
-      normal: { x: 0, y: 0, z: -1 },
-    })!
-
-    expect(front).toMatchObject({
-      origin: { x: 0.5, y: 0.5 },
-      planarFallback: true,
-    })
-    expectPointClose(back.direction, {
-      x: -front.direction.x,
-      y: -front.direction.y,
-    })
-
+  it('projects visible-side normals from the fitted camera', () => {
     const cameraScene: SceneGeometry = {
-      ...planarScene,
+      faces: [face],
+      observations: [],
       projection: {
         kind: 'camera',
         matrix: [100, 0, 20, 0, 0, 100, -10, 0, 0, 0, 0, 1],
         rmsError: 0,
         maxError: 0,
       },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     }
-    const projected = faceNormalIndicator(cameraScene, face)!
-    expect(projected.planarFallback).toBe(false)
-    expectPointClose(projected.direction, {
+    const front = faceNormalIndicator(cameraScene, face)!
+    const back = faceNormalIndicator(cameraScene, {
+      ...face,
+      normal: { x: 0, y: 0, z: -1 },
+    })!
+
+    expectPointClose(back.direction, {
+      x: -front.direction.x,
+      y: -front.direction.y,
+    })
+    expectPointClose(front.direction, {
       x: 2 / Math.sqrt(5),
       y: -1 / Math.sqrt(5),
     })
   })
 
-  // Calibration fitting must use redundant observations without inventing a
-  // third axis until the anchors actually leave the source plane.
+  // Homography remains a draft-grid primitive; committed calibration requires
+  // non-coplanar camera observations.
   it('fits a homography from more than four planar observations', () => {
     const expected = computeHomography(
       [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }],
@@ -334,66 +204,6 @@ describe('global perspective geometry', () => {
     })
   })
 
-  it('uses six coplanar anchors without inventing a third axis', () => {
-    const cornerLattice: [Point3, Point3, Point3, Point3] = [
-      { x: 0, y: 0, z: 0 },
-      { x: 4, y: 0, z: 0 },
-      { x: 4, y: 4, z: 0 },
-      { x: 0, y: 4, z: 0 },
-    ]
-    const expected = computeHomography(
-      cornerLattice.map(({ x, y }) => ({ x, y })) as [
-        Point2,
-        Point2,
-        Point2,
-        Point2,
-      ],
-      [
-        { x: 100, y: 100 },
-        { x: 500, y: 120 },
-        { x: 480, y: 500 },
-        { x: 120, y: 470 },
-      ],
-    )
-    const latticePoints = [
-      ...cornerLattice,
-      { x: 12, y: 0, z: 0 },
-      { x: 12, y: 4, z: 0 },
-    ]
-    const observations: CalibrationObservation[] = latticePoints.map(
-      (lattice, index) => ({
-        id: String(index),
-        lattice,
-        image: projectPoint(expected, lattice),
-        weight: 1,
-      }),
-    )
-    const scene: SceneGeometry = {
-      faces: [face],
-      observations,
-      projection: planarProjectionForPlane(
-        { x: 0, y: 0, z: 0 },
-        planeU,
-        planeV,
-        cornerLattice,
-        observations.slice(0, 4),
-      ),
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-
-    scene.projection = refitProjection(scene)
-
-    expect(scene.projection.kind).toBe('planar')
-    expect(projectionInfo(scene).resolvedAxes).toBe(2)
-    observations.forEach((observation) => {
-      expectPointClose(
-        projectScenePoint(scene, observation.lattice)!,
-        observation.image,
-        4,
-      )
-    })
-  })
-
   it('fits a camera from six non-coplanar observations', () => {
     const expected: Matrix3x4 = [
       800, 0, 320, 100,
@@ -418,6 +228,12 @@ describe('global perspective geometry', () => {
     )
     const fitted = fitCameraProjection(observations)
     expect(fitted.rmsError).toBeLessThan(0.05)
+    expect(cameraFitDiagnostics(fitted, { x: 2, y: 1, z: 0 })).toMatchObject({
+      finite: true,
+    })
+    expect(
+      cameraFitDiagnostics(fitted, { x: 2, y: 1, z: 0 }).minAxisLength,
+    ).toBeGreaterThan(0.25)
     expectPointClose(
       projectCamera(fitted.matrix, { x: 2, y: 1, z: 4 }),
       projectCamera(expected, { x: 2, y: 1, z: 4 }),
@@ -454,24 +270,12 @@ describe('global perspective geometry', () => {
     ['bottom', { x: 0, y: 1, z: 0 }],
     ['left', { x: -1, y: 0, z: 0 }],
   ] as const)(
-    'inherits the source normal for a planar %s-edge extension',
+    'inherits the source normal for a coplanar %s-edge extension',
     (edge, axis) => {
       const scene: SceneGeometry = {
         faces: [face],
         observations: [],
-        projection: {
-          kind: 'planar',
-          origin: face.blockCoordinate,
-          uAxis: planeU,
-          vAxis: planeV,
-          cornerLattice: [
-            { x: 0, y: 0, z: 0 },
-            { x: 1, y: 0, z: 0 },
-            { x: 1, y: 1, z: 0 },
-            { x: 0, y: 1, z: 0 },
-          ],
-          homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        },
+        projection: { kind: 'camera', matrix: cameraMatrix, rmsError: 0, maxError: 0 },
         axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
       }
 
@@ -487,26 +291,14 @@ describe('global perspective geometry', () => {
     },
   )
 
-  // Extrusion selection covers planar snapping, camera snapping, negative
-  // normalization, and the most-recent-edge reference rule.
-  it('preserves a manually flipped source normal during planar extension', () => {
+  // Extrusion selection covers camera snapping, negative normalization, and
+  // preservation of the source face's visible side.
+  it('preserves a manually flipped source normal during coplanar extension', () => {
     const flipped = { ...face, normal: { x: 0, y: 0, z: -1 } }
     const scene: SceneGeometry = {
       faces: [flipped],
       observations: [],
-      projection: {
-        kind: 'planar',
-        origin: face.blockCoordinate,
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: 0 },
-          { x: 1, y: 1, z: 0 },
-          { x: 0, y: 1, z: 0 },
-        ],
-        homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      },
+      projection: { kind: 'camera', matrix: cameraMatrix, rmsError: 0, maxError: 0 },
       axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     }
 
@@ -572,126 +364,6 @@ describe('global perspective geometry', () => {
     ).toEqual({
       axis: { x: 0, y: 0, z: 1 },
       blocks: 4,
-      createsAxis: false,
-    })
-  })
-
-  it('keeps a first extrusion in the plane when the pointer is near it', () => {
-    const homography = computeHomography(
-      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
-    )
-    const scene: SceneGeometry = {
-      faces: [face],
-      observations: [],
-      projection: {
-        kind: 'planar',
-        origin: face.blockCoordinate,
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 4, y: 0, z: 0 },
-          { x: 4, y: 3, z: 0 },
-          { x: 0, y: 3, z: 0 },
-        ],
-        homography,
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-    const pointer = projectPoint(homography, { x: 0.5, y: -3 })
-
-    expect(
-      chooseEdgeExtrusion(
-        scene,
-        [{ faceId: face.id, edge: 'top' }],
-        pointer,
-      ),
-    ).toEqual({
-      axis: { x: 0, y: -1, z: 0 },
-      blocks: 3,
-      createsAxis: false,
-    })
-  })
-
-  it('uses the face normal when a first extrusion leaves the plane', () => {
-    const homography = computeHomography(
-      [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }],
-      [{ x: 10, y: 10 }, { x: 110, y: 20 }, { x: 90, y: 80 }, { x: 20, y: 70 }],
-    )
-    const scene: SceneGeometry = {
-      faces: [face],
-      observations: [],
-      projection: {
-        kind: 'planar',
-        origin: face.blockCoordinate,
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 4, y: 0, z: 0 },
-          { x: 4, y: 3, z: 0 },
-          { x: 0, y: 3, z: 0 },
-        ],
-        homography,
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-
-    expect(
-      chooseEdgeExtrusion(
-        scene,
-        [{ faceId: face.id, edge: 'top' }],
-        { x: 250, y: 250 },
-      ),
-    ).toEqual({
-      axis: face.normal,
-      blocks: 1,
-      createsAxis: true,
-    })
-  })
-
-  it('uses the most recently selected edge for pointer distance', () => {
-    const laterFace: MeshFace = {
-      ...face,
-      id: 'later',
-      blockCoordinate: { x: 0, y: 5, z: 0 },
-    }
-    const homography = computeHomography(
-      [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
-      [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 }],
-    )
-    const scene: SceneGeometry = {
-      faces: [face, laterFace],
-      observations: [],
-      projection: {
-        kind: 'planar',
-        origin: face.blockCoordinate,
-        uAxis: planeU,
-        vAxis: planeV,
-        cornerLattice: [
-          { x: 0, y: 0, z: 0 },
-          { x: 10, y: 0, z: 0 },
-          { x: 10, y: 10, z: 0 },
-          { x: 0, y: 10, z: 0 },
-        ],
-        homography,
-      },
-      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
-    }
-
-    expect(
-      chooseEdgeExtrusion(
-        scene,
-        [
-          { faceId: face.id, edge: 'top' },
-          { faceId: laterFace.id, edge: 'top' },
-        ],
-        { x: 50, y: 800 },
-      ),
-    ).toEqual({
-      axis: { x: 0, y: 1, z: 0 },
-      blocks: 3,
       createsAxis: false,
     })
   })
@@ -799,7 +471,7 @@ describe('global perspective geometry', () => {
     })
   })
 
-  it('completes the gizmo axes using A cross C equals B', () => {
+  it('completes a partial mapping using A cross C equals B', () => {
     const partial = {
       a: 'x+' as const,
       b: 'unknown' as const,
@@ -811,8 +483,6 @@ describe('global perspective geometry', () => {
     expect(validAxisMappingCompletions(partial)).toEqual([proper])
     expect(isAxisMappingComplete(opposite)).toBe(false)
     expect(isAxisMappingComplete(proper)).toBe(true)
-    expect(updatedAxisMapping(partial, 'b', 'z-')).toBe(partial)
-    expect(updatedAxisMapping(partial, 'b', 'z+')).toEqual(proper)
   })
 
   it('infers negative X to the right of positive Z when C is up', () => {
@@ -825,6 +495,26 @@ describe('global perspective geometry', () => {
     expect(validAxisMappingCompletions(partial)).toEqual([
       { a: 'z+', b: 'x-', c: 'y+' },
     ])
+  })
+
+  it('derives a complete right-handed mapping from a face and directed edge', () => {
+    expect(
+      axisMappingFromReferences(
+        { x: 0, y: 0, z: 1 },
+        'up',
+        { x: 1, y: 0, z: 0 },
+        'east',
+      ),
+    ).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+
+    expect(
+      axisMappingFromReferences(
+        { x: 0, y: 0, z: 1 },
+        'up',
+        { x: 1, y: 0, z: 0 },
+        'down',
+      ),
+    ).toBeUndefined()
   })
 
   it('reports every face still possible under a partial mapping', () => {

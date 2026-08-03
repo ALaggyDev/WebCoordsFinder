@@ -15,7 +15,7 @@ import { useEditorStore } from '../store/editorStore'
 const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; shortcut: string }> = [
   { id: 'select', label: 'Select faces or edges', icon: MousePointer2, shortcut: 'V' },
   { id: 'anchor', label: 'Select anchor block', icon: Crosshair, shortcut: 'A' },
-  { id: 'plane', label: 'Create base faces', icon: Box, shortcut: 'G' },
+  { id: 'plane', label: 'Calibrate perspective', icon: Box, shortcut: 'G' },
   { id: 'extrude', label: 'Extrude selected edges', icon: Move3d, shortcut: 'E' },
 ]
 
@@ -28,7 +28,10 @@ export function ToolRail() {
   const canUndo = useEditorStore((state) => state.past.length > 0)
   const canRedo = useEditorStore((state) => state.future.length > 0)
   const hasGeometry = useEditorStore(
-    (state) => state.document.scene.faces.length > 0,
+    (state) => state.document.scene.projection !== null,
+  )
+  const hasFullCamera = useEditorStore(
+    (state) => state.document.scene.projection?.kind === 'camera',
   )
   const hasSelectedEdges = useEditorStore((state) => state.selectedEdges.length > 0)
   const hasSelectedFaces = useEditorStore(
@@ -48,6 +51,8 @@ export function ToolRail() {
               // Only one base grid is allowed, and extrusion needs an explicit
               // connected edge selection.
               (id === 'plane' && hasGeometry) ||
+              (id === 'select' && !hasGeometry) ||
+              (id === 'anchor' && !hasFullCamera) ||
               (id === 'extrude' && !hasSelectedEdges)
             }
             title={`${label} (${shortcut})`}

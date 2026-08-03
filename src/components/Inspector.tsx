@@ -12,6 +12,7 @@ import {
   Grid3X3,
   Link2,
   LoaderCircle,
+  Move3d,
   RotateCcw,
   ScanSearch,
   Sparkles,
@@ -23,7 +24,11 @@ import {
   validateForExport,
 } from '../domain/exportConfig'
 import {
+  axisDisplayLabel,
+  axisMappingFromReferences,
+  compatibleEdgeDirections,
   faceHasWorldOrientation,
+  orientationEdgeGeometry,
   faceForLocalNormal,
   faceDisplayName,
   isAxisMappingComplete,
@@ -44,12 +49,12 @@ import {
   searchDirections,
   textureAlgorithms,
   type CandidateTransform,
+  type FaceDirection,
   type SearchDirection,
   type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { useEditorStore } from '../store/editorStore'
-import { AxisMappingGizmo } from './AxisMappingGizmo'
 import { ExportRunDialog } from './ExportRunDialog'
 
 // The right-hand inspector mirrors the four workflow stages. It derives UI
@@ -118,9 +123,25 @@ function SectionTitle({
   )
 }
 
+const worldDirectionOptions: Array<{
+  value: FaceDirection
+  label: string
+}> = [
+  { value: 'up', label: 'Top (+Y)' },
+  { value: 'down', label: 'Bottom (−Y)' },
+  { value: 'east', label: 'East (+X)' },
+  { value: 'west', label: 'West (−X)' },
+  { value: 'south', label: 'South (+Z)' },
+  { value: 'north', label: 'North (−Z)' },
+]
+
+function worldDirectionLabel(direction: FaceDirection): string {
+  return worldDirectionOptions.find((option) => option.value === direction)!.label
+}
+
 function GeometryInspector() {
   const scene = useEditorStore((state) => state.document.scene)
-  const image = useEditorStore((state) => state.document.image)
+  const orientationDraft = useEditorStore((state) => state.orientationDraft)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedFaceCount = useEditorStore(
     (state) => state.selectedEvidenceIds.length,
@@ -128,26 +149,160 @@ function GeometryInspector() {
   const deleteSelectedFaces = useEditorStore(
     (state) => state.deleteSelectedFaces,
   )
-  const setAxisMapping = useEditorStore((state) => state.setAxisMapping)
   const setTool = useEditorStore((state) => state.setTool)
+  const startOrientation = useEditorStore((state) => state.startOrientation)
+  const setOrientationFaceDirection = useEditorStore(
+    (state) => state.setOrientationFaceDirection,
+  )
+  const setOrientationEdgeDirection = useEditorStore(
+    (state) => state.setOrientationEdgeDirection,
+  )
+  const confirmOrientation = useEditorStore(
+    (state) => state.confirmOrientation,
+  )
+  const cancelOrientation = useEditorStore(
+    (state) => state.cancelOrientation,
+  )
   const tool = useEditorStore((state) => state.tool)
   const anchorFaceId = useEditorStore((state) => state.document.anchorFaceId)
   const anchorFace = scene.faces.find(
     (face) => face.id === anchorFaceId,
   )
+  const calibration = projectionInfo(scene)
 
-  if (scene.faces.length === 0) {
+  if (!scene.projection) {
     return (
-      <div className="empty-inspector">
-        <Grid3X3 size={28} />
-        <h3>No geometry</h3>
-        <p>Draw four corners to create the initial set of 1×1 faces.</p>
-      </div>
+      <>
+        <SectionTitle
+          icon={Grid3X3}
+          eyebrow="Perspective setup"
+          title="Draw a base surface"
+        />
+        <div className="empty-inspector calibration-empty">
+          <Grid3X3 size={28} />
+          <h3>No perspective geometry</h3>
+          <p>
+            Mark four corners around a block-aligned surface. Confirming its
+            grid size saves a resumable 2D perspective solve.
+          </p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => setTool('plane')}
+          >
+            {tool === 'plane' ? 'Click four corners' : 'Start perspective solve'}
+          </button>
+        </div>
+      </>
     )
   }
-  const calibration = projectionInfo(scene)
-  const calibrated = calibration.resolvedAxes === 3
+
+  if (scene.projection.kind === 'planar') {
+    return (
+      <>
+        <SectionTitle
+          icon={Grid3X3}
+          eyebrow="Perspective setup"
+          title="Complete the 3D camera"
+        />
+        <div className="geometry-summary" aria-label="Geometry summary">
+          <div>
+            <strong>{scene.faces.length}</strong>
+            <span>Faces</span>
+          </div>
+          <div>
+            <strong>{selectedEdges.length}</strong>
+            <span>Selected edges</span>
+          </div>
+        </div>
+        <div className="compass-card partial">
+          <AlertTriangle size={19} />
+          <div>
+            <strong>Partial 2D perspective</strong>
+            <span>
+              Saved and resumable · {scene.observations.length} anchors ·{' '}
+              {calibration.rmsError.toFixed(1)} px RMS
+            </span>
+          </div>
+        </div>
+        <div className="calibration-workflow">
+          <div className="setup-step complete">
+            <span>1</span>
+            <div>
+              <strong>Base surface solved</strong>
+              <small>The homography supports planar editing and extrusion.</small>
+            </div>
+            <Check size={15} />
+          </div>
+          <div className={selectedEdges.length > 0 ? 'setup-step complete' : 'setup-step active'}>
+            <span>2</span>
+            <div>
+              <strong>Select an edge</strong>
+              <small>
+                {selectedEdges.length > 0
+                  ? `${selectedEdges.length} edge${selectedEdges.length === 1 ? '' : 's'} selected`
+                  : 'Click an edge on the canvas'}
+              </small>
+            </div>
+            {selectedEdges.length > 0 && <Check size={15} />}
+          </div>
+          <div className={selectedEdges.length > 0 ? 'setup-step active' : 'setup-step'}>
+            <span>3</span>
+            <div>
+              <strong>Extrude a perpendicular face</strong>
+              <small>Press E, move outward, then click once.</small>
+            </div>
+          </div>
+        </div>
+        <div className="inspector-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={selectedEdges.length === 0}
+            onClick={() => setTool('extrude')}
+          >
+            <Move3d size={15} /> {tool === 'extrude' ? 'Click to extrude' : 'Extrude selected'}
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            disabled={selectedFaceCount === 0}
+            onClick={deleteSelectedFaces}
+          >
+            <Trash2 size={15} /> Delete selected {selectedFaceCount === 1 ? 'face' : 'faces'}
+          </button>
+        </div>
+        <div className="hint-card">
+          Extruding near the current plane extends the 2D solve. Move away from
+          the plane to create the first perpendicular face and complete the 3D camera.
+        </div>
+      </>
+    )
+  }
+
   const mappingComplete = isAxisMappingComplete(scene.axisMapping)
+  const orientationFace = orientationDraft?.faceId
+    ? scene.faces.find((face) => face.id === orientationDraft.faceId)
+    : undefined
+  const orientationEdge =
+    orientationFace && orientationDraft?.edge
+      ? orientationEdgeGeometry(orientationFace, orientationDraft.edge)
+      : undefined
+  const derivedMapping =
+    orientationFace &&
+    orientationEdge &&
+    orientationDraft?.faceDirection &&
+    orientationDraft.edgeDirection
+      ? axisMappingFromReferences(
+          orientationFace.normal,
+          orientationDraft.faceDirection,
+          orientationEdge.direction,
+          orientationDraft.edgeDirection,
+        )
+      : undefined
+  const edgeDirectionOptions = orientationDraft?.faceDirection
+    ? compatibleEdgeDirections(orientationDraft.faceDirection)
+    : []
 
   return (
     <>
@@ -161,6 +316,17 @@ function GeometryInspector() {
           <strong>{selectedEdges.length}</strong>
           <span>Selected edges</span>
         </div>
+      </div>
+      <div className="compass-card resolved">
+        <Compass size={19} />
+        <div>
+          <strong>3D perspective solved</strong>
+          <span>
+            {scene.observations.length} anchors · {calibration.rmsError.toFixed(1)} px RMS ·{' '}
+            {calibration.maxError.toFixed(1)} px maximum
+          </span>
+        </div>
+        <Check size={15} />
       </div>
       <div className={anchorFace ? 'compass-card resolved' : 'compass-card'}>
         <Crosshair size={19} />
@@ -185,31 +351,129 @@ function GeometryInspector() {
         )}
       </div>
       <div className="subsection">
-        <h3>Global axis directions</h3>
-        <AxisMappingGizmo
-          directionReference={{ x: image.width / 2, y: image.height / 2 }}
-          mapping={scene.axisMapping}
-          onChange={setAxisMapping}
-          scene={scene}
-        />
-        <p className="axis-hint">
-          Choose any two signed directions. Pin one arrow to keep it fixed;
-          changing either other arrow recalculates the remaining direction.
-        </p>
-      </div>
-      <div className={calibrated ? 'compass-card resolved' : 'compass-card'}>
-        <Compass size={19} />
-        <div>
-          <strong>
-            {calibrated ? 'Global camera fitted' : 'Planar calibration'}
-          </strong>
-          <span>
-            {scene.observations.length} anchors ·{' '}
-            {calibration.rmsError.toFixed(1)} px RMS ·{' '}
-            {calibration.resolvedAxes} axes
-          </span>
-        </div>
-        {mappingComplete && <Check size={15} />}
+        <h3>World orientation</h3>
+        {mappingComplete && !orientationDraft ? (
+          <div className="orientation-summary">
+            <div>
+              {(['a', 'b', 'c'] as const).map((axis) => (
+                <span key={axis}>
+                  <b>{axis.toUpperCase()}</b>
+                  {axisDisplayLabel(axis, scene.axisMapping)}
+                </span>
+              ))}
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={startOrientation}
+            >
+              Change orientation
+            </button>
+          </div>
+        ) : orientationDraft ? (
+          <div className="orientation-workflow">
+            <div className={orientationFace ? 'setup-step complete' : 'setup-step active'}>
+              <span>1</span>
+              <div>
+                <strong>Reference face</strong>
+                <small>{orientationFace ? 'Face selected' : 'Click a face on the canvas'}</small>
+              </div>
+              {orientationFace && <Check size={15} />}
+            </div>
+            <label className="field">
+              <span>This face is</span>
+              <select
+                aria-label="Reference face world direction"
+                disabled={!orientationFace}
+                value={orientationDraft.faceDirection ?? ''}
+                onChange={(event) =>
+                  setOrientationFaceDirection(event.target.value as FaceDirection)
+                }
+              >
+                <option value="" disabled>Choose world face</option>
+                {worldDirectionOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className={orientationDraft.edge ? 'setup-step complete' : 'setup-step active'}>
+              <span>2</span>
+              <div>
+                <strong>Directed edge</strong>
+                <small>
+                  {orientationDraft.edge
+                    ? `${orientationDraft.edge} edge selected`
+                    : 'Click an arrow on the reference face'}
+                </small>
+              </div>
+              {orientationDraft.edge && <Check size={15} />}
+            </div>
+            <label className="field">
+              <span>The edge arrow points</span>
+              <select
+                aria-label="Reference edge world direction"
+                disabled={!orientationDraft.edge || !orientationDraft.faceDirection}
+                value={orientationDraft.edgeDirection ?? ''}
+                onChange={(event) =>
+                  setOrientationEdgeDirection(event.target.value as FaceDirection)
+                }
+              >
+                <option value="" disabled>Choose edge direction</option>
+                {edgeDirectionOptions.map((direction) => (
+                  <option key={direction} value={direction}>
+                    {worldDirectionLabel(direction)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {derivedMapping && (
+              <div className="orientation-derived">
+                <small>Derived right-handed orientation</small>
+                <div>
+                  {(['a', 'b', 'c'] as const).map((axis) => (
+                    <span key={axis}>
+                      <b>{axis.toUpperCase()}</b>
+                      {axisDisplayLabel(axis, derivedMapping)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="inspector-actions">
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!derivedMapping}
+                onClick={confirmOrientation}
+              >
+                <Check size={15} /> Confirm orientation
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={cancelOrientation}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="orientation-empty">
+            <p>
+              Label one visible face and one directed edge. The third axis is
+              derived automatically from the right-handed coordinate system.
+            </p>
+            <button
+              className="primary-button full"
+              type="button"
+              disabled={!anchorFace}
+              onClick={startOrientation}
+            >
+              <Compass size={15} /> Set world orientation
+            </button>
+            {!anchorFace && <small>Select the coordinate anchor first.</small>}
+          </div>
+        )}
       </div>
       <div className="inspector-actions">
         <button
@@ -232,8 +496,7 @@ function GeometryInspector() {
       <div className="hint-card">
         Click an edge to select it. Shift-click connected edges to add or remove
         them, then press E. Move toward the intended axis and distance, then
-        click to extrude. Before a 3D camera exists, moving near the plane keeps
-        the extrusion planar; moving away creates the third axis.
+        click to extrude. The solved camera projects all three lattice axes.
       </div>
     </>
   )
@@ -420,7 +683,7 @@ function FaceInspector({
                 possibleEvidenceFaces.every((face) =>
                   ['north', 'south', 'east', 'west'].includes(face),
                 )
-              ? 'Side face · compass unresolved'
+              ? 'Side face · world orientation unresolved'
             : directions.has(undefined)
               ? 'World direction unresolved'
               : 'Mixed directions'}
@@ -441,7 +704,7 @@ function FaceInspector({
               ) : (
                 <div className="reference-unavailable" role="status">
                   {cropStatus === 'unresolved'
-                    ? 'Resolve global axes to align this face'
+                    ? 'Set world orientation to align this face'
                     : 'Unable to unwarp this face'}
                 </div>
               )}

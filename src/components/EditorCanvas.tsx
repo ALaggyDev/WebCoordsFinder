@@ -14,6 +14,7 @@ import {
   Text,
 } from 'react-konva'
 import {
+  abstractAxisVector,
   add3,
   axisColor,
   axisDisplayLabel,
@@ -28,19 +29,19 @@ import {
   fitHomography,
   flattenPoints,
   meshEdgeKey,
+  orientationEdgeGeometry,
   projectionInfo,
   projectPoint,
   projectScenePoint,
-  projectedAbstractAxesAtImagePoint,
   refitProjection,
-  selectedEdgeGeometry,
-  same3,
   scale3,
+  selectedEdgeGeometry,
+  selectedEdgeEndpoints,
+  same3,
   translatedExtrusionAnchors,
 } from '../domain/geometry'
 import type {
   AbstractAxis,
-  CalibrationObservation,
   FaceEdge,
   MeshFace,
   Point2,
@@ -110,14 +111,13 @@ const visualizationOptions: Array<{
 }> = [
   {
     key: 'axisGizmo',
-    label: 'Global axes',
-    description: 'Show the known global lattice directions.',
+    label: 'Anchor axes',
+    description: 'Show the three solved lattice directions at the anchor block.',
   },
   {
     key: 'faceNormals',
     label: 'Face normals',
-    description:
-      'Show visible-side normals. Planar calibration uses a screen-space side indicator.',
+    description: 'Show visible-side normals from the solved 3D camera.',
   },
   {
     key: 'anchorMarker',
@@ -144,6 +144,13 @@ function statusColor(status?: string): string {
   return GRID
 }
 
+function faceCenterLattice(face: MeshFace) {
+  return faceCornersLattice(face).reduce(
+    (sum, point) => add3(sum, { x: point.x / 4, y: point.y / 4, z: point.z / 4 }),
+    { x: 0, y: 0, z: 0 },
+  )
+}
+
 function makeExtrusionPreview(
   scene: SceneGeometry,
   selections: SelectedEdge[],
@@ -162,81 +169,73 @@ function makeExtrusionPreview(
   const previewScene: SceneGeometry = {
     ...scene,
     faces: [...scene.faces, ...faces],
+    observations: [...scene.observations],
   }
-  if (
-    projectionInfo(scene).resolvedAxes === 3 ||
-    !extrusion.createsAxis
-  ) {
-    // Existing cameras and in-plane extensions need no provisional anchors.
-    return {
-      scene: previewScene,
-      blocks: extrusion.blocks,
-      createsAxis: extrusion.createsAxis,
+  const endpoints = selectedEdgeEndpoints(scene, selections)
+  const translated = extrusion.createsAxis
+    ? translatedExtrusionAnchors(scene, selections, pointer)
+    : undefined
+  if (extrusion.createsAxis && (!endpoints || !translated)) return undefined
+  if (translated) {
+    const anchors = translated.endpoints.map((endpoint, index) => ({
+      id: `__preview_anchor_${index}__`,
+      lattice: add3(endpoint, scale3(extrusion.axis, extrusion.blocks)),
+      image: translated.images[index],
+      weight: 1,
+    }))
+    previewScene.observations = [
+      ...previewScene.observations.filter(
+        (observation) =>
+          !anchors.some((anchor) => same3(observation.lattice, anchor.lattice)),
+      ),
+      ...anchors,
+    ]
+    try {
+      previewScene.projection = refitProjection(previewScene)
+      previewScene.faces.forEach((face) => {
+        face.normal = cameraFacingNormal(previewScene, face)
+      })
+    } catch {
+      return undefined
     }
   }
-
-  const translated = translatedExtrusionAnchors(scene, selections, pointer)
-  if (!translated) return undefined
-  const anchors: CalibrationObservation[] = [{
-    id: '__preview_anchor__',
-    lattice: add3(
-      translated.endpoints[0],
-      scale3(extrusion.axis, extrusion.blocks),
-    ),
-    image: translated.images[0],
-    weight: 1,
-  }, {
-    id: '__preview_anchor_2__',
-    lattice: add3(
-      translated.endpoints[1],
-      scale3(extrusion.axis, extrusion.blocks),
-    ),
-    image: translated.images[1],
-    weight: 1,
-  }]
-  previewScene.observations = [
-    ...scene.observations.filter(
-      (observation) =>
-        !anchors.some((anchor) => same3(observation.lattice, anchor.lattice)),
-    ),
-    ...anchors,
-  ]
-  try {
-    // Refit a cloned scene so the pointer preview follows the camera that would
-    // result from committing this first out-of-plane extrusion.
-    previewScene.projection = refitProjection(previewScene)
-    faces.forEach((face) => {
-      face.normal = cameraFacingNormal(previewScene, face)
-    })
-    return {
-      scene: previewScene,
-      blocks: extrusion.blocks,
-      createsAxis: extrusion.createsAxis,
-    }
-  } catch {
-    return undefined
+  return {
+    scene: previewScene,
+    blocks: extrusion.blocks,
+    createsAxis: extrusion.createsAxis,
   }
 }
 
 function GlobalAxisGizmo({
   scene,
-  origin,
-  directionReference,
+  face,
   scale,
 }: {
   scene: SceneGeometry
-  origin: Point2
-  directionReference: Point2
+  face: MeshFace
   scale: number
 }) {
-  const projectedAxes = projectedAbstractAxesAtImagePoint(
-    scene,
-    directionReference,
-  )
-  const axes = (['a', 'b', 'c'] as AbstractAxis[]).filter(
-    (axis) => projectedAxes[axis],
-  )
-  const length = 30 / scale
+  const latticeOrigin = faceCenterLattice(face)
+  const origin = projectScenePoint(scene, latticeOrigin)
+  if (!origin) return null
+  const axes = (['a', 'b', 'c'] as AbstractAxis[]).flatMap((axis) => {
+    const endpoint = projectScenePoint(
+      scene,
+      add3(latticeOrigin, scale3(abstractAxisVector(axis), 0.25)),
+    )
+    if (!endpoint) return []
+    const delta = { x: endpoint.x - origin.x, y: endpoint.y - origin.y }
+    const projectedLength = Math.hypot(delta.x, delta.y)
+    if (projectedLength < 1e-8) return []
+    return [{
+      axis,
+      end: endpoint,
+      direction: {
+        x: delta.x / projectedLength,
+        y: delta.y / projectedLength,
+      },
+    }]
+  })
   return (
     <Group listening={false}>
       <Circle
@@ -247,18 +246,8 @@ function GlobalAxisGizmo({
         stroke="#dce7ec"
         strokeWidth={1 / scale}
       />
-      {axes.map((axis) => {
-        const projectedAxis = projectedAxes[axis]!
-        const projectedLength = Math.hypot(projectedAxis.x, projectedAxis.y)
-        const direction = {
-          x: projectedAxis.x / projectedLength,
-          y: projectedAxis.y / projectedLength,
-        }
+      {axes.map(({ axis, end, direction }) => {
         const color = axisColor(axis, scene.axisMapping)
-        const end = {
-          x: origin.x + projectedAxis.x * length,
-          y: origin.y + projectedAxis.y * length,
-        }
         return (
           <Group key={axis}>
             <Arrow
@@ -305,12 +294,8 @@ function AnchorGizmo({
   face: MeshFace
   scale: number
 }) {
-  const quad = faceQuad(scene, face)
-  if (!quad) return null
-  const origin = {
-    x: quad.reduce((sum, point) => sum + point.x, 0) / quad.length,
-    y: quad.reduce((sum, point) => sum + point.y, 0) / quad.length,
-  }
+  const origin = projectScenePoint(scene, faceCenterLattice(face))
+  if (!origin) return null
   // Below 100% zoom the marker shrinks with the scene; above 100% it stops
   // growing so it does not obscure the selected face.
   const reticleScale = Math.min(1, 1 / scale)
@@ -405,7 +390,6 @@ function FaceNormalGizmo({
         strokeWidth={1.6 / scale}
         pointerLength={5 / scale}
         pointerWidth={5 / scale}
-        dash={indicator.planarFallback ? [3 / scale, 2 / scale] : undefined}
       />
     </Group>
   )
@@ -420,6 +404,7 @@ export function EditorCanvas() {
   const draftHeightInputRef = useRef<HTMLInputElement>(null)
   const document = useEditorStore((state) => state.document)
   const tool = useEditorStore((state) => state.tool)
+  const orientationDraft = useEditorStore((state) => state.orientationDraft)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
   const setTool = useEditorStore((state) => state.setTool)
@@ -428,6 +413,8 @@ export function EditorCanvas() {
   const selectFace = useEditorStore((state) => state.selectFace)
   const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
   const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
+  const setOrientationFace = useEditorStore((state) => state.setOrientationFace)
+  const setOrientationEdge = useEditorStore((state) => state.setOrientationEdge)
   const moveObservation = useEditorStore((state) => state.moveObservation)
   const upsertObservation = useEditorStore((state) => state.upsertObservation)
   const extrudeSelectedEdges = useEditorStore((state) => state.extrudeSelectedEdges)
@@ -445,7 +432,7 @@ export function EditorCanvas() {
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
-    faceNormals: false,
+    faceNormals: true,
     anchorMarker: true,
     calibrationPoints: true,
     calibrationResiduals: true,
@@ -475,10 +462,6 @@ export function EditorCanvas() {
     }
     return scene
   }, [document.scene, draggedObservation])
-  const documentProjectionInfo = useMemo(
-    () => projectionInfo(document.scene),
-    [document.scene],
-  )
   const renderedProjectionInfo = useMemo(
     () => projectionInfo(renderedScene),
     [renderedScene],
@@ -505,8 +488,12 @@ export function EditorCanvas() {
     () => projectionInfo(sceneForRendering),
     [sceneForRendering],
   )
-  const anchorFace = document.anchorFaceId
+  const fullCameraSolved = sceneForRendering.projection?.kind === 'camera'
+  const anchorFace = fullCameraSolved && document.anchorFaceId
     ? sceneForRendering.faces.find((face) => face.id === document.anchorFaceId)
+    : undefined
+  const orientationFace = fullCameraSolved && orientationDraft?.faceId
+    ? sceneForRendering.faces.find((face) => face.id === orientationDraft.faceId)
     : undefined
   const meshEdges = useMemo(() => {
     const edges = new Map<string, RenderedMeshEdge>()
@@ -647,7 +634,9 @@ export function EditorCanvas() {
         setDraft([])
         setDraftGridSize(undefined)
         setDraftControlOffset({ x: 0, y: 0 })
-        if (tool === 'extrude' || tool === 'anchor') setTool('select')
+        if (tool === 'extrude' || tool === 'anchor' || tool === 'orient') {
+          setTool('select')
+        }
         else if (tool === 'select') clearSelectedEdges()
       }
     }
@@ -840,7 +829,7 @@ export function EditorCanvas() {
   }
 
   const idleCursor =
-    tool === 'plane' || tool === 'anchor'
+    tool === 'plane' || tool === 'anchor' || tool === 'orient'
       ? 'crosshair'
       : tool === 'extrude'
         ? 'copy'
@@ -884,7 +873,7 @@ export function EditorCanvas() {
         y={view.y}
         scaleX={view.scale}
         scaleY={view.scale}
-        draggable={tool !== 'extrude' && tool !== 'plane' && tool !== 'anchor'}
+        draggable
         onDragStart={(event) => {
           if (event.target === event.currentTarget) setIsDraggingCanvas(true)
         }}
@@ -931,11 +920,12 @@ export function EditorCanvas() {
             const isPreview = face.id.startsWith('__preview_')
             const evidence = evidenceMap.get(face.id)
             const selected = selectedEvidenceIds.includes(face.id)
+            const orientationSelected = orientationDraft?.faceId === face.id
             const quad = faceQuad(sceneForRendering, face)
             if (!quad) return null
             const color = isPreview
               ? PROPOSED
-              : selected
+              : selected || orientationSelected
                 ? SELECTED
                 : statusColor(evidence?.reviewStatus)
             return (
@@ -945,14 +935,16 @@ export function EditorCanvas() {
                 closed
                 stroke={color}
                 opacity={isPreview ? 0.72 : 1}
-                strokeWidth={(selected ? 1.8 : 0.8) / view.scale}
+                strokeWidth={
+                  (selected || orientationSelected ? 1.8 : 0.8) / view.scale
+                }
                 dash={
                   isPreview || evidence?.reviewStatus === 'proposed'
                     ? [4 / view.scale, 3 / view.scale]
                     : undefined
                 }
                 fill={
-                  selected
+                  selected || orientationSelected
                     ? 'rgba(112,167,255,.18)'
                     : evidence?.reviewStatus === 'confirmed'
                       ? 'rgba(83,230,165,.08)'
@@ -961,12 +953,15 @@ export function EditorCanvas() {
                 hitStrokeWidth={8 / view.scale}
                 listening={
                   !isPreview &&
-                  (tool === 'select' || tool === 'anchor')
+                  (tool === 'select' || tool === 'anchor' || tool === 'orient')
                 }
                 onClick={(event) => {
                   event.cancelBubble = true
                   if (tool === 'anchor') setAnchorFace(face.id)
-                  else if (tool === 'select') selectFace(face.id, event.evt.shiftKey)
+                  else if (tool === 'orient') setOrientationFace(face.id)
+                  else if (tool === 'select') {
+                    selectFace(face.id, event.evt.shiftKey)
+                  }
                 }}
               />
             )
@@ -994,7 +989,35 @@ export function EditorCanvas() {
               />
             )
           })}
-          {visualizations.faceNormals &&
+          {fullCameraSolved &&
+            tool === 'orient' &&
+            orientationFace &&
+            faceEdges.map((edge) => {
+              const geometry = orientationEdgeGeometry(orientationFace, edge)
+              const start = projectScenePoint(renderedScene, geometry.start)
+              const end = projectScenePoint(renderedScene, geometry.end)
+              if (!start || !end) return null
+              const active = orientationDraft?.edge === edge
+              return (
+                <Arrow
+                  key={`orientation-edge-${edge}`}
+                  points={flattenPoints([start, end])}
+                  stroke={active ? PROPOSED : SELECTED}
+                  fill={active ? PROPOSED : SELECTED}
+                  opacity={active ? 1 : 0.72}
+                  strokeWidth={(active ? 3 : 1.7) / view.scale}
+                  pointerLength={10.5 / view.scale}
+                  pointerWidth={10.5 / view.scale}
+                  hitStrokeWidth={14 / view.scale}
+                  onClick={(event) => {
+                    event.cancelBubble = true
+                    setOrientationEdge(edge)
+                  }}
+                />
+              )
+            })}
+          {fullCameraSolved &&
+            visualizations.faceNormals &&
             sceneForRendering.faces.map((face) => (
               <FaceNormalGizmo
                 key={`normal-${face.id}`}
@@ -1003,8 +1026,15 @@ export function EditorCanvas() {
                 scale={view.scale}
               />
             ))}
-          {visualizations.anchorMarker && anchorFace && (
+          {fullCameraSolved && visualizations.anchorMarker && anchorFace && (
             <AnchorGizmo
+              scene={sceneForRendering}
+              face={anchorFace}
+              scale={view.scale}
+            />
+          )}
+          {fullCameraSolved && visualizations.axisGizmo && anchorFace && (
+            <GlobalAxisGizmo
               scene={sceneForRendering}
               face={anchorFace}
               scale={view.scale}
@@ -1219,45 +1249,22 @@ export function EditorCanvas() {
           </div>
         </div>
       )}
-      {visualizations.axisGizmo && sceneForRendering.faces.length > 0 && (
-        <Stage
-          width={size.width}
-          height={size.height}
-          listening={false}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 2,
-            pointerEvents: 'none',
-          }}
-        >
-          <Layer listening={false}>
-            <GlobalAxisGizmo
-              scene={sceneForRendering}
-              origin={{ x: size.width - 74, y: size.height - 72 }}
-              directionReference={{
-                x: document.image.width / 2,
-                y: document.image.height / 2,
-              }}
-              scale={1}
-            />
-          </Layer>
-        </Stage>
-      )}
       <div className="canvas-status">
         <span>{Math.round(view.scale * 100)}%</span>
         <span>{document.image.width} × {document.image.height}</span>
         <strong>
           {sceneProjectionInfo.resolvedAxes === 3
             ? `3D camera · ${sceneProjectionInfo.rmsError.toFixed(1)} px RMS`
-            : `Planar calibration · ${sceneForRendering.observations.length} anchors · ${sceneProjectionInfo.rmsError.toFixed(1)} px RMS`}
+            : sceneProjectionInfo.resolvedAxes === 2
+              ? `2D perspective · ${sceneProjectionInfo.rmsError.toFixed(1)} px RMS`
+              : 'Perspective unsolved'}
         </strong>
         {tool === 'plane' && (
           <strong>
             {draft.length === 0
               ? 'Click top-left, top-right, bottom-right, then bottom-left'
               : draftGridSize
-                ? 'Set the grid size, then click the canvas to create it'
+                ? 'Set the grid size, then confirm the base surface'
                 : `${4 - draft.length} corners remaining`}
           </strong>
         )}
@@ -1271,11 +1278,18 @@ export function EditorCanvas() {
         )}
         {tool === 'extrude' && selectedEdges.length > 0 && (
           <strong>
-            {documentProjectionInfo.resolvedAxes === 3
-              ? `Snapped to ${preview?.blocks ?? 1} block${(preview?.blocks ?? 1) === 1 ? '' : 's'} · click to extrude`
-              : preview && !preview.createsAxis
-                ? `Along plane · ${preview.blocks} block${preview.blocks === 1 ? '' : 's'} · click to extrude`
-                : 'New axis · move both endpoints together and click'}
+            {preview?.createsAxis
+              ? 'Click to add the perpendicular face and solve the 3D camera'
+              : `Snapped to ${preview?.blocks ?? 1} block${(preview?.blocks ?? 1) === 1 ? '' : 's'} · click to extrude`}
+          </strong>
+        )}
+        {tool === 'orient' && (
+          <strong>
+            {!orientationDraft?.faceId
+              ? 'Click a reference face'
+              : !orientationDraft.edge
+                ? 'Click a directed edge on the reference face'
+                : 'Label the face and edge in World orientation'}
           </strong>
         )}
       </div>
