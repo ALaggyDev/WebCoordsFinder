@@ -501,6 +501,7 @@ interface EditorState {
   orientationDraft: OrientationDraft | null
   selectedEdges: SelectedEdge[]
   selectedEvidenceIds: string[]
+  hoveredEvidenceId: string | null
   past: EditorDocument[]
   future: EditorDocument[]
   setStep: (step: EditorStep) => void
@@ -531,6 +532,7 @@ interface EditorState {
   cancelOrientation: () => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
+  setHoveredEvidence: (evidenceId: string | null) => void
   selectAllFaces: () => void
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
@@ -595,6 +597,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   orientationDraft: null,
   selectedEdges: [],
   selectedEvidenceIds: [],
+  hoveredEvidenceId: null,
   past: [],
   future: [],
   setStep: (step) =>
@@ -1036,6 +1039,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         faceTab: 'selection' as FaceTab,
       }
     }),
+  setHoveredEvidence: (evidenceId) => set({ hoveredEvidenceId: evidenceId }),
   selectAllFaces: () =>
     set((state) => {
       const faceIds = state.document.scene.faces.map((face) => face.id)

@@ -3,7 +3,7 @@
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 60px minmax(0, 1fr);
   background:
     radial-gradient(circle at 30% 0%, rgba(42, 80, 68, 0.12), transparent 32%),
     var(--bg);
@@ -65,8 +65,8 @@
 
 .workflow-step {
   position: relative;
-  min-width: 94px;
-  padding: 0 12px;
+  min-width: 90px;
+  padding: 0 15px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -96,23 +96,6 @@
   height: 2px;
   background: var(--accent);
   border-radius: 2px 2px 0 0;
-}
-
-.step-index {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  color: var(--faint);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  font: 500 9px var(--mono);
-}
-
-.workflow-step.active .step-index {
-  color: #07120d;
-  background: var(--accent);
-  border-color: var(--accent);
 }
 
 .topbar-actions {
@@ -281,7 +264,7 @@
 
 /* Canvas tool rail and viewport overlays. */
 .tool-rail {
-  padding: 10px 7px;
+  padding: 8px 5px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -620,7 +603,7 @@ button:disabled {
 }
 
 .inspector-heading {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -698,9 +681,17 @@ button:disabled {
 }
 
 .field > span,
+.field-label,
 .range-field > span {
   color: var(--muted);
   font-size: 10px;
+}
+
+.field-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .field input,
@@ -842,6 +833,19 @@ button:disabled {
   text-align: center;
 }
 
+.geometry-part > h3 {
+  margin: 0 0 12px;
+  color: #c8d2d7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.geometry-part + .geometry-part {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
 .orientation-summary > div,
 .orientation-derived > div {
   display: grid;
@@ -883,48 +887,56 @@ button:disabled {
   font-size: 9px;
 }
 
-.compass-card,
-.algorithm-reference,
 .hint-card,
-.todo-card,
-.privacy-panel {
-  margin-top: 16px;
+.todo-card {
+  margin-top: 10px;
   padding: 11px;
   border: 1px solid var(--border);
   border-radius: 9px;
 }
 
-.compass-card {
+.geometry-status-list {
+  margin-bottom: 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.geometry-status {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 9px;
+  min-height: 42px;
+  padding: 6px 0 10px;
   color: var(--amber);
-  background: rgba(240, 182, 77, 0.06);
-  border-color: rgba(240, 182, 77, 0.2);
 }
 
-.compass-card.resolved {
+.geometry-status.resolved {
   color: var(--accent);
-  background: rgba(83, 230, 165, 0.06);
-  border-color: rgba(83, 230, 165, 0.2);
 }
 
-.compass-card strong,
-.compass-card span {
+.geometry-status.partial {
+  padding: 10px;
+  border: 1px solid rgba(240, 182, 77, 0.2);
+  border-radius: 9px;
+  background: rgba(240, 182, 77, 0.06);
+}
+
+.geometry-status strong,
+.geometry-status span {
   display: block;
 }
 
-.compass-card strong {
+.geometry-status strong {
   color: var(--text);
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.compass-card span {
+.geometry-status span {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 9px;
-  line-height: 1.35;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .inspector-actions,
@@ -1097,7 +1109,7 @@ button:disabled {
 .selection-placeholder span:nth-child(4) { left: -3px; bottom: -3px; }
 
 .face-tabs {
-  margin: -4px 0 18px;
+  margin: -4px 0 14px;
   padding: 3px;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1252,10 +1264,6 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 7px;
-}
-
-.candidate-grid.count-2 {
-  grid-template-columns: 1fr;
 }
 
 .candidate {
@@ -1500,66 +1508,67 @@ button:disabled {
   font: 8px var(--mono);
 }
 
-.privacy-panel {
-  display: grid;
-  gap: 7px;
-  color: #add9c7;
-  background: rgba(83, 230, 165, 0.04);
-  border-color: rgba(83, 230, 165, 0.15);
-}
-
-.privacy-panel div {
-  display: flex;
+.info-tip {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 9px;
+  color: var(--muted);
+  cursor: help;
 }
 
-.algorithm-reference {
+.info-tip > svg {
+  color: var(--accent);
+}
+
+.info-tip-content {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 100%;
+  padding: 9px;
   color: var(--text);
   background: #0d1418;
-  font-size: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity 120ms 250ms, transform 120ms 250ms, visibility 0s 370ms;
 }
 
-.algorithm-reference summary {
-  color: var(--muted);
-  font-size: 10px;
-  cursor: pointer;
-  user-select: none;
+.info-tip:hover .info-tip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 350ms;
 }
 
-.algorithm-reference[open] summary {
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.algorithm-reference-content {
-  padding-top: 5px;
-}
-
-.algorithm-reference table {
+.algorithm-reference-content table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.algorithm-reference table + table {
+.algorithm-reference-content table + table {
   margin-top: 10px;
 }
 
-.algorithm-reference th,
-.algorithm-reference td {
+.algorithm-reference-content th,
+.algorithm-reference-content td {
   padding: 5px 6px;
   border-bottom: 1px solid var(--border-soft);
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
 }
 
-.algorithm-reference th {
+.algorithm-reference-content th {
   color: var(--muted);
   font-weight: 600;
 }
 
-.algorithm-reference td:last-child {
+.algorithm-reference-content td:last-child {
   color: var(--accent);
   font-family: var(--mono);
 }
@@ -1613,6 +1622,27 @@ button:disabled {
 
 .check-field input {
   accent-color: var(--accent);
+}
+
+.directions-subsection {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.directions-subsection h3 {
+  margin-bottom: 5px;
+}
+
+.direction-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+
+.direction-list .check-field {
+  min-height: 22px;
+  justify-content: center;
+  gap: 4px;
 }
 
 .strength-card {

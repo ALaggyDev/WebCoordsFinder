@@ -59,7 +59,7 @@ describe('partial perspective inspector', () => {
 
     expect(screen.getByText('Partial 2D perspective')).toBeInTheDocument()
     expect(screen.getByText(/Saved and resumable/)).toBeInTheDocument()
-    expect(screen.getByText('Partial 2D perspective').closest('.compass-card'))
+    expect(screen.getByText('Partial 2D perspective').closest('.geometry-status'))
       .toHaveClass('partial')
     expect(screen.queryByText('World orientation')).not.toBeInTheDocument()
     expect(screen.queryByText('Anchor selected')).not.toBeInTheDocument()
@@ -352,6 +352,11 @@ describe('Auto Analyze queue', () => {
     expect(within(queueRows[1]).getByText('0, 0, 0')).toBeInTheDocument()
     expect(within(queueRows[0]).getByText('Δ 0.25')).toBeInTheDocument()
     expect(within(queueRows[1]).getByText('Variant —')).toBeInTheDocument()
+
+    fireEvent.mouseEnter(queueRows[0])
+    expect(useEditorStore.getState().hoveredEvidenceId).toBe(highConfidenceId)
+    fireEvent.mouseLeave(queueRows[0])
+    expect(useEditorStore.getState().hoveredEvidenceId).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear queue' }))
 

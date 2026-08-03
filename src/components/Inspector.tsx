@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Check,
@@ -10,6 +10,7 @@ import {
   FileImage,
   FlipHorizontal2,
   Grid3X3,
+  Info,
   Link2,
   LoaderCircle,
   Move3d,
@@ -125,6 +126,15 @@ function SectionTitle({
   )
 }
 
+function InfoTip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="info-tip" tabIndex={0} aria-label={label}>
+      <Info size={14} aria-hidden="true" />
+      <div className="info-tip-content" role="tooltip">{children}</div>
+    </div>
+  )
+}
+
 const worldDirectionOptions: Array<{
   value: FaceDirection
   label: string
@@ -177,24 +187,27 @@ function GeometryInspector() {
       <>
         <SectionTitle
           icon={Grid3X3}
-          eyebrow="Perspective setup"
-          title="Draw a base surface"
+          eyebrow="Mesh geometry"
+          title="Global geometry"
         />
-        <div className="empty-inspector calibration-empty">
-          <Grid3X3 size={28} />
-          <h3>No perspective geometry</h3>
-          <p>
-            Mark four corners around a block-aligned surface. Confirming its
-            grid size saves a resumable 2D perspective solve.
-          </p>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => setTool('plane')}
-          >
-            {tool === 'plane' ? 'Click four corners' : 'Start perspective solve'}
-          </button>
-        </div>
+        <section className="geometry-part">
+          <h3>3D Camera Solve</h3>
+          <div className="empty-inspector calibration-empty">
+            <Grid3X3 size={28} />
+            <h3>No perspective geometry</h3>
+            <p>
+              Mark four corners around a block-aligned surface. Confirming its
+              grid size saves a resumable 2D perspective solve.
+            </p>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => setTool('plane')}
+            >
+              {tool === 'plane' ? 'Click four corners' : 'Start perspective solve'}
+            </button>
+          </div>
+        </section>
       </>
     )
   }
@@ -204,80 +217,85 @@ function GeometryInspector() {
       <>
         <SectionTitle
           icon={Grid3X3}
-          eyebrow="Perspective setup"
-          title="Complete the 3D camera"
+          eyebrow="Mesh geometry"
+          title="Global geometry"
         />
-        <div className="geometry-summary" aria-label="Geometry summary">
-          <div>
-            <strong>{scene.faces.length}</strong>
-            <span>Faces</span>
-          </div>
-          <div>
-            <strong>{selectedEdges.length}</strong>
-            <span>Selected edges</span>
-          </div>
-        </div>
-        <div className="compass-card partial">
-          <AlertTriangle size={19} />
-          <div>
-            <strong>Partial 2D perspective</strong>
-            <span>
-              Saved and resumable · {scene.observations.length} anchors ·{' '}
-              {calibration.rmsError.toFixed(1)} px RMS
-            </span>
-          </div>
-        </div>
-        <div className="calibration-workflow">
-          <div className="setup-step complete">
-            <span>1</span>
-            <div>
-              <strong>Base surface solved</strong>
-              <small>The homography supports planar editing and extrusion.</small>
-            </div>
-            <Check size={15} />
-          </div>
-          <div className={selectedEdges.length > 0 ? 'setup-step complete' : 'setup-step active'}>
-            <span>2</span>
-            <div>
-              <strong>Select an edge</strong>
-              <small>
-                {selectedEdges.length > 0
-                  ? `${selectedEdges.length} edge${selectedEdges.length === 1 ? '' : 's'} selected`
-                  : 'Click an edge on the canvas'}
-              </small>
-            </div>
-            {selectedEdges.length > 0 && <Check size={15} />}
-          </div>
-          <div className={selectedEdges.length > 0 ? 'setup-step active' : 'setup-step'}>
-            <span>3</span>
-            <div>
-              <strong>Extrude a perpendicular face</strong>
-              <small>Press E, move outward, then click once.</small>
+        <section className="geometry-part">
+          <h3>3D Camera Solve</h3>
+          <div className="geometry-status-list">
+            <div className="geometry-status partial">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Partial 2D perspective</strong>
+                <span>
+                  Saved and resumable · {scene.observations.length} anchors ·{' '}
+                  {calibration.rmsError.toFixed(1)} px RMS
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="inspector-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={selectedEdges.length === 0}
-            onClick={() => setTool('extrude')}
-          >
-            <Move3d size={15} /> {tool === 'extrude' ? 'Click to extrude' : 'Extrude selected'}
-          </button>
-          <button
-            type="button"
-            className="danger-button"
-            disabled={selectedFaceCount === 0}
-            onClick={deleteSelectedFaces}
-          >
-            <Trash2 size={15} /> Delete selected {selectedFaceCount === 1 ? 'face' : 'faces'}
-          </button>
-        </div>
-        <div className="hint-card">
-          Extruding near the current plane extends the 2D solve. Move away from
-          the plane to create the first perpendicular face and complete the 3D camera.
-        </div>
+          <div className="geometry-summary" aria-label="Geometry summary">
+            <div>
+              <strong>{scene.faces.length}</strong>
+              <span>Faces</span>
+            </div>
+            <div>
+              <strong>{selectedEdges.length}</strong>
+              <span>Selected edges</span>
+            </div>
+          </div>
+          <div className="calibration-workflow">
+            <div className="setup-step complete">
+              <span>1</span>
+              <div>
+                <strong>Base surface solved</strong>
+                <small>The homography supports planar editing and extrusion.</small>
+              </div>
+              <Check size={15} />
+            </div>
+            <div className={selectedEdges.length > 0 ? 'setup-step complete' : 'setup-step active'}>
+              <span>2</span>
+              <div>
+                <strong>Select an edge</strong>
+                <small>
+                  {selectedEdges.length > 0
+                    ? `${selectedEdges.length} edge${selectedEdges.length === 1 ? '' : 's'} selected`
+                    : 'Click an edge on the canvas'}
+                </small>
+              </div>
+              {selectedEdges.length > 0 && <Check size={15} />}
+            </div>
+            <div className={selectedEdges.length > 0 ? 'setup-step active' : 'setup-step'}>
+              <span>3</span>
+              <div>
+                <strong>Extrude a perpendicular face</strong>
+                <small>Press E, move outward, then click once.</small>
+              </div>
+            </div>
+          </div>
+          <div className="inspector-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={selectedEdges.length === 0}
+              onClick={() => setTool('extrude')}
+            >
+              <Move3d size={15} /> {tool === 'extrude' ? 'Click to extrude' : 'Extrude selected'}
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={selectedFaceCount === 0}
+              onClick={deleteSelectedFaces}
+            >
+              <Trash2 size={15} /> Delete selected {selectedFaceCount === 1 ? 'face' : 'faces'}
+            </button>
+          </div>
+          <div className="hint-card">
+            Extruding near the current plane extends the 2D solve. Move away from
+            the plane to create the first perpendicular face and complete the 3D camera.
+          </div>
+        </section>
       </>
     )
   }
@@ -309,51 +327,56 @@ function GeometryInspector() {
   return (
     <>
       <SectionTitle icon={Grid3X3} eyebrow="Mesh geometry" title="Global geometry" />
-      <div className="geometry-summary" aria-label="Geometry summary">
-        <div>
-          <strong>{scene.faces.length}</strong>
-          <span>Faces</span>
+      <section className="geometry-part">
+        <h3>3D Camera Solve</h3>
+        <div className="geometry-status-list">
+          <div className="geometry-status resolved">
+            <Compass size={17} />
+            <div>
+              <strong>3D perspective solved</strong>
+              <span>
+                {scene.observations.length} anchors · {calibration.rmsError.toFixed(1)} px RMS ·{' '}
+                {calibration.maxError.toFixed(1)} px maximum
+              </span>
+            </div>
+            <Check size={15} />
+          </div>
+          <div className={anchorFace ? 'geometry-status resolved' : 'geometry-status'}>
+            <Crosshair size={17} />
+            <div>
+              <strong>{anchorFace ? 'Anchor selected' : 'Select an anchor block'}</strong>
+              <span>
+                {anchorFace
+                  ? 'This block is the coordinate origin at 0, 0, 0.'
+                  : 'Choose the Anchor tool, then click any block face.'}
+              </span>
+            </div>
+            {anchorFace ? (
+              <Check size={15} />
+            ) : (
+              <button
+                type="button"
+                className="small-button"
+                onClick={() => setTool('anchor')}
+              >
+                {tool === 'anchor' ? 'Click a face' : 'Select'}
+              </button>
+            )}
+          </div>
         </div>
-        <div>
-          <strong>{selectedEdges.length}</strong>
-          <span>Selected edges</span>
+        <div className="geometry-summary" aria-label="Geometry summary">
+          <div>
+            <strong>{scene.faces.length}</strong>
+            <span>Faces</span>
+          </div>
+          <div>
+            <strong>{selectedEdges.length}</strong>
+            <span>Selected edges</span>
+          </div>
         </div>
-      </div>
-      <div className="compass-card resolved">
-        <Compass size={19} />
-        <div>
-          <strong>3D perspective solved</strong>
-          <span>
-            {scene.observations.length} anchors · {calibration.rmsError.toFixed(1)} px RMS ·{' '}
-            {calibration.maxError.toFixed(1)} px maximum
-          </span>
-        </div>
-        <Check size={15} />
-      </div>
-      <div className={anchorFace ? 'compass-card resolved' : 'compass-card'}>
-        <Crosshair size={19} />
-        <div>
-          <strong>{anchorFace ? 'Anchor selected' : 'Select an anchor block'}</strong>
-          <span>
-            {anchorFace
-              ? 'This block is the coordinate origin at 0, 0, 0.'
-              : 'Choose the Anchor tool, then click any block face.'}
-          </span>
-        </div>
-        {anchorFace ? (
-          <Check size={15} />
-        ) : (
-          <button
-            type="button"
-            className="small-button"
-            onClick={() => setTool('anchor')}
-          >
-            {tool === 'anchor' ? 'Click a face' : 'Select'}
-          </button>
-        )}
-      </div>
-      <div className="subsection">
-        <h3>World orientation</h3>
+      </section>
+      <section className="geometry-part">
+        <h3>World Orientation</h3>
         {mappingComplete && !orientationDraft ? (
           <div className="orientation-summary">
             <div>
@@ -476,7 +499,7 @@ function GeometryInspector() {
             {!anchorFace && <small>Select the coordinate anchor first.</small>}
           </div>
         )}
-      </div>
+      </section>
       <div className="inspector-actions">
         <button
           type="button"
@@ -791,7 +814,7 @@ function FaceInspector({
       {!multiple && profile && (
         <div className="candidate-section">
           <h3>Visible variant</h3>
-          <div className={`candidate-grid count-${evidence.stateCount}`}>
+          <div className="candidate-grid">
             {candidates.map((variant) => {
               const transform = profile.transforms[variant]
               const score = evidence.scores?.find((entry) => entry.variant === variant)?.score
@@ -916,6 +939,8 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
   const acceptProposed = useEditorStore((state) => state.acceptProposed)
   const clearReviewQueue = useEditorStore((state) => state.clearReviewQueue)
   const inspectEvidence = useEditorStore((state) => state.inspectEvidence)
+  const setHoveredEvidence = useEditorStore((state) => state.setHoveredEvidence)
+  useEffect(() => () => setHoveredEvidence(null), [setHoveredEvidence])
   const reviewItems = useMemo(
     () =>
       document.evidence
@@ -1023,6 +1048,8 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
                 type="button"
                 className={`review-item ${entry.reviewStatus}`}
                 onClick={() => inspectEvidence(entry.id)}
+                onMouseEnter={() => setHoveredEvidence(entry.id)}
+                onMouseLeave={() => setHoveredEvidence(null)}
                 title="Inspect this face"
               >
                 <span className="review-state" />
@@ -1109,11 +1136,6 @@ function ImageInspector({
       <button className="primary-button full" type="button" onClick={onOpenImage}>
         <Upload size={16} /> Open image in new project
       </button>
-      <div className="privacy-panel">
-        <div><Check size={15} /><span>Processed in this browser</span></div>
-        <div><Check size={15} /><span>Autosaved on this device</span></div>
-        <div><Check size={15} /><span>No network upload</span></div>
-      </div>
     </>
   )
 }
@@ -1135,9 +1157,42 @@ function ExportInspector() {
   return (
     <div className="export-inspector">
       <SectionTitle icon={Download} eyebrow="Search setup" title="Export configuration" />
-      <label className="field">
-        <span>Texture algorithm</span>
+      <div className="field">
+        <div className="field-label">
+          <span>Texture algorithm</span>
+          <InfoTip label="Algorithm version reference">
+            <div className="algorithm-reference-content">
+              <table>
+                <thead>
+                  <tr>
+                    <th>MC Version</th>
+                    <th>Algorithm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>&lt;=1.12.2</td><td>Vanilla-1</td></tr>
+                  <tr><td>1.13-1.21.1</td><td>Vanilla-2</td></tr>
+                  <tr><td>1.21.2+</td><td>Vanilla-3</td></tr>
+                </tbody>
+              </table>
+              <table>
+                <thead>
+                  <tr>
+                    <th>MC Version</th>
+                    <th>Sodium Version</th>
+                    <th>Algorithm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>1.16-1.18.2</td><td>1.0-4.1</td><td>Sodium-1</td></tr>
+                  <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>Sodium-2</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </InfoTip>
+        </div>
         <select
+          aria-label="Texture algorithm"
           value={document.scanner.textureAlgorithm}
           onChange={(event) =>
             updateScanner({ textureAlgorithm: event.target.value as TextureAlgorithm })
@@ -1147,7 +1202,7 @@ function ExportInspector() {
             <option key={algorithm} value={algorithm}>{algorithm}</option>
           ))}
         </select>
-      </label>
+      </div>
       <label className="field">
         <span>Scan order</span>
         <select
@@ -1161,40 +1216,9 @@ function ExportInspector() {
           ))}
         </select>
       </label>
-      <details className="algorithm-reference">
-        <summary>Algorithm version reference</summary>
-        <div className="algorithm-reference-content">
-          <table>
-            <thead>
-              <tr>
-                <th>MC Version</th>
-                <th>Algorithm</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>&lt;=1.12.2</td><td>Vanilla-1</td></tr>
-              <tr><td>1.13-1.21.1</td><td>Vanilla-2</td></tr>
-              <tr><td>1.21.2+</td><td>Vanilla-3</td></tr>
-            </tbody>
-          </table>
-          <table>
-            <thead>
-              <tr>
-                <th>MC Version</th>
-                <th>Sodium Version</th>
-                <th>Algorithm</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>1.16-1.18.2</td><td>1.0-4.1</td><td>Sodium-1</td></tr>
-              <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>Sodium-2</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </details>
-      <div className="subsection">
-        <h3>Directions to search</h3>
-        <div className="field-grid two" aria-label="Directions to search">
+      <div className="subsection directions-subsection">
+        <h3>XZ rotations to search</h3>
+        <div className="direction-list" aria-label="Directions to search">
           {searchDirections.map((direction) => {
             const checked = document.scanner.directions.includes(direction)
             return (
@@ -1219,7 +1243,7 @@ function ExportInspector() {
         </div>
         <p className="field-help">
           Select the horizontal rotations to search when the screenshot's
-          compass direction cannot be distinguished.
+          compass direction is unknown.
         </p>
       </div>
       <div className="subsection">

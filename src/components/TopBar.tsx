@@ -55,11 +55,11 @@ export function TopBar({
         </div>
         <div>
           <strong>WebCoordsFinder</strong>
-          <span>Texture evidence workbench</span>
+          <span>Coordinates Cracking Studio</span>
         </div>
       </div>
       <nav className="workflow" aria-label="Project workflow">
-        {steps.map(({ id, label, icon: Icon }, index) => (
+        {steps.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             className={step === id ? 'workflow-step active' : 'workflow-step'}
@@ -70,7 +70,6 @@ export function TopBar({
               ((id === 'faces' || id === 'export') && !geometryReady)
             }
           >
-            <span className="step-index">{index + 1}</span>
             <Icon size={15} />
             <span>{label}</span>
           </button>

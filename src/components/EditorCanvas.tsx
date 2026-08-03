@@ -62,6 +62,7 @@ const PROPOSED = '#f0b64d'
 const ANCHOR = '#ff626b'
 const CONFIRMED = '#53e6a5'
 const EDGE = '#d6e0e5'
+const HOVERED = '#d8c66b'
 
 interface CanvasSize {
   width: number
@@ -407,6 +408,7 @@ export function EditorCanvas() {
   const orientationDraft = useEditorStore((state) => state.orientationDraft)
   const selectedEdges = useEditorStore((state) => state.selectedEdges)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
+  const hoveredEvidenceId = useEditorStore((state) => state.hoveredEvidenceId)
   const setTool = useEditorStore((state) => state.setTool)
   const selectEdge = useEditorStore((state) => state.selectEdge)
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
@@ -923,12 +925,15 @@ export function EditorCanvas() {
             const isPreview = face.id.startsWith('__preview_')
             const evidence = evidenceMap.get(face.id)
             const selected = selectedEvidenceIds.includes(face.id)
+            const hovered = hoveredEvidenceId === face.id
             const orientationSelected = orientationDraft?.faceId === face.id
             const quad = faceQuad(sceneForRendering, face)
             if (!quad) return null
             const color = isPreview
               ? PROPOSED
-              : selected || orientationSelected
+              : hovered
+                ? HOVERED
+                : selected || orientationSelected
                 ? SELECTED
                 : statusColor(evidence?.reviewStatus)
             return (
@@ -939,7 +944,7 @@ export function EditorCanvas() {
                 stroke={color}
                 opacity={isPreview ? 0.72 : 1}
                 strokeWidth={
-                  (selected || orientationSelected ? 1.8 : 0.8) / view.scale
+                  (hovered || selected || orientationSelected ? 2.4 : 0.8) / view.scale
                 }
                 dash={
                   isPreview || evidence?.reviewStatus === 'proposed'
@@ -947,7 +952,9 @@ export function EditorCanvas() {
                     : undefined
                 }
                 fill={
-                  selected || orientationSelected
+                  hovered
+                    ? 'rgba(216,198,107,.14)'
+                    : selected || orientationSelected
                     ? 'rgba(112,167,255,.18)'
                     : evidence?.reviewStatus === 'confirmed'
                       ? 'rgba(83,230,165,.08)'
