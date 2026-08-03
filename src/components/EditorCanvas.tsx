@@ -56,7 +56,7 @@ import { useEditorStore } from '../store/editorStore'
  * A/B/C lattice. Drafts, hover previews, and active drags stay transient here;
  * completed gestures commit once through the editor store.
  */
-const GRID = '#53e6a5'
+const GRID = '#98a3aa'
 const SELECTED = '#70a7ff'
 const PROPOSED = '#f0b64d'
 const ANCHOR = '#ff626b'
@@ -947,16 +947,12 @@ export function EditorCanvas() {
                 strokeWidth={
                   (hovered || selected || orientationSelected ? 2.4 : 0.8) / view.scale
                 }
-                dash={
-                  isPreview || evidence?.reviewStatus === 'proposed'
-                    ? [4 / view.scale, 3 / view.scale]
-                    : undefined
-                }
+                dash={isPreview ? [4 / view.scale, 3 / view.scale] : undefined}
                 fill={
                   hovered
                     ? 'rgba(216,198,107,.14)'
-                    : selected || orientationSelected
-                    ? 'rgba(112,167,255,.18)'
+                    : isPreview || evidence?.reviewStatus === 'proposed'
+                      ? 'rgba(240,182,77,.12)'
                     : evidence?.reviewStatus === 'confirmed'
                       ? 'rgba(83,230,165,.08)'
                       : 'rgba(0,0,0,.001)'
