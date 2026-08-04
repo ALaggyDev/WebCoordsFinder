@@ -10,6 +10,32 @@ import {
 // Decoding is shared across crops and candidates; caching the promise also
 // coalesces concurrent requests for the same bundled reference image.
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
+const colorizedReferenceCache = new Map<string, Promise<string>>()
+
+// Minecraft's default plains biome grass tint (the vanilla grass colormap's
+// default lookup). The bundled grass textures remain the original grayscale
+// assets; this tint is applied only when the browser consumes them.
+const defaultGrassTint = { red: 0x7f, green: 0xb2, blue: 0x38 }
+
+function isGrassTexture(source: string): boolean {
+  return ['/grass.png', '/grass_block_top.png', '/grass_side.png'].some((name) =>
+    source.endsWith(name),
+  )
+}
+
+function applyGrassTint(imageData: ImageData): ImageData {
+  for (let offset = 0; offset < imageData.data.length; offset += 4) {
+    const shade = imageData.data[offset]
+    imageData.data[offset] = Math.round((shade * defaultGrassTint.red) / 255)
+    imageData.data[offset + 1] = Math.round(
+      (shade * defaultGrassTint.green) / 255,
+    )
+    imageData.data[offset + 2] = Math.round(
+      (shade * defaultGrassTint.blue) / 255,
+    )
+  }
+  return imageData
+}
 
 export function loadImage(source: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(source)
@@ -22,6 +48,27 @@ export function loadImage(source: string): Promise<HTMLImageElement> {
     image.src = source
   })
   imageCache.set(source, promise)
+  return promise
+}
+
+export function colorizedReferenceTexture(source: string): Promise<string> {
+  if (!isGrassTexture(source)) return Promise.resolve(source)
+  const cached = colorizedReferenceCache.get(source)
+  if (cached) return cached
+  const promise = loadImage(source).then((image) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = image.naturalWidth
+    canvas.height = image.naturalHeight
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Canvas image extraction is unavailable.')
+    context.drawImage(image, 0, 0)
+    const imageData = applyGrassTint(
+      context.getImageData(0, 0, canvas.width, canvas.height),
+    )
+    context.putImageData(imageData, 0, 0)
+    return canvas.toDataURL('image/png')
+  })
+  colorizedReferenceCache.set(source, promise)
   return promise
 }
 
@@ -114,7 +161,8 @@ export async function imageToPixels(source: string, size = 96): Promise<ImageDat
   if (!context) throw new Error('Canvas image extraction is unavailable.')
   context.imageSmoothingEnabled = false
   context.drawImage(image, 0, 0, size, size)
-  return context.getImageData(0, 0, size, size)
+  const imageData = context.getImageData(0, 0, size, size)
+  return isGrassTexture(source) ? applyGrassTint(imageData) : imageData
 }
 
 export function imageDataUrl(imageData: ImageData): string {

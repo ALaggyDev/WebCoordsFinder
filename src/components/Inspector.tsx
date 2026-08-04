@@ -38,7 +38,11 @@ import {
   projectionInfo,
   worldAlignedFaceQuad,
 } from '../domain/geometry'
-import { imageDataUrl, warpQuad } from '../domain/imageAnalysis'
+import {
+  colorizedReferenceTexture,
+  imageDataUrl,
+  warpQuad,
+} from '../domain/imageAnalysis'
 import {
   blockProfiles,
   blockProfileMap,
@@ -636,6 +640,32 @@ function FaceInspector({
     worldOrientationKnown,
   ])
 
+  const referenceUrl = evidence
+    ? multiple
+      ? undefined
+      : sharedReferenceTextureForFaces(
+          evidence.blockId,
+          possibleEvidenceFaces,
+        )
+    : undefined
+  const [displayReferenceUrl, setDisplayReferenceUrl] = useState('')
+
+  useEffect(() => {
+    let active = true
+    setDisplayReferenceUrl('')
+    if (!referenceUrl) return
+    colorizedReferenceTexture(referenceUrl)
+      .then((url) => {
+        if (active) setDisplayReferenceUrl(url)
+      })
+      .catch(() => {
+        if (active) setDisplayReferenceUrl(referenceUrl)
+      })
+    return () => {
+      active = false
+    }
+  }, [referenceUrl])
+
   if (!evidence) {
     return (
       <>
@@ -661,12 +691,7 @@ function FaceInspector({
   const blockIds = new Set(selectedEvidence.map((entry) => entry.blockId))
   const selectedBlockId = blockIds.size === 1 ? evidence.blockId : ''
   const profile = selectedBlockId ? blockProfileMap.get(selectedBlockId) : undefined
-  const referenceUrl = multiple
-    ? undefined
-    : sharedReferenceTextureForFaces(
-        evidence.blockId,
-        possibleEvidenceFaces,
-      )
+  const renderedReferenceUrl = displayReferenceUrl || referenceUrl
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const selectedTransform =
     evidence.selectedVariant === undefined || !profile
@@ -757,7 +782,7 @@ function FaceInspector({
             <div className="face-preview reference">
               {referenceUrl ? (
                 <img
-                  src={referenceUrl}
+                  src={renderedReferenceUrl}
                   alt={`${profile.label} reference${evidence.selectedVariant === undefined ? '' : `, variant ${evidence.selectedVariant}`}`}
                   style={selectedTransform ? { transform: transformStyle(selectedTransform) } : undefined}
                 />
@@ -846,7 +871,7 @@ function FaceInspector({
                   <div className="candidate-image">
                     {referenceUrl ? (
                       <img
-                        src={referenceUrl}
+                        src={renderedReferenceUrl}
                         alt=""
                         style={{ transform: transformStyle(transform) }}
                       />
