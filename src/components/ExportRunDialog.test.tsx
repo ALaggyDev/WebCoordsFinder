@@ -29,6 +29,13 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+class MockSearchWorker {
+  onerror: (() => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  postMessage = vi.fn()
+  terminate = vi.fn()
+}
+
 function documentWithSavedSearch() {
   const document = createTestDocument()
   const anchor = document.scene.faces[0]
@@ -158,6 +165,38 @@ describe('Export / Run workspace', () => {
     )
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps an active web search running after the dialog closes', () => {
+    const worker = new MockSearchWorker()
+    vi.stubGlobal('Worker', function MockWorkerConstructor() {
+      return worker
+    })
+    const document = documentWithSavedSearch()
+    document.scanner.webSearch = null
+    useEditorStore.setState({ document, step: 'export' })
+
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run web search' }))
+    expect(worker.postMessage).toHaveBeenCalledTimes(1)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close Export / Run' }),
+    )
+
+    expect(worker.terminate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+
+    expect(screen.getByText('Loading scanner')).toBeInTheDocument()
+    vi.unstubAllGlobals()
   })
 
   it('copies the generated CoordsFinder configuration', async () => {

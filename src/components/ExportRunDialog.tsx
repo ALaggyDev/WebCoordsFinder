@@ -53,9 +53,10 @@ import { useEditorStore } from '../store/editorStore'
 import './ExportRunDialog.css'
 
 /*
- * This portal owns the browser-search worker lifecycle. React state drives the
- * UI, refs provide exact current values to asynchronous callbacks, and compact
- * checkpoints are persisted through the editor document without undo entries.
+ * This component owns the browser-search worker lifecycle. React state drives
+ * the UI, refs provide exact current values to asynchronous callbacks, and
+ * compact checkpoints are persisted through the editor document without undo
+ * entries.
  */
 interface ExportRunDialogProps {
   document: EditorDocument
@@ -395,25 +396,6 @@ export function ExportRunDialog({
   }, [onClose, open])
 
   useEffect(() => {
-    if (open) return
-    if (workerRef.current) {
-      // Closing the dialog stops CPU use but persists a resumable cursor.
-      const next: WebSearchViewState = {
-        ...webSearchRef.current,
-        phase: 'stopped',
-      }
-      terminateWorker()
-      applyWebSearchState(next)
-      persistWebSearchState(next, true)
-    }
-  }, [
-    applyWebSearchState,
-    open,
-    persistWebSearchState,
-    terminateWorker,
-  ])
-
-  useEffect(() => {
     if (savedCheckpoint?.phase === 'running') {
       persistWebSearchState(webSearchRef.current, true)
     }
@@ -560,7 +542,7 @@ export function ExportRunDialog({
               <p>
                 Single-threaded WASM scans in a background worker without
                 uploading project data. Progress and matches autosave with the
-                project; closing this dialog leaves a resumable checkpoint.
+                project; the search continues when this dialog is closed.
               </p>
 
               {checkpointIsStale && webSearch.phase !== 'idle' && (
