@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Layers3 } from 'lucide-react'
 import type Konva from 'konva'
@@ -87,6 +87,12 @@ interface RenderedMeshEdge {
   selection: SelectedEdge
 }
 
+interface BoxSelectionDrag {
+  start: Point2
+  current: Point2
+  additive: boolean
+}
+
 interface DraftGridSize {
   columns: number
   rows: number
@@ -96,6 +102,75 @@ interface DraftControlDrag {
   pointerId: number
   startPointer: Point2
   startOffset: Point2
+}
+
+function crossProduct(origin: Point2, first: Point2, second: Point2) {
+  return (first.x - origin.x) * (second.y - origin.y) -
+    (first.y - origin.y) * (second.x - origin.x)
+}
+
+function pointOnSegment(point: Point2, start: Point2, end: Point2) {
+  return Math.abs(crossProduct(start, end, point)) < 1e-9 &&
+    point.x >= Math.min(start.x, end.x) &&
+    point.x <= Math.max(start.x, end.x) &&
+    point.y >= Math.min(start.y, end.y) &&
+    point.y <= Math.max(start.y, end.y)
+}
+
+function segmentsIntersect(
+  firstStart: Point2,
+  firstEnd: Point2,
+  secondStart: Point2,
+  secondEnd: Point2,
+) {
+  const firstStartSide = crossProduct(firstStart, firstEnd, secondStart)
+  const firstEndSide = crossProduct(firstStart, firstEnd, secondEnd)
+  const secondStartSide = crossProduct(secondStart, secondEnd, firstStart)
+  const secondEndSide = crossProduct(secondStart, secondEnd, firstEnd)
+  return (
+    (firstStartSide === 0 && pointOnSegment(secondStart, firstStart, firstEnd)) ||
+    (firstEndSide === 0 && pointOnSegment(secondEnd, firstStart, firstEnd)) ||
+    (secondStartSide === 0 && pointOnSegment(firstStart, secondStart, secondEnd)) ||
+    (secondEndSide === 0 && pointOnSegment(firstEnd, secondStart, secondEnd)) ||
+    ((firstStartSide > 0) !== (firstEndSide > 0) &&
+      (secondStartSide > 0) !== (secondEndSide > 0))
+  )
+}
+
+function pointInConvexQuad(point: Point2, quad: Point2[]) {
+  const sides = quad.map((corner, index) =>
+    crossProduct(corner, quad[(index + 1) % quad.length], point),
+  )
+  return sides.every((side) => side >= 0) || sides.every((side) => side <= 0)
+}
+
+function quadTouchesBox(
+  quad: Point2[],
+  left: number,
+  right: number,
+  top: number,
+  bottom: number,
+) {
+  const box = [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ]
+  if (quad.some((point) =>
+    point.x >= left && point.x <= right && point.y >= top && point.y <= bottom,
+  )) return true
+  if (box.some((point) => pointInConvexQuad(point, quad))) return true
+  return quad.some((corner, index) =>
+    box.some((boxCorner, boxIndex) =>
+      segmentsIntersect(
+        corner,
+        quad[(index + 1) % quad.length],
+        boxCorner,
+        box[(boxIndex + 1) % box.length],
+      ),
+    ),
+  )
 }
 
 const DEFAULT_GRID_SIZE = 4
@@ -405,6 +480,8 @@ export function EditorCanvas() {
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const draftControlDragRef = useRef<DraftControlDrag>(undefined)
+  const boxSelectionRef = useRef<BoxSelectionDrag | undefined>(undefined)
+  const suppressBoxClickRef = useRef(false)
   const draftWidthInputRef = useRef<HTMLInputElement>(null)
   const draftHeightInputRef = useRef<HTMLInputElement>(null)
   const document = useEditorStore((state) => state.document)
@@ -416,7 +493,9 @@ export function EditorCanvas() {
   const setTool = useEditorStore((state) => state.setTool)
   const selectEdge = useEditorStore((state) => state.selectEdge)
   const clearSelectedEdges = useEditorStore((state) => state.clearSelectedEdges)
+  const clearSelection = useEditorStore((state) => state.clearSelection)
   const selectFace = useEditorStore((state) => state.selectFace)
+  const selectFaces = useEditorStore((state) => state.selectFaces)
   const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
   const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
   const setOrientationFace = useEditorStore((state) => state.setOrientationFace)
@@ -438,6 +517,7 @@ export function EditorCanvas() {
   const [hoverCursor, setHoverCursor] = useState<string>()
   const [draggedObservation, setDraggedObservation] = useState<DraggedObservation>()
   const [pointerPoint, setPointerPoint] = useState<Point2>()
+  const [boxSelection, setBoxSelection] = useState<BoxSelectionDrag>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
     faceNormals: true,
@@ -710,6 +790,18 @@ export function EditorCanvas() {
     }
   }
 
+  const imagePointFromClientPosition = useCallback((
+    clientX: number,
+    clientY: number,
+  ): Point2 | null => {
+    const bounds = stageRef.current?.container().getBoundingClientRect()
+    if (!bounds) return null
+    return {
+      x: (clientX - bounds.left - view.x) / view.scale,
+      y: (clientY - bounds.top - view.y) / view.scale,
+    }
+  }, [view])
+
   const confirmDraftGrid = () => {
     if (draft.length !== 4 || !draftGridSize) return
     addBaseFaces(
@@ -788,6 +880,10 @@ export function EditorCanvas() {
   }
 
   const onStageClick = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    // A completed marquee also produces a click on the stage when its release
+    // point is not over a face. Do not let that synthetic click clear the
+    // selection we just made.
+    if (suppressBoxClickRef.current) return
     if (event.target !== event.currentTarget && event.target.draggable()) return
     // After the fourth corner, the next unobstructed canvas click confirms the
     // visible grid-size dialog as a deliberate second step.
@@ -803,6 +899,7 @@ export function EditorCanvas() {
     }
     if (tool === 'select') {
       clearSelectedEdges()
+      clearSelection()
       return
     }
     if (tool !== 'plane') return
@@ -817,6 +914,110 @@ export function EditorCanvas() {
     } else {
       setDraft(next)
     }
+  }
+
+  const onStageMouseDown = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    if (tool !== 'select' || !event.evt.ctrlKey || event.evt.button !== 0) return
+    const point = pointerInImage()
+    if (!point) return
+    event.evt.preventDefault()
+    setBoxSelection({
+      start: point,
+      current: point,
+      additive: event.evt.shiftKey,
+    })
+    boxSelectionRef.current = {
+      start: point,
+      current: point,
+      additive: event.evt.shiftKey,
+    }
+    suppressBoxClickRef.current = false
+    stageRef.current?.draggable(false)
+  }
+
+  const finishBoxSelection = useCallback((end: Point2) => {
+    const selection = boxSelectionRef.current
+    if (tool !== 'select' || !selection) return
+    const moved = Math.hypot(
+      (end.x - selection.start.x) * view.scale,
+      (end.y - selection.start.y) * view.scale,
+    ) > 4
+    if (!moved) {
+      boxSelectionRef.current = undefined
+      setBoxSelection(undefined)
+      stageRef.current?.draggable(true)
+      return
+    }
+    suppressBoxClickRef.current = true
+    const left = Math.min(selection.start.x, end.x)
+    const right = Math.max(selection.start.x, end.x)
+    const top = Math.min(selection.start.y, end.y)
+    const bottom = Math.max(selection.start.y, end.y)
+    const selectedIds = sceneForRendering.faces
+      .filter((face) => !face.id.startsWith('__preview_'))
+      .filter((face) => {
+        const quad = faceQuad(sceneForRendering, face)
+        if (!quad) return false
+        return quadTouchesBox(quad, left, right, top, bottom)
+      })
+      .map((face) => face.id)
+    selectFaces(selectedIds, selection.additive)
+    boxSelectionRef.current = undefined
+    setBoxSelection(undefined)
+    stageRef.current?.draggable(true)
+    window.setTimeout(() => {
+      suppressBoxClickRef.current = false
+    }, 0)
+  }, [sceneForRendering, selectFaces, tool, view.scale])
+
+  const onStageMouseUp = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    if (event.evt.button !== 0) return
+    const end = pointerInImage() ?? boxSelectionRef.current?.current
+    if (end) finishBoxSelection(end)
+  }
+
+  useEffect(() => {
+    if (!boxSelection) return
+    // Konva only emits stage mouse events while the pointer is over the
+    // canvas. Complete a marquee that ends in empty space outside it too.
+    const onWindowMouseMove = (event: MouseEvent) => {
+      const point = imagePointFromClientPosition(event.clientX, event.clientY)
+      if (!point || !boxSelectionRef.current) return
+      boxSelectionRef.current.current = point
+      setBoxSelection((current) => current ? { ...current, current: point } : current)
+    }
+    const onWindowMouseUp = (event: MouseEvent) => {
+      if (event.button !== 0) return
+      const point = imagePointFromClientPosition(event.clientX, event.clientY)
+      const end = point ?? boxSelectionRef.current?.current
+      if (end) finishBoxSelection(end)
+    }
+    window.addEventListener('mousemove', onWindowMouseMove)
+    window.addEventListener('mouseup', onWindowMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onWindowMouseMove)
+      window.removeEventListener('mouseup', onWindowMouseUp)
+    }
+  }, [boxSelection, finishBoxSelection, imagePointFromClientPosition])
+
+  const onStageMouseMove = () => {
+    setPointerPoint(pointerInImage() ?? undefined)
+    if (!boxSelection) return
+    const point = pointerInImage()
+    if (!point) return
+    const current = boxSelectionRef.current
+    if (current) {
+      current.current = point
+      if (
+        Math.hypot(
+          (point.x - current.start.x) * view.scale,
+          (point.y - current.start.y) * view.scale,
+        ) > 4
+      ) {
+        suppressBoxClickRef.current = true
+      }
+    }
+    setBoxSelection((current) => current ? { ...current, current: point } : current)
   }
 
   const onWheel = (event: Konva.KonvaEventObject<WheelEvent>) => {
@@ -900,7 +1101,9 @@ export function EditorCanvas() {
             y: event.currentTarget.y(),
           }))
         }}
-        onMouseMove={() => setPointerPoint(pointerInImage() ?? undefined)}
+        onMouseDown={onStageMouseDown}
+        onMouseMove={onStageMouseMove}
+        onMouseUp={onStageMouseUp}
         onMouseLeave={() => setPointerPoint(undefined)}
         onWheel={onWheel}
         onClick={onStageClick}
@@ -976,7 +1179,10 @@ export function EditorCanvas() {
                   event.cancelBubble = true
                   if (tool === 'anchor') setAnchorFace(face.id)
                   else if (tool === 'orient') setOrientationFace(face.id)
-                  else if (tool === 'select') {
+                  else if (
+                    tool === 'select' &&
+                    !suppressBoxClickRef.current
+                  ) {
                     selectFace(face.id, event.evt.shiftKey)
                   }
                 }}
@@ -1003,7 +1209,9 @@ export function EditorCanvas() {
                 onMouseLeave={() => setHoverCursor(undefined)}
                 onClick={(event) => {
                   event.cancelBubble = true
-                  selectEdge(selection, event.evt.shiftKey)
+                  if (!suppressBoxClickRef.current) {
+                    selectEdge(selection, event.evt.shiftKey)
+                  }
                 }}
               />
             )
@@ -1270,6 +1478,20 @@ export function EditorCanvas() {
             </>
           )}
         </Layer>
+          {boxSelection && (
+          <Layer listening={false}>
+            <Rect
+              x={Math.min(boxSelection.start.x, boxSelection.current.x)}
+              y={Math.min(boxSelection.start.y, boxSelection.current.y)}
+              width={Math.abs(boxSelection.current.x - boxSelection.start.x)}
+              height={Math.abs(boxSelection.current.y - boxSelection.start.y)}
+              fill="rgba(112,167,255,.14)"
+              stroke={SELECTED}
+              dash={[6 / view.scale, 4 / view.scale]}
+              strokeWidth={1.2 / view.scale}
+            />
+          </Layer>
+        )}
       </Stage>
       {draftGridSize && draftControlPosition && (
         <div

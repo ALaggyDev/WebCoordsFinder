@@ -817,7 +817,7 @@ function FaceInspector({
             <option
               key={candidate.id}
               value={candidate.id}
-              disabled={selectedEvidence.some(
+              disabled={selectedEvidence.every(
                 (entry) => {
                   // Batch choices must be valid for every possible world face
                   // represented by the current partial axis mapping.
@@ -837,7 +837,7 @@ function FaceInspector({
                 )
                 return !sharedStatesForFaces(candidate.id, faces)
               })
-                ? ' — unsupported selection'
+                ? ' — No side face variants'
                 : ''}
             </option>
           ))}

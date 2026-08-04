@@ -375,6 +375,7 @@ interface EditorState {
   cancelOrientation: () => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
+  selectFaces: (faceIds: string[], additive: boolean) => void
   setHoveredEvidence: (evidenceId: string | null) => void
   selectAllFaces: () => void
   clearSelection: () => void
@@ -898,6 +899,38 @@ export const useEditorStore = create<EditorState>((set) => ({
         faceTab: 'selection' as FaceTab,
       }
     }),
+  selectFaces: (faceIds, additive) =>
+    set((state) => {
+      const validIds = state.document.scene.faces
+        .map((face) => face.id)
+        .filter((id) => faceIds.includes(id))
+      const selectedEvidenceIds = additive
+        ? [...new Set([...state.selectedEvidenceIds, ...validIds])]
+        : validIds
+      const missingFaces = state.document.scene.faces.filter(
+        (face) => validIds.includes(face.id) &&
+          !state.document.evidence.some((entry) => entry.id === face.id),
+      )
+      const unchanged =
+        missingFaces.length === 0 &&
+        selectedEvidenceIds.length === state.selectedEvidenceIds.length &&
+        selectedEvidenceIds.every((id, index) => id === state.selectedEvidenceIds[index])
+      const documentPatch =
+        missingFaces.length === 0
+          ? {}
+          : mutateDocument(state, (document) => {
+              document.evidence.push(
+                ...missingFaces.map((face) => createDefaultEvidence(document, face)),
+              )
+            })
+      if (unchanged) return { selectedEdges: [] }
+      return {
+        ...documentPatch,
+        selectedEdges: [],
+        selectedEvidenceIds,
+        faceTab: 'selection' as FaceTab,
+      }
+    }),
   setHoveredEvidence: (evidenceId) => set({ hoveredEvidenceId: evidenceId }),
   selectAllFaces: () =>
     set((state) => {
@@ -931,8 +964,8 @@ export const useEditorStore = create<EditorState>((set) => ({
         const states = selected.map((entry) =>
           sharedStatesForFaces(blockId, evidenceFaces(document, entry)),
         )
-        if (states.some((state) => state === undefined)) return
         selected.forEach((entry, index) => {
+          if (states[index] === undefined) return
           entry.blockId = blockId
           entry.stateCount = states[index]!
           entry.selectedVariant = undefined
