@@ -1038,9 +1038,9 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
     <>
       <SectionTitle icon={ScanSearch} eyebrow="Automatic proposals" title="Analyzed faces" />
       <div className="review-metrics">
-        <div><strong>{counts.confirmed}</strong><span>Confirmed</span></div>
-        <div><strong>{counts.proposed}</strong><span>Proposed</span></div>
         <div><strong>{counts.unlabeled}</strong><span>Unlabeled</span></div>
+        <div><strong>{counts.proposed}</strong><span>Proposed</span></div>
+        <div><strong>{counts.confirmed}</strong><span>Confirmed</span></div>
       </div>
       <label className="range-field">
         <span>
