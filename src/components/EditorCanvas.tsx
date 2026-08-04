@@ -1186,6 +1186,38 @@ export function EditorCanvas() {
                 strokeWidth={1.5 / view.scale}
                 dash={[5 / view.scale, 4 / view.scale]}
               />
+              {draft.length < 4 && pointerPoint && (
+                <>
+                  <Line
+                    points={[
+                      draft[draft.length - 1].x,
+                      draft[draft.length - 1].y,
+                      pointerPoint.x,
+                      pointerPoint.y,
+                    ]}
+                    stroke={PROPOSED}
+                    opacity={0.82}
+                    strokeWidth={1.5 / view.scale}
+                    dash={[5 / view.scale, 4 / view.scale]}
+                    listening={false}
+                  />
+                  {draft.length === 3 && (
+                    <Line
+                      points={[
+                        pointerPoint.x,
+                        pointerPoint.y,
+                        draft[0].x,
+                        draft[0].y,
+                      ]}
+                      stroke={PROPOSED}
+                      opacity={0.82}
+                      strokeWidth={1.5 / view.scale}
+                      dash={[5 / view.scale, 4 / view.scale]}
+                      listening={false}
+                    />
+                  )}
+                </>
+              )}
               {draft.map((point, index) => (
                 <Circle
                   key={`draft-corner-${index}`}
