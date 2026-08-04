@@ -577,13 +577,19 @@ export function EditorCanvas() {
   }, [draft, draftGridSize])
   const draftControlAnchor = useMemo(() => {
     if (draft.length !== 4 || !draftGridSize) return undefined
-    const center = draft.reduce(
-      (sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }),
-      { x: 0, y: 0 },
-    )
+    // Place the initial control below the grid rather than over its center.
+    // Draft points are ordered top-left, top-right, bottom-right, bottom-left.
+    const bottomCenter = {
+      x: (draft[2].x + draft[3].x) / 2,
+      y: (draft[2].y + draft[3].y) / 2,
+    }
     return {
-      left: view.x + center.x * view.scale,
-      top: view.y + center.y * view.scale,
+      left: view.x + bottomCenter.x * view.scale,
+      top:
+        view.y +
+        bottomCenter.y * view.scale +
+        DRAFT_CONTROL_HALF_HEIGHT +
+        12,
     }
   }, [draft, draftGridSize, view])
   const draftControlPosition = useMemo(() => {
