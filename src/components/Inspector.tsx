@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  AlertTriangle,
   Check,
   ChevronRight,
   Compass,
@@ -406,6 +405,13 @@ function GeometryInspector() {
       <section className="geometry-part geometry-actions">
         <h3>Actions</h3>
       <div className="inspector-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setTool('anchor')}
+        >
+          <Crosshair size={15} /> {tool === 'anchor' ? 'Click a face' : 'Select anchor block (A)'}
+        </button>
         <button
           type="button"
           className="secondary-button"
@@ -1233,10 +1239,6 @@ function ExportInspector() {
           </label>
         </div>
       </details>
-      <div className="todo-card">
-        <AlertTriangle size={15} />
-        <span><b>Note:</b> world UP is required. Horizontal orientation may be confirmed manually or covered by the selected rotations.</span>
-      </div>
       <div className="export-inspector-footer">
         <button
           className="primary-button full"

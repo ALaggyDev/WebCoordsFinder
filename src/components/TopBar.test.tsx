@@ -94,4 +94,22 @@ describe('top bar project actions', () => {
     expect(onOpenProjects).toHaveBeenCalledOnce()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
+
+  it('opens a read-only keybindings popup', () => {
+    render(
+      <TopBar
+        activeProjectId="project-a"
+        projects={projects}
+        onOpenImage={vi.fn()}
+        onOpenProjects={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keybindings' }))
+
+    expect(screen.getByRole('dialog', { name: 'Keybindings' })).toBeInTheDocument()
+    expect(screen.getByText('Delete selected faces')).toBeInTheDocument()
+    expect(screen.getByText('Delete white calibration point')).toBeInTheDocument()
+    expect(screen.getAllByText('Ctrl')).not.toHaveLength(0)
+  })
 })

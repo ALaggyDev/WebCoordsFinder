@@ -1,27 +1,32 @@
 import {
   Box,
+  Compass,
   Crosshair,
   Eraser,
-  MousePointer2,
   Move3d,
   Redo2,
   Undo2,
 } from 'lucide-react'
 import type { EditorTool } from '../domain/types'
+import { isWorldUpResolved } from '../domain/geometry'
 import { useEditorStore } from '../store/editorStore'
 
 // Tool definitions share the visible shortcut labels; global key handling
 // lives in App so shortcuts also work when the canvas lacks focus.
-const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2; shortcut: string }> = [
-  { id: 'select', label: 'Select faces or edges', icon: MousePointer2, shortcut: 'V' },
+const tools: Array<{ id: EditorTool; label: string; icon: typeof Crosshair; shortcut: string }> = [
   { id: 'anchor', label: 'Select anchor block', icon: Crosshair, shortcut: 'A' },
-  { id: 'plane', label: 'Calibrate perspective', icon: Box, shortcut: 'G' },
+  { id: 'plane', label: 'Draw initial grid', icon: Box, shortcut: 'G' },
   { id: 'extrude', label: 'Extrude selected edges', icon: Move3d, shortcut: 'E' },
 ]
 
 export function ToolRail() {
   const tool = useEditorStore((state) => state.tool)
+  const scene = useEditorStore((state) => state.document.scene)
   const setTool = useEditorStore((state) => state.setTool)
+  const startUpOrientation = useEditorStore((state) => state.startUpOrientation)
+  const startHorizontalOrientation = useEditorStore(
+    (state) => state.startHorizontalOrientation,
+  )
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
   const deleteSelectedFaces = useEditorStore((state) => state.deleteSelectedFaces)
@@ -48,7 +53,6 @@ export function ToolRail() {
               // Only one base grid is allowed, and extrusion needs an explicit
               // connected edge selection.
               (id === 'plane' && hasGeometry) ||
-              (id === 'select' && !hasGeometry) ||
               (id === 'anchor' && !hasGeometry) ||
               (id === 'extrude' && !hasSelectedEdges)
             }
@@ -59,12 +63,30 @@ export function ToolRail() {
             <span>{shortcut}</span>
           </button>
         ))}
+        {scene.projection && (
+          <button
+            type="button"
+            className={tool === 'orient' ? 'tool-button active' : 'tool-button'}
+            onClick={() => {
+              if (isWorldUpResolved(scene.axisMapping)) {
+                startHorizontalOrientation()
+              } else {
+                startUpOrientation()
+              }
+            }}
+            title="Set World Orientation (D)"
+            aria-label="Set World Orientation"
+          >
+            <Compass size={19} />
+            <span>D</span>
+          </button>
+        )}
         <button
           type="button"
           className="tool-button"
           onClick={deleteSelectedFaces}
           disabled={!hasSelectedFaces}
-          title="Delete selected faces (X)"
+          title="Delete selected faces (X / Backspace / Delete)"
           aria-label="Delete selected faces"
         >
           <Eraser size={19} />

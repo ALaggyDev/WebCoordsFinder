@@ -797,10 +797,9 @@ export function EditorCanvas() {
         setDraft([])
         setDraftGridSize(undefined)
         setDraftControlOffset({ x: 0, y: 0 })
-        if (tool === 'extrude' || tool === 'anchor' || tool === 'orient') {
+        if (tool === 'extrude' || tool === 'anchor' || tool === 'orient' || tool === 'plane') {
           setTool('select')
-        }
-        else if (tool === 'select') clearSelectedEdges()
+        } else if (tool === 'select') clearSelectedEdges()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -885,6 +884,7 @@ export function EditorCanvas() {
     setDraft([])
     setDraftGridSize(undefined)
     setDraftControlOffset({ x: 0, y: 0 })
+    setTool('select')
   }
 
   const updateDraftGridSize = (

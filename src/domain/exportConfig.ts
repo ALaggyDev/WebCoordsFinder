@@ -101,7 +101,7 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   ) {
     errors.push('Select at least one unique quarter-turn search direction.')
   }
-  if (rows.length === 0) errors.push('Confirm at least one block face before export.')
+  if (rows.length === 0) errors.push('No block faces are confirmed.')
   if (rows.length > 256) errors.push('CoordsFinder supports at most 256 filter rows.')
   if (
     bounds.xStart > bounds.xEnd ||

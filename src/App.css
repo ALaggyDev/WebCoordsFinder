@@ -12,7 +12,7 @@
 .topbar {
   min-width: 0;
   display: grid;
-  grid-template-columns: 238px minmax(470px, 1fr) auto;
+  grid-template-columns: 238px minmax(470px, 1fr) auto auto;
   align-items: center;
   border-bottom: 1px solid var(--border);
   background: rgba(13, 19, 23, 0.96);
@@ -161,6 +161,92 @@
   color: #badbcd;
   background: rgba(83, 230, 165, 0.05);
   border-color: rgba(83, 230, 165, 0.17);
+}
+
+.keybindings-menu {
+  position: relative;
+}
+
+.topbar-keybindings-slot {
+  height: 100%;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-keybindings {
+  width: 34px;
+  height: 34px;
+  color: var(--muted);
+  background: #10181d;
+}
+
+.keybindings-popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 280px;
+  padding: 14px;
+  color: var(--text);
+  background: rgba(13, 20, 24, 0.98);
+  border: 1px solid #3a4a52;
+  border-radius: 10px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(16px);
+}
+
+.keybindings-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.keybindings-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.keybindings-list {
+  padding-top: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.keybindings-list > div {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.keybindings-list > div span {
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--text);
+  text-align: right;
+}
+
+.keybindings-list > div b {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+kbd {
+  min-width: 22px;
+  padding: 3px 5px;
+  color: #d7e6df;
+  background: #1b282d;
+  border: 1px solid #405159;
+  border-radius: 4px;
+  font: 9px var(--mono);
+  text-align: center;
 }
 
 /* Empty and active workspace layouts share the same three-column geometry. */
@@ -1021,13 +1107,6 @@ button:disabled {
   font-size: 9px;
 }
 
-.todo-card {
-  margin-top: 10px;
-  padding: 11px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-}
-
 .geometry-status-list {
   margin-bottom: 14px;
   display: grid;
@@ -1187,13 +1266,6 @@ button:disabled {
   min-height: 32px;
   padding-inline: 10px;
   white-space: nowrap;
-}
-
-.todo-card {
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.018);
-  font-size: 10px;
-  line-height: 1.5;
 }
 
 .empty-inspector {
@@ -1824,15 +1896,6 @@ button:disabled {
   border-radius: 8px;
   font: 8px/1.55 var(--mono);
   white-space: pre;
-}
-
-.todo-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: #d4bd86;
-  background: rgba(240, 182, 77, 0.04);
-  border-color: rgba(240, 182, 77, 0.14);
 }
 
 .spin {
@@ -2821,7 +2884,7 @@ button:disabled {
 /* Preserve usable inspector and canvas widths on narrower desktop windows. */
 @media (max-width: 1120px) {
   .topbar {
-    grid-template-columns: 210px 1fr auto;
+    grid-template-columns: 210px 1fr auto auto;
   }
 
   .workflow-step {

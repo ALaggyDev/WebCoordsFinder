@@ -40,9 +40,24 @@ describe('delete selected faces action', () => {
 
     render(<ToolRail />)
 
-    expect(screen.getByRole('button', { name: 'Select faces or edges' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Select anchor block' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Calibrate perspective' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Draw initial grid' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Select faces or edges' })).not.toBeInTheDocument()
+  })
+
+  it('shows and activates world orientation when geometry exists', () => {
+    render(<ToolRail />)
+
+    const orientationButton = screen.getByRole('button', {
+      name: 'Set World Orientation',
+    })
+    expect(orientationButton).toBeEnabled()
+
+    fireEvent.click(orientationButton)
+
+    expect(useEditorStore.getState().tool).toBe('orient')
+    expect(useEditorStore.getState().orientationDraft?.mode).toBe('horizontal')
+    expect(orientationButton).toHaveClass('active')
   })
 
   it('is enabled by a face selection and preserves the edit mode when clicked', () => {

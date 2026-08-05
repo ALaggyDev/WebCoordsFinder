@@ -254,21 +254,38 @@ describe('face keyboard shortcuts', () => {
     expect(useEditorStore.getState().selectedEvidenceIds).toEqual([])
   })
 
-  it('deletes selected faces with X without changing the edit mode', () => {
-    const [first, second] = useEditorStore.getState().document.scene.faces
-    useEditorStore.getState().selectFace(first.id, false)
-    useEditorStore.getState().selectFace(second.id, true)
+  it('deletes selected faces with X, Backspace, or Delete without changing the edit mode', () => {
     useEditorStore.getState().setTool('anchor')
     render(<App />)
 
-    fireEvent.keyDown(window, { key: 'x' })
+    for (const key of ['x', 'Backspace', 'Delete']) {
+      const face = useEditorStore.getState().document.scene.faces[0]
+      useEditorStore.getState().selectFace(face.id, false)
+      fireEvent.keyDown(window, { key })
 
-    const state = useEditorStore.getState()
-    expect(state.document.scene.faces.map((face) => face.id)).not.toEqual(
-      expect.arrayContaining([first.id, second.id]),
-    )
-    expect(state.selectedEvidenceIds).toEqual([])
-    expect(state.tool).toBe('anchor')
+      const state = useEditorStore.getState()
+      expect(state.document.scene.faces.map((entry) => entry.id)).not.toContain(face.id)
+      expect(state.selectedEvidenceIds).toEqual([])
+      expect(state.tool).toBe('anchor')
+    }
+  })
+
+  it('does not activate initial-grid drawing after a grid exists', () => {
+    useEditorStore.getState().setTool('anchor')
+    render(<App />)
+
+    fireEvent.keyDown(window, { key: 'g' })
+
+    expect(useEditorStore.getState().tool).toBe('anchor')
+  })
+
+  it('uses D to start horizontal orientation when world UP is already resolved', () => {
+    render(<App />)
+
+    fireEvent.keyDown(window, { key: 'd' })
+
+    expect(useEditorStore.getState().orientationDraft?.mode).toBe('horizontal')
+    expect(useEditorStore.getState().tool).toBe('orient')
   })
 
   it('imports the bundled example document without regenerating it', async () => {

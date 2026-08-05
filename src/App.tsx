@@ -28,6 +28,7 @@ import {
 import {
   faceHasWorldOrientation,
   faceForLocalNormal,
+  isWorldUpResolved,
   worldAlignedFaceQuad,
 } from './domain/geometry'
 import {
@@ -136,6 +137,10 @@ function App() {
   const setFaceTab = useEditorStore((state) => state.setFaceTab)
   const setProjectName = useEditorStore((state) => state.setProjectName)
   const setTool = useEditorStore((state) => state.setTool)
+  const startUpOrientation = useEditorStore((state) => state.startUpOrientation)
+  const startHorizontalOrientation = useEditorStore(
+    (state) => state.startHorizontalOrientation,
+  )
   const selectAllFaces = useEditorStore((state) => state.selectAllFaces)
   const deleteSelectedFaces = useEditorStore(
     (state) => state.deleteSelectedFaces,
@@ -148,6 +153,13 @@ function App() {
   const notify = (message: string, kind: ToastKind = 'info') => {
     setToast({ message, kind })
   }
+
+  useEffect(() => {
+    if (!toast) return
+
+    const timeout = window.setTimeout(() => setToast(undefined), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [toast])
 
   const projectPreviewSignature = JSON.stringify(
     projects
@@ -322,16 +334,34 @@ function App() {
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
-        event.key.toLowerCase() === 'x'
+        ['x', 'backspace', 'delete'].includes(event.key.toLowerCase())
       ) {
         event.preventDefault()
         deleteSelectedFaces()
         return
       }
+      if (event.key.toLowerCase() === 'g') {
+        if (useEditorStore.getState().document.scene.faces.length === 0) {
+          setTool('plane')
+        }
+        return
+      }
+      if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'd'
+      ) {
+        const scene = useEditorStore.getState().document.scene
+        if (isWorldUpResolved(scene.axisMapping)) {
+          startHorizontalOrientation()
+        } else {
+          startUpOrientation()
+        }
+        return
+      }
       const toolShortcut = {
-        v: 'select',
         a: 'anchor',
-        g: 'plane',
         e: 'extrude',
       } as const
       const shortcut = toolShortcut[event.key.toLowerCase() as keyof typeof toolShortcut]
@@ -353,6 +383,8 @@ function App() {
     selectedEvidenceIds,
     setTool,
     setVariant,
+    startHorizontalOrientation,
+    startUpOrientation,
     undo,
   ])
 
