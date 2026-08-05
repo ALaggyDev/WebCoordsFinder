@@ -29,7 +29,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('delete selected faces action', () => {
-  it('allows planar editing while keeping the anchor tool locked', () => {
+  it('allows planar editing and planar anchor selection', () => {
     useEditorStore.setState({ document: createEmptyDocument() })
     useEditorStore.getState().addBaseFaces([
       { x: 40, y: 100 },
@@ -41,7 +41,7 @@ describe('delete selected faces action', () => {
     render(<ToolRail />)
 
     expect(screen.getByRole('button', { name: 'Select faces or edges' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Select anchor block' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Select anchor block' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Calibrate perspective' })).toBeDisabled()
   })
 

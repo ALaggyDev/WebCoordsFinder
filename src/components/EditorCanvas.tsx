@@ -16,9 +16,6 @@ import {
 import {
   abstractAxisVector,
   add3,
-  axisColor,
-  axisDisplayLabel,
-  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   distance,
@@ -30,6 +27,7 @@ import {
   flattenPoints,
   initialCameraForPlanarExtrusion,
   meshEdgeKey,
+  mappedVector,
   orientationEdgeGeometry,
   projectionInfo,
   projectPoint,
@@ -42,7 +40,9 @@ import {
 import type {
   AbstractAxis,
   FaceEdge,
+  FaceDirection,
   MeshFace,
+  OrientationSurfaceKind,
   Point2,
   SceneGeometry,
   SelectedEdge,
@@ -178,6 +178,9 @@ const MIN_GRID_SIZE = 1
 const MAX_GRID_SIZE = 128
 const DRAFT_CONTROL_HALF_WIDTH = 132
 const DRAFT_CONTROL_HALF_HEIGHT = 66
+const ORIENTATION_POPUP_HALF_WIDTH = 136
+const ORIENTATION_POPUP_MIN_TOP = 12
+const ORIENTATION_POPUP_BOTTOM_MARGIN = 150
 
 const visualizationOptions: Array<{
   key: keyof VisualizationSettings
@@ -188,11 +191,6 @@ const visualizationOptions: Array<{
     key: 'axisGizmo',
     label: 'Anchor axes',
     description: 'Show the three solved lattice directions at the anchor block.',
-  },
-  {
-    key: 'faceNormals',
-    label: 'Face normals',
-    description: 'Show visible-side normals from the solved 3D camera.',
   },
   {
     key: 'anchorMarker',
@@ -209,9 +207,20 @@ const visualizationOptions: Array<{
     label: 'Calibration residuals',
     description: 'Show the error between each anchor and its predicted position.',
   },
+  {
+    key: 'faceNormals',
+    label: 'Face normals',
+    description: 'Show visible-side normals from the solved 3D camera.',
+  },
 ]
 
 const faceEdges: FaceEdge[] = ['top', 'right', 'bottom', 'left']
+const horizontalDirections: Array<{ direction: FaceDirection; label: string }> = [
+  { direction: 'north', label: 'North −Z' },
+  { direction: 'east', label: 'East +X' },
+  { direction: 'south', label: 'South +Z' },
+  { direction: 'west', label: 'West −X' },
+]
 
 function statusColor(status?: string): string {
   if (status === 'confirmed') return CONFIRMED
@@ -270,14 +279,7 @@ function makeExtrusionPreview(
       ),
       ...anchors,
     ]
-    try {
-      previewScene.projection = planarCamera.projection
-      previewScene.faces.forEach((face) => {
-        face.normal = cameraFacingNormal(previewScene, face)
-      })
-    } catch {
-      return undefined
-    }
+    previewScene.projection = planarCamera.projection
   }
   return {
     scene: previewScene,
@@ -299,16 +301,31 @@ function GlobalAxisGizmo({
   const origin = projectScenePoint(scene, latticeOrigin)
   if (!origin) return null
   const axes = (['a', 'b', 'c'] as AbstractAxis[]).flatMap((axis) => {
+    const mappedAxis = scene.axisMapping[axis]
+    const known = mappedAxis !== 'unknown'
+    const worldAxis = known ? mappedAxis[0] : undefined
+    const local = scale3(
+      abstractAxisVector(axis),
+      known && mappedAxis[1] === '-' ? -1 : 1,
+    )
     const endpoint = projectScenePoint(
       scene,
-      add3(latticeOrigin, scale3(abstractAxisVector(axis), 0.25)),
+      add3(latticeOrigin, scale3(local, 0.25)),
     )
     if (!endpoint) return []
     const delta = { x: endpoint.x - origin.x, y: endpoint.y - origin.y }
     const projectedLength = Math.hypot(delta.x, delta.y)
     if (projectedLength < 1e-8) return []
     return [{
-      axis,
+      label: known ? `+${worldAxis!.toUpperCase()}` : axis.toUpperCase(),
+      color:
+        worldAxis === 'x'
+          ? '#ff626b'
+          : worldAxis === 'y'
+            ? '#53e6a5'
+            : worldAxis === 'z'
+              ? '#70a7ff'
+              : '#a8b3b9',
       end: endpoint,
       direction: {
         x: delta.x / projectedLength,
@@ -326,10 +343,9 @@ function GlobalAxisGizmo({
         stroke="#dce7ec"
         strokeWidth={1 / scale}
       />
-      {axes.map(({ axis, end, direction }) => {
-        const color = axisColor(axis, scene.axisMapping)
+      {axes.map(({ label, color, end, direction }) => {
         return (
-          <Group key={axis}>
+          <Group key={label}>
             <Arrow
               points={[origin.x, origin.y, end.x, end.y]}
               stroke="#061014"
@@ -349,7 +365,7 @@ function GlobalAxisGizmo({
             <Text
               x={end.x + direction.x * (7 / scale) - 7 / scale}
               y={end.y + direction.y * (7 / scale) - 5 / scale}
-              text={axisDisplayLabel(axis, scene.axisMapping)}
+              text={label}
               fontFamily="Inter, Segoe UI, sans-serif"
               fontStyle="bold"
               fontSize={9 / scale}
@@ -480,6 +496,7 @@ export function EditorCanvas() {
   const visualizationMenuRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const draftControlDragRef = useRef<DraftControlDrag>(undefined)
+  const orientationPopupDragRef = useRef<DraftControlDrag>(undefined)
   const boxSelectionRef = useRef<BoxSelectionDrag | undefined>(undefined)
   const suppressBoxClickRef = useRef(false)
   const draftWidthInputRef = useRef<HTMLInputElement>(null)
@@ -499,7 +516,14 @@ export function EditorCanvas() {
   const setAnchorFace = useEditorStore((state) => state.setAnchorFace)
   const addBaseFaces = useEditorStore((state) => state.addBaseFaces)
   const setOrientationFace = useEditorStore((state) => state.setOrientationFace)
+  const setOrientationSurfaceKind = useEditorStore(
+    (state) => state.setOrientationSurfaceKind,
+  )
   const setOrientationEdge = useEditorStore((state) => state.setOrientationEdge)
+  const setOrientationHorizontalDirection = useEditorStore(
+    (state) => state.setOrientationHorizontalDirection,
+  )
+  const cancelOrientation = useEditorStore((state) => state.cancelOrientation)
   const moveObservation = useEditorStore((state) => state.moveObservation)
   const deleteObservation = useEditorStore((state) => state.deleteObservation)
   const upsertObservation = useEditorStore((state) => state.upsertObservation)
@@ -513,17 +537,22 @@ export function EditorCanvas() {
     x: 0,
     y: 0,
   })
+  const [orientationPopupOffset, setOrientationPopupOffset] = useState<Point2>({
+    x: 0,
+    y: 0,
+  })
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false)
   const [hoverCursor, setHoverCursor] = useState<string>()
   const [draggedObservation, setDraggedObservation] = useState<DraggedObservation>()
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [boxSelection, setBoxSelection] = useState<BoxSelectionDrag>()
+  const [hoveredOrientationEdge, setHoveredOrientationEdge] = useState<FaceEdge>()
   const [visualizations, setVisualizations] = useState<VisualizationSettings>({
     axisGizmo: true,
-    faceNormals: true,
     anchorMarker: true,
     calibrationPoints: true,
     calibrationResiduals: true,
+    faceNormals: false,
   })
 
   const renderedScene = useMemo(() => {
@@ -577,12 +606,52 @@ export function EditorCanvas() {
     [sceneForRendering],
   )
   const fullCameraSolved = sceneForRendering.projection?.kind === 'camera'
-  const anchorFace = fullCameraSolved && document.anchorFaceId
+  const anchorFace = sceneForRendering.projection && document.anchorFaceId
     ? sceneForRendering.faces.find((face) => face.id === document.anchorFaceId)
     : undefined
-  const orientationFace = fullCameraSolved && orientationDraft?.faceId
+  const orientationFace = sceneForRendering.projection && orientationDraft?.faceId
     ? sceneForRendering.faces.find((face) => face.id === orientationDraft.faceId)
     : undefined
+  const orientationArrowEdges = useMemo(() => {
+    if (!orientationFace || !orientationDraft) return []
+    if (orientationDraft.mode === 'up') {
+      return orientationDraft.surfaceKind === 'side' ? faceEdges : []
+    }
+    return faceEdges.filter((edge) => {
+      const arrow = orientationEdgeGeometry(orientationFace, edge)
+      return mappedVector(sceneForRendering.axisMapping, arrow.direction)?.y === 0
+    })
+  }, [orientationDraft, orientationFace, sceneForRendering.axisMapping])
+  const orientationPopupAnchor = useMemo(() => {
+    if (!orientationFace || !orientationDraft) return undefined
+    const quad = faceQuad(sceneForRendering, orientationFace)
+    if (!quad) return undefined
+    const centerX = quad.reduce((sum, point) => sum + point.x, 0) / quad.length
+    const bottom = Math.max(...quad.map((point) => point.y))
+    return {
+      left: view.x + centerX * view.scale,
+      top: view.y + bottom * view.scale + 12,
+    }
+  }, [orientationDraft, orientationFace, sceneForRendering, view])
+  const orientationPopupPosition = useMemo(() => {
+    if (!orientationPopupAnchor) return undefined
+    return {
+      left: Math.max(
+        ORIENTATION_POPUP_HALF_WIDTH,
+        Math.min(
+          size.width - ORIENTATION_POPUP_HALF_WIDTH,
+          orientationPopupAnchor.left + orientationPopupOffset.x,
+        ),
+      ),
+      top: Math.max(
+        ORIENTATION_POPUP_MIN_TOP,
+        Math.min(
+          size.height - ORIENTATION_POPUP_BOTTOM_MARGIN,
+          orientationPopupAnchor.top + orientationPopupOffset.y,
+        ),
+      ),
+    }
+  }, [orientationPopupAnchor, orientationPopupOffset, size.height, size.width])
   const meshEdges = useMemo(() => {
     const edges = new Map<string, RenderedMeshEdge>()
     renderedScene.faces.forEach((face) => {
@@ -739,6 +808,10 @@ export function EditorCanvas() {
   }, [clearSelectedEdges, setTool, tool])
 
   useEffect(() => {
+    setOrientationPopupOffset({ x: 0, y: 0 })
+  }, [orientationDraft?.faceId, orientationDraft?.mode])
+
+  useEffect(() => {
     if (!draftGridSize) return
     const attachWheelHandler = (
       input: HTMLInputElement | null,
@@ -874,6 +947,49 @@ export function EditorCanvas() {
   ) => {
     if (draftControlDragRef.current?.pointerId !== event.pointerId) return
     draftControlDragRef.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const startOrientationPopupDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    orientationPopupDragRef.current = {
+      pointerId: event.pointerId,
+      startPointer: { x: event.clientX, y: event.clientY },
+      startOffset: orientationPopupOffset,
+    }
+  }
+
+  const moveOrientationPopup = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = orientationPopupDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !orientationPopupAnchor) return
+    const desiredLeft = orientationPopupAnchor.left + drag.startOffset.x +
+      event.clientX - drag.startPointer.x
+    const desiredTop = orientationPopupAnchor.top + drag.startOffset.y +
+      event.clientY - drag.startPointer.y
+    setOrientationPopupOffset({
+      x: Math.max(
+        ORIENTATION_POPUP_HALF_WIDTH,
+        Math.min(size.width - ORIENTATION_POPUP_HALF_WIDTH, desiredLeft),
+      ) - orientationPopupAnchor.left,
+      y: Math.max(
+        ORIENTATION_POPUP_MIN_TOP,
+        Math.min(size.height - ORIENTATION_POPUP_BOTTOM_MARGIN, desiredTop),
+      ) - orientationPopupAnchor.top,
+    })
+  }
+
+  const stopOrientationPopupDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (orientationPopupDragRef.current?.pointerId !== event.pointerId) return
+    orientationPopupDragRef.current = undefined
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -1216,26 +1332,29 @@ export function EditorCanvas() {
               />
             )
           })}
-          {fullCameraSolved &&
-            tool === 'orient' &&
+          {tool === 'orient' &&
             orientationFace &&
-            faceEdges.map((edge) => {
+            orientationArrowEdges.map((edge) => {
               const geometry = orientationEdgeGeometry(orientationFace, edge)
               const start = projectScenePoint(renderedScene, geometry.start)
               const end = projectScenePoint(renderedScene, geometry.end)
               if (!start || !end) return null
               const active = orientationDraft?.edge === edge
+              const hovered = hoveredOrientationEdge === edge
+              const color = active ? PROPOSED : hovered ? CONFIRMED : '#a8b3b9'
               return (
                 <Arrow
                   key={`orientation-edge-${edge}`}
                   points={flattenPoints([start, end])}
-                  stroke={active ? PROPOSED : SELECTED}
-                  fill={active ? PROPOSED : SELECTED}
-                  opacity={active ? 1 : 0.72}
-                  strokeWidth={(active ? 3 : 1.7) / view.scale}
-                  pointerLength={10.5 / view.scale}
-                  pointerWidth={10.5 / view.scale}
-                  hitStrokeWidth={14 / view.scale}
+                  stroke={color}
+                  fill={color}
+                  opacity={active ? 1 : 0.86}
+                  strokeWidth={(active ? 4 : 3) / view.scale}
+                  pointerLength={13 / view.scale}
+                  pointerWidth={13 / view.scale}
+                  hitStrokeWidth={20 / view.scale}
+                  onMouseEnter={() => setHoveredOrientationEdge(edge)}
+                  onMouseLeave={() => setHoveredOrientationEdge(undefined)}
                   onClick={(event) => {
                     event.cancelBubble = true
                     setOrientationEdge(edge)
@@ -1253,14 +1372,14 @@ export function EditorCanvas() {
                 scale={view.scale}
               />
             ))}
-          {fullCameraSolved && visualizations.anchorMarker && anchorFace && (
+          {visualizations.anchorMarker && anchorFace && (
             <AnchorGizmo
               scene={sceneForRendering}
               face={anchorFace}
               scale={view.scale}
             />
           )}
-          {fullCameraSolved && visualizations.axisGizmo && anchorFace && (
+          {visualizations.axisGizmo && anchorFace && (
             <GlobalAxisGizmo
               scene={sceneForRendering}
               face={anchorFace}
@@ -1493,6 +1612,105 @@ export function EditorCanvas() {
           </Layer>
         )}
       </Stage>
+      {orientationDraft && orientationFace && orientationPopupPosition && (
+        <div
+          className="orientation-face-popup"
+          role="dialog"
+          aria-label={
+            orientationDraft.mode === 'up'
+              ? 'Determine world up'
+              : 'Confirm horizontal orientation'
+          }
+          style={orientationPopupPosition}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {orientationDraft.mode === 'up' && !orientationDraft.surfaceKind && (
+            <>
+              <div
+                className="orientation-face-popup-heading"
+                title="Drag to move"
+                onPointerDown={startOrientationPopupDrag}
+                onPointerMove={moveOrientationPopup}
+                onPointerUp={stopOrientationPopupDrag}
+                onPointerCancel={stopOrientationPopupDrag}
+              >
+                <strong>What kind of face is this?</strong>
+                <span>This establishes vertical UP.</span>
+              </div>
+              <div className="orientation-choice-grid three">
+                {(['top', 'bottom', 'side'] as OrientationSurfaceKind[]).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => setOrientationSurfaceKind(kind)}
+                  >
+                    {kind === 'top' ? 'Top' : kind === 'bottom' ? 'Bottom' : 'Side'}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {orientationDraft.mode === 'up' && orientationDraft.surfaceKind === 'side' && (
+            <div
+              className="orientation-face-popup-heading"
+              title="Drag to move"
+              onPointerDown={startOrientationPopupDrag}
+              onPointerMove={moveOrientationPopup}
+              onPointerUp={stopOrientationPopupDrag}
+              onPointerCancel={stopOrientationPopupDrag}
+            >
+              <strong>Which arrow points UP?</strong>
+              <span>Click one of the four gray arrows on the face.</span>
+            </div>
+          )}
+          {orientationDraft.mode === 'horizontal' && !orientationDraft.edge && (
+            <div
+              className="orientation-face-popup-heading"
+              title="Drag to move"
+              onPointerDown={startOrientationPopupDrag}
+              onPointerMove={moveOrientationPopup}
+              onPointerUp={stopOrientationPopupDrag}
+              onPointerCancel={stopOrientationPopupDrag}
+            >
+              <strong>Please pick a horizontal arrow.</strong>
+              <span>This arrow will be used in the next step.</span>
+            </div>
+          )}
+          {orientationDraft.mode === 'horizontal' && orientationDraft.edge && (
+            <>
+              <div
+                className="orientation-face-popup-heading"
+                title="Drag to move"
+                onPointerDown={startOrientationPopupDrag}
+                onPointerMove={moveOrientationPopup}
+                onPointerUp={stopOrientationPopupDrag}
+                onPointerCancel={stopOrientationPopupDrag}
+              >
+                <strong>Which way does this arrow point?</strong>
+                <span>This establishes the horizontal orientation.</span>
+              </div>
+              <div className="orientation-choice-grid horizontal">
+                {horizontalDirections.map(({ direction, label }) => (
+                  <button
+                    key={direction}
+                    type="button"
+                    onClick={() => setOrientationHorizontalDirection(direction)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            className="orientation-popup-cancel"
+            onClick={cancelOrientation}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {draftGridSize && draftControlPosition && (
         <div
           className="plane-size-control"
@@ -1599,9 +1817,13 @@ export function EditorCanvas() {
           <strong>
             {!orientationDraft?.faceId
               ? 'Click a reference face'
-              : !orientationDraft.edge
-                ? 'Click a directed edge on the reference face'
-                : 'Label the face and edge in World orientation'}
+              : orientationDraft.mode === 'up'
+                ? orientationDraft.surfaceKind === 'side'
+                  ? 'Click the arrow that points world UP'
+                  : 'Choose Top, Bottom, or Side in the face popup'
+                : !orientationDraft.edge
+                  ? 'Click a horizontal arrow on the reference face'
+                  : 'Name the arrow direction in the face popup'}
           </strong>
         )}
       </div>

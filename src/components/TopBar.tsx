@@ -8,12 +8,11 @@ import {
   ImagePlus,
 } from 'lucide-react'
 import type { EditorStep } from '../domain/types'
-import { isAxisMappingComplete } from '../domain/geometry'
 import type { ProjectSummary } from '../storage/db'
 import { useEditorStore } from '../store/editorStore'
 
-// Geometry remains the gate for evidence and export: a full camera, anchor,
-// and confirmed world orientation are required before those stages unlock.
+// Navigation stays available so each workspace can explain its own missing
+// prerequisites instead of hiding the next stage of the workflow.
 const steps: Array<{
   id: EditorStep
   label: string
@@ -40,12 +39,7 @@ export function TopBar({
 }: TopBarProps) {
   const step = useEditorStore((state) => state.step)
   const setStep = useEditorStore((state) => state.setStep)
-  const document = useEditorStore((state) => state.document)
   const activeProject = projects.find((project) => project.id === activeProjectId)
-  const geometryReady =
-    document.scene.projection?.kind === 'camera' &&
-    document.anchorFaceId !== null &&
-    isAxisMappingComplete(document.scene.axisMapping)
 
   return (
     <header className="topbar">
@@ -65,10 +59,7 @@ export function TopBar({
             className={step === id ? 'workflow-step active' : 'workflow-step'}
             onClick={() => setStep(id)}
             type="button"
-            disabled={
-              !activeProjectId ||
-              ((id === 'faces' || id === 'export') && !geometryReady)
-            }
+            disabled={!activeProjectId}
           >
             <Icon size={15} />
             <span>{label}</span>

@@ -1,15 +1,19 @@
 import { create } from 'zustand'
 import {
-  axisMappingFromReferences,
+  automaticAxisMappingForUp,
+  axisMappingFromUpAndHorizontal,
   blockCoordinateForFace,
-  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
   initialCameraForPlanarExtrusion,
   isAxisMappingComplete,
+  isWorldUpResolved,
+  localUpForSurfaceKind,
+  localVectorForWorld,
   mappedAnchorOffset,
+  mappedVector,
   meshEdgeKey,
   negate3,
   outerEdgeForExtrusion,
@@ -35,6 +39,7 @@ import type {
   FaceEvidence,
   MeshFace,
   OrientationDraft,
+  OrientationSurfaceKind,
   Point2,
   Point3,
   ScannerSettings,
@@ -244,9 +249,9 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
     cudaTileSize: { ...defaults.cudaTileSize, ...normalized.scanner.cudaTileSize },
   }
-  normalized.scanner.compassResolved = isAxisMappingComplete(
-    normalized.scene.axisMapping,
-  )
+  normalized.scanner.compassResolved =
+    Boolean(normalized.scanner.compassResolved) &&
+    isAxisMappingComplete(normalized.scene.axisMapping)
   return normalized
 }
 
@@ -366,12 +371,12 @@ interface EditorState {
   deleteFace: (faceId: string) => void
   deleteSelectedFaces: () => void
   flipSelectedFaces: () => void
-  startOrientation: () => void
+  startUpOrientation: () => void
+  startHorizontalOrientation: () => void
   setOrientationFace: (faceId: string) => void
-  setOrientationFaceDirection: (direction: FaceDirection) => void
+  setOrientationSurfaceKind: (kind: OrientationSurfaceKind) => void
   setOrientationEdge: (edge: FaceEdge) => void
-  setOrientationEdgeDirection: (direction: FaceDirection) => void
-  confirmOrientation: () => void
+  setOrientationHorizontalDirection: (direction: FaceDirection) => void
   cancelOrientation: () => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
@@ -419,9 +424,18 @@ function removeFaces(document: EditorDocument, ids: Set<string>): void {
 function applyAxisMapping(
   document: EditorDocument,
   mapping: AxisMapping,
+  compassResolved: boolean,
 ): void {
+  const mappingChanged = (['a', 'b', 'c'] as const).some(
+    (axis) => document.scene.axisMapping[axis] !== mapping[axis],
+  )
   document.scene.axisMapping = mapping
-  document.scanner.compassResolved = isAxisMappingComplete(mapping)
+  document.scanner.compassResolved =
+    compassResolved && isAxisMappingComplete(mapping)
+  document.scanner.directions = compassResolved
+    ? [0]
+    : [...searchDirections]
+  if (!mappingChanged) return
   // World direction determines face support, crop orientation, and variant
   // meaning. Any mapping change invalidates all derived analysis together.
   document.evidence.forEach((entry) => {
@@ -444,22 +458,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   hoveredEvidenceId: null,
   past: [],
   future: [],
-  setStep: (step) =>
-    set((state) => {
-      const fullCamera = state.document.scene.projection?.kind === 'camera'
-      const ready =
-        fullCamera &&
-        state.document.anchorFaceId !== null &&
-        isAxisMappingComplete(state.document.scene.axisMapping)
-      return (step === 'faces' || step === 'export') && !ready
-        ? state
-        : { step }
-    }),
+  setStep: (step) => set({ step }),
   setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) =>
     set((state) => {
-      const fullCamera = state.document.scene.projection?.kind === 'camera'
-      if ((tool === 'anchor' || tool === 'orient') && !fullCamera) return state
+      const hasProjection = state.document.scene.projection !== null
+      if ((tool === 'anchor' || tool === 'orient') && !hasProjection) return state
       return {
         tool:
           tool === 'extrude' && state.selectedEdges.length === 0
@@ -566,7 +570,7 @@ export const useEditorStore = create<EditorState>((set) => ({
             crypto.randomUUID(),
           )
           document.evidence = []
-          document.anchorFaceId = null
+          document.anchorFaceId = document.scene.faces[0]?.id ?? null
           document.scanner.compassResolved = false
         }),
         selectedEdges: [],
@@ -675,24 +679,7 @@ export const useEditorStore = create<EditorState>((set) => ({
               })
             })
             document.scene.projection = planarCamera.projection
-            if (document.scene.projection?.kind === 'camera') {
-              document.scene.faces.forEach((face) => {
-                face.normal = cameraFacingNormal(document.scene, face)
-              })
-              document.evidence.forEach((entry) => {
-                const face = document.scene.faces.find(
-                  (candidate) => candidate.id === entry.faceId,
-                )
-                if (!face) return
-                entry.latticeCoordinate = blockCoordinateForFace(face)
-                entry.localNormal = face.normal
-                entry.selectedVariant = undefined
-                entry.reviewStatus = 'unlabeled'
-                entry.scores = undefined
-                entry.confidence = undefined
-              })
-              document.anchorFaceId ??= document.scene.faces[0]?.id ?? null
-            }
+            document.anchorFaceId ??= document.scene.faces[0]?.id ?? null
           }
         }),
         selectedEdges: outerEdges,
@@ -756,20 +743,43 @@ export const useEditorStore = create<EditorState>((set) => ({
           })
       })
     }),
-  startOrientation: () =>
+  startUpOrientation: () =>
+    set((state) => {
+      if (!state.document.scene.projection || state.document.scene.faces.length === 0) {
+        return state
+      }
+      const selectedFaceIds = state.selectedEvidenceIds.filter((id) =>
+        state.document.scene.faces.some((face) => face.id === id),
+      )
+      return {
+        orientationDraft: {
+          mode: 'up',
+          faceId: selectedFaceIds.length === 1 ? selectedFaceIds[0] : null,
+          surfaceKind: null,
+          edge: null,
+        },
+        selectedEdges: [],
+        selectedEvidenceIds: [],
+        tool: 'orient' as EditorTool,
+      }
+    }),
+  startHorizontalOrientation: () =>
     set((state) => {
       if (
-        state.document.scene.projection?.kind !== 'camera' ||
-        !state.document.anchorFaceId
+        !state.document.scene.projection ||
+        !isWorldUpResolved(state.document.scene.axisMapping)
       ) {
         return state
       }
+      const selectedFaceIds = state.selectedEvidenceIds.filter((id) =>
+        state.document.scene.faces.some((face) => face.id === id),
+      )
       return {
         orientationDraft: {
-          faceId: null,
-          faceDirection: null,
+          mode: 'horizontal',
+          faceId: selectedFaceIds.length === 1 ? selectedFaceIds[0] : null,
+          surfaceKind: null,
           edge: null,
-          edgeDirection: null,
         },
         selectedEdges: [],
         selectedEvidenceIds: [],
@@ -782,75 +792,96 @@ export const useEditorStore = create<EditorState>((set) => ({
       state.document.scene.faces.some((face) => face.id === faceId)
         ? {
             orientationDraft: {
+              mode: state.orientationDraft.mode,
               faceId,
-              faceDirection: null,
+              surfaceKind: null,
               edge: null,
-              edgeDirection: null,
             },
           }
         : state,
     ),
-  setOrientationFaceDirection: (faceDirection) =>
-    set((state) =>
-      state.orientationDraft?.faceId
-        ? {
-            orientationDraft: {
-              ...state.orientationDraft,
-              faceDirection,
-              edgeDirection: null,
-            },
-          }
-        : state,
-    ),
-  setOrientationEdge: (edge) =>
-    set((state) =>
-      state.orientationDraft?.faceId
-        ? {
-            orientationDraft: {
-              ...state.orientationDraft,
-              edge,
-              edgeDirection: null,
-            },
-          }
-        : state,
-    ),
-  setOrientationEdgeDirection: (edgeDirection) =>
-    set((state) =>
-      state.orientationDraft?.faceId && state.orientationDraft.edge
-        ? {
-            orientationDraft: {
-              ...state.orientationDraft,
-              edgeDirection,
-            },
-          }
-        : state,
-    ),
-  confirmOrientation: () =>
+  setOrientationSurfaceKind: (surfaceKind) =>
     set((state) => {
       const draft = state.orientationDraft
-      if (
-        !draft?.faceId ||
-        !draft.faceDirection ||
-        !draft.edge ||
-        !draft.edgeDirection
-      ) {
+      if (draft?.mode !== 'up' || !draft.faceId) return state
+      const face = state.document.scene.faces.find(
+        (candidate) => candidate.id === draft.faceId,
+      )
+      if (!face) return state
+      if (surfaceKind === 'side') {
+        return {
+          orientationDraft: { ...draft, surfaceKind, edge: null },
+        }
+      }
+      const localUp = localUpForSurfaceKind(face, surfaceKind)
+      const mapping = localUp
+        ? automaticAxisMappingForUp(state.document.scene, face, localUp)
+        : undefined
+      if (!mapping) return state
+      return {
+        ...mutateDocument(state, (document) => {
+          applyAxisMapping(document, mapping, false)
+        }),
+        orientationDraft: null,
+        tool: 'select' as EditorTool,
+      }
+    }),
+  setOrientationEdge: (edge) =>
+    set((state) => {
+      const draft = state.orientationDraft
+      if (!draft?.faceId) return state
+      const face = state.document.scene.faces.find(
+        (candidate) => candidate.id === draft.faceId,
+      )
+      if (!face) return state
+      const arrow = orientationEdgeGeometry(face, edge)
+      if (draft.mode === 'horizontal') {
+        const world = mappedVector(
+          state.document.scene.axisMapping,
+          arrow.direction,
+        )
+        if (!world || world.y !== 0) return state
+        return { orientationDraft: { ...draft, edge } }
+      }
+      if (draft.surfaceKind !== 'side') return state
+      const mapping = automaticAxisMappingForUp(
+        state.document.scene,
+        face,
+        arrow.direction,
+      )
+      if (!mapping) return state
+      return {
+        ...mutateDocument(state, (document) => {
+          applyAxisMapping(document, mapping, false)
+        }),
+        orientationDraft: null,
+        tool: 'select' as EditorTool,
+      }
+    }),
+  setOrientationHorizontalDirection: (horizontalDirection) =>
+    set((state) => {
+      const draft = state.orientationDraft
+      if (draft?.mode !== 'horizontal' || !draft.faceId || !draft.edge) {
         return state
       }
       const face = state.document.scene.faces.find(
         (candidate) => candidate.id === draft.faceId,
       )
-      if (!face) return state
-      const edge = orientationEdgeGeometry(face, draft.edge)
-      const mapping = axisMappingFromReferences(
-        face.normal,
-        draft.faceDirection,
-        edge.direction,
-        draft.edgeDirection,
+      const localUp = localVectorForWorld(
+        state.document.scene.axisMapping,
+        { x: 0, y: 1, z: 0 },
+      )
+      if (!face || !localUp) return state
+      const arrow = orientationEdgeGeometry(face, draft.edge)
+      const mapping = axisMappingFromUpAndHorizontal(
+        localUp,
+        arrow.direction,
+        horizontalDirection,
       )
       if (!mapping) return state
       return {
         ...mutateDocument(state, (document) => {
-          applyAxisMapping(document, mapping)
+          applyAxisMapping(document, mapping, true)
         }),
         orientationDraft: null,
         tool: 'select' as EditorTool,
@@ -860,7 +891,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set({ orientationDraft: null, tool: 'select' as EditorTool }),
   setAnchorFace: (faceId) =>
     set((state) => {
-      if (state.document.scene.projection?.kind !== 'camera') return state
+      if (!state.document.scene.projection) return state
       if (!state.document.scene.faces.some((face) => face.id === faceId)) {
         return state
       }

@@ -505,6 +505,86 @@ button:disabled {
   transform: translate(-50%, -50%);
 }
 
+.orientation-face-popup {
+  position: absolute;
+  z-index: 5;
+  width: 272px;
+  padding: 10px;
+  color: var(--text);
+  background: rgba(13, 20, 24, 0.96);
+  border: 1px solid #4b5961;
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+}
+
+.orientation-face-popup-heading strong,
+.orientation-face-popup-heading span {
+  display: block;
+}
+
+.orientation-face-popup-heading {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.orientation-face-popup-heading:active {
+  cursor: grabbing;
+}
+
+.orientation-face-popup-heading strong {
+  color: #e1e8eb;
+  font-size: 11px;
+}
+
+.orientation-face-popup-heading span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.orientation-choice-grid {
+  margin-top: 9px;
+  display: grid;
+  gap: 6px;
+}
+
+.orientation-choice-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.orientation-choice-grid.horizontal {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.orientation-choice-grid button,
+.orientation-popup-cancel {
+  min-height: 30px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 600 9px var(--mono);
+  cursor: pointer;
+}
+
+.orientation-choice-grid button:hover {
+  color: #071014;
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.orientation-popup-cancel {
+  width: 100%;
+  min-height: 26px;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
 .plane-size-heading,
 .plane-size-fields {
   display: flex;
@@ -738,8 +818,7 @@ button:disabled {
 
 .calibration-workflow,
 .orientation-workflow,
-.orientation-empty,
-.orientation-summary {
+.orientation-empty {
   display: grid;
   gap: 10px;
 }
@@ -840,20 +919,56 @@ button:disabled {
   font-weight: 600;
 }
 
+/* The workflow copy and its call to action form one compact unit. */
+.orientation-empty .primary-button.full {
+  margin-top: 0;
+}
+
+.orientation-step-section + .orientation-step-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.orientation-step-section > h4 {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #c8d2d7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.orientation-step-section > h4 > span:first-child {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  border: 1px solid rgba(83, 230, 165, 0.34);
+  border-radius: 50%;
+  font: 700 9px var(--mono);
+}
+
+.orientation-step-label {
+  color: #d8e0e4;
+}
+
+.orientation-step-status {
+  margin-left: auto;
+}
+
+.geometry-actions .inspector-actions {
+  margin-top: 0;
+}
+
 .geometry-part + .geometry-part {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--border-soft);
 }
 
-.orientation-summary > div,
-.orientation-derived > div {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-
-.orientation-summary span,
 .orientation-derived span {
   min-height: 34px;
   display: grid;
@@ -868,9 +983,28 @@ button:disabled {
   font: 700 10px var(--mono);
 }
 
-.orientation-summary b,
 .orientation-derived b {
   color: var(--accent);
+}
+
+.orientation-status {
+  display: grid;
+  gap: 7px;
+}
+
+.orientation-status p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.orientation-step-status.confirmed {
+  color: var(--accent);
+}
+
+.orientation-step-status.guessed {
+  color: var(--amber);
 }
 
 .orientation-derived {
@@ -887,7 +1021,6 @@ button:disabled {
   font-size: 9px;
 }
 
-.hint-card,
 .todo-card {
   margin-top: 10px;
   padding: 11px;
@@ -1056,7 +1189,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.hint-card,
 .todo-card {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.018);

@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('top bar project actions', () => {
-  it('keeps Faces and Export locked for a partial perspective solve', () => {
+  it('keeps Faces and Export accessible for a planar perspective solve', () => {
     useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
     useEditorStore.getState().addBaseFaces([
       { x: 40, y: 100 },
@@ -49,9 +49,12 @@ describe('top bar project actions', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /Faces/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /Export/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Faces/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Export/ })).toBeEnabled()
     expect(screen.getByRole('button', { name: /Geometry/ })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /Faces/ }))
+    expect(useEditorStore.getState().step).toBe('faces')
   })
 
   it('opens an image from the former privacy-badge position', () => {

@@ -131,11 +131,14 @@ export interface SceneGeometry {
   axisMapping: AxisMapping
 }
 
+export type OrientationMode = 'up' | 'horizontal'
+export type OrientationSurfaceKind = 'top' | 'bottom' | 'side'
+
 export interface OrientationDraft {
+  mode: OrientationMode
   faceId: string | null
-  faceDirection: FaceDirection | null
+  surfaceKind: OrientationSurfaceKind | null
   edge: FaceEdge | null
-  edgeDirection: FaceDirection | null
 }
 
 export interface CandidateScore {

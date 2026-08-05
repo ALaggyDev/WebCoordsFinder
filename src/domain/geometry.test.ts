@@ -2,6 +2,8 @@
 // mesh construction, crop orientation, and right-handed axis completion.
 import { describe, expect, it } from 'vitest'
 import {
+  automaticAxisMappingForUp,
+  axisMappingFromUpAndHorizontal,
   axisMappingFromReferences,
   blockCoordinateForFace,
   cameraFitDiagnostics,
@@ -18,6 +20,8 @@ import {
   fitCameraProjection,
   fitHomography,
   isAxisMappingComplete,
+  isWorldUpResolved,
+  localVectorForWorld,
   mappedVector,
   negate3,
   orientationEdgeGeometry,
@@ -59,11 +63,55 @@ describe('global perspective geometry', () => {
         (edge) => orientationEdgeGeometry(face, edge).direction,
       ),
     ).toEqual([
+      { x: 0, y: -1, z: 0 },
       { x: 1, y: 0, z: 0 },
       { x: 0, y: 1, z: 0 },
       { x: -1, y: 0, z: 0 },
-      { x: 0, y: -1, z: 0 },
     ])
+  })
+
+  it('chooses one stable screen-forward horizontal completion after UP is known', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: { x: 0, y: 0, z: 0 },
+        uAxis: { x: 1, y: 0, z: 0 },
+        vAxis: { x: 0, y: 1, z: 0 },
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 1, y: 1, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    const mapping = automaticAxisMappingForUp(
+      scene,
+      face,
+      { x: 0, y: 0, z: 1 },
+    )!
+    expect(mapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    expect(isWorldUpResolved(mapping)).toBe(true)
+    expect(localVectorForWorld(mapping, { x: 0, y: 1, z: 0 })).toEqual({
+      x: 0,
+      y: 0,
+      z: 1,
+    })
+  })
+
+  it('completes horizontal orientation from UP and one horizontal arrow', () => {
+    expect(
+      axisMappingFromUpAndHorizontal(
+        { x: 0, y: 0, z: 1 },
+        { x: 1, y: 0, z: 0 },
+        'west',
+      ),
+    ).toEqual({ a: 'x-', b: 'z-', c: 'y+' })
   })
 
   it.each([

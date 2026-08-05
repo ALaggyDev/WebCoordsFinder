@@ -58,12 +58,42 @@ describe('unit-face geometry', () => {
     expect(state.document.scene.projection?.kind).toBe('planar')
     expect(state.document.scene.observations).toHaveLength(4)
     expect(state.document.scene.faces).toHaveLength(24)
-    expect(state.document.anchorFaceId).toBeNull()
+    expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
     expect(state.tool).toBe('select')
     expect(state.past).toHaveLength(1)
     expect(normalizeEditorDocument(state.document).scene.projection?.kind).toBe(
       'planar',
     )
+  })
+
+  it('anchors a block directly on a planar solve', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+    const face = useEditorStore.getState().document.scene.faces[0]
+
+    useEditorStore.getState().setTool('anchor')
+    useEditorStore.getState().setAnchorFace(face.id)
+
+    expect(useEditorStore.getState().document.anchorFaceId).toBe(face.id)
+    expect(useEditorStore.getState().tool).toBe('select')
+  })
+
+  it('uses exactly one selected face when starting world orientation', () => {
+    useEditorStore.setState({ document: createTestDocument() })
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+
+    useEditorStore.getState().startUpOrientation()
+
+    expect(useEditorStore.getState().orientationDraft).toMatchObject({
+      mode: 'up',
+      faceId: face.id,
+    })
   })
 
   it('promotes the partial solve through the original outward extrusion gesture', () => {
@@ -79,6 +109,14 @@ describe('unit-face geometry', () => {
       4,
     )
     const face = useEditorStore.getState().document.scene.faces[0]
+    const originalNormals = new Map(
+      useEditorStore
+        .getState()
+        .document.scene.faces.map((candidate) => [
+          candidate.id,
+          structuredClone(candidate.normal),
+        ]),
+    )
     useEditorStore
       .getState()
       .selectEdge({ faceId: face.id, edge: 'top' }, false)
@@ -92,6 +130,12 @@ describe('unit-face geometry', () => {
     expect(state.document.scene.observations).toHaveLength(6)
     expect(state.document.scene.faces).toHaveLength(25)
     expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
+    originalNormals.forEach((normal, faceId) => {
+      expect(
+        state.document.scene.faces.find((candidate) => candidate.id === faceId)
+          ?.normal,
+      ).toEqual(normal)
+    })
     planarAnchors.forEach((anchor) => {
       const projected = projectScenePoint(state.document.scene, anchor.lattice)!
       expect(projected.x).toBeCloseTo(anchor.image.x, 6)
@@ -379,37 +423,35 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().past).toHaveLength(1)
   })
 
-  it('derives orientation from a face and edge and invalidates variants once', () => {
+  it('determines UP from a top face and installs a stable automatic horizontal frame', () => {
     const document = structuredClone(useEditorStore.getState().document)
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
     document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
     useEditorStore.setState({ document })
     const [first, second] = document.scene.faces
-    useEditorStore.getState().setAnchorFace(first.id)
     useEditorStore.getState().selectFace(first.id, false)
     useEditorStore.getState().selectFace(second.id, true)
-    useEditorStore.getState().setBlockForSelection('dirt')
     const selectedId = useEditorStore.getState().selectedEvidenceIds[0]
     useEditorStore.getState().setVariant(selectedId, 2)
     const historyBeforeOrientation = useEditorStore.getState().past.length
 
-    useEditorStore.getState().startOrientation()
+    useEditorStore.getState().startUpOrientation()
     useEditorStore.getState().setOrientationFace(first.id)
-    useEditorStore.getState().setOrientationFaceDirection('up')
-    useEditorStore.getState().setOrientationEdge('top')
-    useEditorStore.getState().setOrientationEdgeDirection('west')
-    useEditorStore.getState().confirmOrientation()
+    useEditorStore.getState().setOrientationSurfaceKind('top')
 
-    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-      a: 'x-',
-      b: 'z-',
-      c: 'y+',
+    const state = useEditorStore.getState()
+    expect(state.document.scene.axisMapping).toEqual({
+      a: 'x+', b: 'z+', c: 'y+',
     })
+    expect(state.document.scanner.compassResolved).toBe(false)
+    expect(state.document.scanner.directions).toEqual([0, 90, 180, 270])
     expect(
       useEditorStore
         .getState()
         .document.evidence.every(
           (entry) =>
-            entry.blockId === 'dirt' &&
+            entry.blockId === 'deepslate' &&
             entry.reviewStatus === 'unlabeled' &&
             entry.selectedVariant === undefined,
         ),
@@ -417,32 +459,80 @@ describe('unit-face geometry', () => {
     expect(useEditorStore.getState().past).toHaveLength(
       historyBeforeOrientation + 1,
     )
-    expect(useEditorStore.getState().orientationDraft).toBeNull()
-    expect(useEditorStore.getState().tool).toBe('select')
+    expect(state.orientationDraft).toBeNull()
+    expect(state.tool).toBe('select')
   })
 
-  it('rejects an edge direction parallel to the reference face normal', () => {
+  it('determines UP from a side-face arrow', () => {
     const document = structuredClone(useEditorStore.getState().document)
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
     document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
     useEditorStore.setState({ document })
     const face = document.scene.faces[0]
-    useEditorStore.getState().setAnchorFace(face.id)
-    useEditorStore.getState().startOrientation()
+    useEditorStore.getState().startUpOrientation()
     useEditorStore.getState().setOrientationFace(face.id)
-    useEditorStore.getState().setOrientationFaceDirection('up')
+    useEditorStore.getState().setOrientationSurfaceKind('side')
     useEditorStore.getState().setOrientationEdge('top')
-    useEditorStore.getState().setOrientationEdgeDirection('down')
+
+    const mapping = useEditorStore.getState().document.scene.axisMapping
+    expect(mapping.b).toBe('y-')
+    expect(useEditorStore.getState().orientationDraft).toBeNull()
+  })
+
+  it('determines UP from a bottom face by reversing its visible normal', () => {
+    const document = structuredClone(useEditorStore.getState().document)
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
+    document.scene.faces[0].normal = { x: 0, y: 0, z: 1 }
+    useEditorStore.setState({ document })
+    const face = document.scene.faces[0]
+
+    useEditorStore.getState().startUpOrientation()
+    useEditorStore.getState().setOrientationFace(face.id)
+    useEditorStore.getState().setOrientationSurfaceKind('bottom')
+
+    expect(useEditorStore.getState().document.scene.axisMapping.c).toBe('y-')
+    expect(useEditorStore.getState().orientationDraft).toBeNull()
+  })
+
+  it('confirms a horizontal arrow without invalidating evidence when the mapping is unchanged', () => {
+    const state = useEditorStore.getState()
+    const face = state.document.scene.faces[0]
+    state.selectFace(face.id, false)
+    state.setBlockForSelection('dirt')
+    state.setVariant(face.id, 2)
     const historyBefore = useEditorStore.getState().past.length
 
-    useEditorStore.getState().confirmOrientation()
+    useEditorStore.getState().startHorizontalOrientation()
+    useEditorStore.getState().setOrientationFace(face.id)
+    useEditorStore.getState().setOrientationEdge('right')
+    useEditorStore.getState().setOrientationHorizontalDirection('east')
 
     expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
       a: 'x+',
       b: 'z+',
       c: 'y+',
     })
-    expect(useEditorStore.getState().past).toHaveLength(historyBefore)
-    expect(useEditorStore.getState().orientationDraft).not.toBeNull()
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+    expect(useEditorStore.getState().document.scanner.directions).toEqual([0])
+    expect(useEditorStore.getState().document.evidence[0]).toMatchObject({
+      blockId: 'dirt',
+      selectedVariant: 2,
+      reviewStatus: 'confirmed',
+    })
+    expect(useEditorStore.getState().past).toHaveLength(historyBefore + 1)
+  })
+
+  it('rejects a vertical arrow during side-face horizontal confirmation', () => {
+    const side = useEditorStore
+      .getState()
+      .document.scene.faces.find((face) => face.normal.y !== 0)!
+    useEditorStore.getState().startHorizontalOrientation()
+    useEditorStore.getState().setOrientationFace(side.id)
+    useEditorStore.getState().setOrientationEdge('top')
+
+    expect(useEditorStore.getState().orientationDraft?.edge).toBeNull()
   })
 
   it('rejects unsigned legacy axis labels', () => {
@@ -454,6 +544,14 @@ describe('unit-face geometry', () => {
     expect(() => normalizeEditorDocument(legacy)).toThrow(
       'This project uses an unsupported document schema.',
     )
+  })
+
+  it('preserves an automatic complete mapping without marking compass confirmed', () => {
+    const document = createTestDocument()
+    document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+    document.scanner.compassResolved = false
+
+    expect(normalizeEditorDocument(document).scanner.compassResolved).toBe(false)
   })
 
   it('rejects malformed planar projections without their lattice basis', () => {

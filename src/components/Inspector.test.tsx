@@ -36,7 +36,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('partial perspective inspector', () => {
-  it('shows the resumable partial state without exposing 3D-only controls', () => {
+  it('shows a planar solve as ready without forcing 3D extrusion', () => {
     useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
     useEditorStore.getState().addBaseFaces(
       [
@@ -57,13 +57,15 @@ describe('partial perspective inspector', () => {
       />,
     )
 
-    expect(screen.getByText('Partial 2D perspective')).toBeInTheDocument()
-    expect(screen.getByText(/Saved and resumable/)).toBeInTheDocument()
-    expect(screen.getByText('Partial 2D perspective').closest('.geometry-status'))
-      .toHaveClass('partial')
-    expect(screen.queryByText('World orientation')).not.toBeInTheDocument()
-    expect(screen.queryByText('Anchor selected')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Extrude selected/ })).toBeDisabled()
+    expect(screen.getByText('Planar perspective solved')).toBeInTheDocument()
+    expect(screen.getByText('Planar perspective solved').closest('.geometry-status'))
+      .toHaveClass('resolved')
+    expect(screen.getByText('World Orientation')).toBeInTheDocument()
+    expect(screen.getByText('World UP')).toBeInTheDocument()
+    expect(screen.getByText('Horizontal Orientation')).toBeInTheDocument()
+    expect(screen.getByText('Anchor selected')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Determine world UP' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Extrude edges (E)' })).toBeDisabled()
   })
 })
 
@@ -225,7 +227,7 @@ describe('face inspector batch selection', () => {
 })
 
 describe('geometry deletion', () => {
-  it('derives world orientation from a labeled face and directed edge', () => {
+  it('determines UP first and exposes optional horizontal confirmation', () => {
     const document = createTestDocument()
     document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
     document.scanner.compassResolved = false
@@ -241,35 +243,26 @@ describe('geometry deletion', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set world orientation' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Determine world UP' }))
     act(() => {
       useEditorStore
         .getState()
         .setOrientationFace(document.scene.faces[0].id)
     })
 
-    fireEvent.change(screen.getByLabelText('Reference face world direction'), {
-      target: { value: 'up' },
-    })
     act(() => {
-      useEditorStore.getState().setOrientationEdge('top')
-    })
-    fireEvent.change(screen.getByLabelText('Reference edge world direction'), {
-      target: { value: 'east' },
+      useEditorStore.getState().setOrientationSurfaceKind('top')
     })
 
-    expect(screen.getByText('Derived right-handed orientation')).toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Confirm orientation' }),
-    )
-
-    expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
-      a: 'x+',
-      b: 'z+',
-      c: 'y+',
-    })
-    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
-    expect(screen.getByRole('button', { name: 'Change orientation' })).toBeInTheDocument()
+    expect(useEditorStore.getState().document.scene.axisMapping.c).toBe('y+')
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(false)
+    expect(useEditorStore.getState().document.scanner.directions).toEqual([
+      0, 90, 180, 270,
+    ])
+    expect(screen.getByLabelText('World UP established')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Change horizontal orientation' }),
+    ).toBeInTheDocument()
   })
 
   it('deletes all selected faces from the geometry inspector', () => {
@@ -290,7 +283,7 @@ describe('geometry deletion', () => {
       screen.queryByRole('button', { name: 'Flip visible side' }),
     ).not.toBeInTheDocument()
     fireEvent.click(
-      screen.getByRole('button', { name: 'Delete selected faces' }),
+      screen.getByRole('button', { name: 'Delete faces (X)' }),
     )
 
     expect(

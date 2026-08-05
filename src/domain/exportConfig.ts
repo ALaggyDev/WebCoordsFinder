@@ -6,7 +6,11 @@ import type {
   ValidationResult,
 } from './types'
 import { searchDirections } from './types'
-import { isAxisMappingComplete, mappedAnchorOffset } from './geometry'
+import {
+  isAxisMappingComplete,
+  isWorldUpResolved,
+  mappedAnchorOffset,
+} from './geometry'
 
 // Export rows are derived values: they are anchor-relative and mapped from the
 // screenshot-local lattice into the user-confirmed world basis.
@@ -71,8 +75,8 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 
-  if (document.scene.projection?.kind !== 'camera') {
-    errors.push('Solve the full 3D perspective before export.')
+  if (!document.scene.projection) {
+    errors.push('Create perspective geometry before export.')
   }
   if (
     !document.anchorFaceId ||
@@ -81,10 +85,10 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     errors.push('Select an anchor block before export.')
   }
   if (
-    !document.scanner.compassResolved ||
+    !isWorldUpResolved(document.scene.axisMapping) ||
     !isAxisMappingComplete(document.scene.axisMapping)
   ) {
-    errors.push('Set a valid world orientation before export.')
+    errors.push('Determine which way is up before export.')
   }
   if (
     document.scanner.directions.length === 0 ||

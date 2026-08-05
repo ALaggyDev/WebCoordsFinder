@@ -184,14 +184,37 @@ describe('CoordsFinder export', () => {
     )
   })
 
-  it('blocks export while compass orientation is unresolved', () => {
+  it('allows export with an automatic horizontal orientation', () => {
     const document = documentWith([
       evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),
     ])
     document.scanner.compassResolved = false
 
-    expect(validateForExport(document).errors).toContain(
-      'Set a valid world orientation before export.',
+    expect(validateForExport(document).errors).not.toContain(
+      'Determine which way is up before export.',
+    )
+  })
+
+  it('allows a planar perspective to export coplanar evidence', () => {
+    const document = documentWith([
+      evidence('top', { x: 0, y: 0, z: 0 }, 4, 0),
+    ])
+    document.scene.projection = {
+      kind: 'planar',
+      origin: { x: 0, y: 0, z: 0 },
+      uAxis: { x: 1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 1, z: 0 },
+      cornerLattice: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 1, y: 1, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ],
+      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    }
+
+    expect(validateForExport(document).errors).not.toContain(
+      'Create perspective geometry before export.',
     )
   })
 })

@@ -30,9 +30,6 @@ export function ToolRail() {
   const hasGeometry = useEditorStore(
     (state) => state.document.scene.projection !== null,
   )
-  const hasFullCamera = useEditorStore(
-    (state) => state.document.scene.projection?.kind === 'camera',
-  )
   const hasSelectedEdges = useEditorStore((state) => state.selectedEdges.length > 0)
   const hasSelectedFaces = useEditorStore(
     (state) => state.selectedEvidenceIds.length > 0,
@@ -52,7 +49,7 @@ export function ToolRail() {
               // connected edge selection.
               (id === 'plane' && hasGeometry) ||
               (id === 'select' && !hasGeometry) ||
-              (id === 'anchor' && !hasFullCamera) ||
+              (id === 'anchor' && !hasGeometry) ||
               (id === 'extrude' && !hasSelectedEdges)
             }
             title={`${label} (${shortcut})`}

@@ -7,6 +7,7 @@ import type {
   FaceDirection,
   Matrix3x4,
   MeshFace,
+  OrientationSurfaceKind,
   PlanarProjection,
   Point2,
   Point3,
@@ -221,7 +222,7 @@ export function compatibleEdgeDirections(
   )
 }
 
-function cardinalAssignment(
+function axisAssignment(
   local: Point3,
   worldDirection: FaceDirection,
 ): { axis: AbstractAxis; label: WorldAxisLabel } | undefined {
@@ -253,8 +254,8 @@ export function axisMappingFromReferences(
   localEdgeDirection: Point3,
   edgeDirection: FaceDirection,
 ): AxisMapping | undefined {
-  const normal = cardinalAssignment(localNormal, faceDirection)
-  const edge = cardinalAssignment(localEdgeDirection, edgeDirection)
+  const normal = axisAssignment(localNormal, faceDirection)
+  const edge = axisAssignment(localEdgeDirection, edgeDirection)
   if (!normal || !edge || normal.axis === edge.axis) return undefined
 
   const mapping: AxisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
@@ -262,6 +263,119 @@ export function axisMappingFromReferences(
   mapping[edge.axis] = edge.label
   const completions = validAxisMappingCompletions(mapping)
   return completions.length === 1 ? completions[0] : undefined
+}
+
+export function localVectorForWorld(
+  mapping: AxisMapping,
+  world: Point3,
+): Point3 | undefined {
+  const directions: Point3[] = [
+    { x: 1, y: 0, z: 0 },
+    { x: -1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+    { x: 0, y: -1, z: 0 },
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: -1 },
+  ]
+  return directions.find((direction) => {
+    const mapped = mappedVector(mapping, direction)
+    return mapped !== undefined && same3(mapped, world)
+  })
+}
+
+export function isWorldUpResolved(mapping: AxisMapping): boolean {
+  const completions = validAxisMappingCompletions(mapping)
+  if (completions.length === 0) return false
+  const localUps = completions.map((completion) =>
+    localVectorForWorld(completion, { x: 0, y: 1, z: 0 }),
+  )
+  return (
+    localUps[0] !== undefined &&
+    localUps.every((candidate) =>
+      candidate !== undefined && same3(candidate, localUps[0]!),
+    )
+  )
+}
+
+export function localUpForSurfaceKind(
+  face: MeshFace,
+  kind: OrientationSurfaceKind,
+): Point3 | undefined {
+  if (kind === 'top') return face.normal
+  if (kind === 'bottom') return negate3(face.normal)
+  return undefined
+}
+
+function mappingWithLocalUp(localUp: Point3): AxisMapping | undefined {
+  const up = axisAssignment(localUp, 'up')
+  if (!up) return undefined
+  const partial: AxisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+  partial[up.axis] = up.label
+  return partial
+}
+
+function mappingSortKey(mapping: AxisMapping): string {
+  return `${mapping.a}:${mapping.b}:${mapping.c}`
+}
+
+export function automaticAxisMappingForUp(
+  scene: SceneGeometry,
+  face: MeshFace,
+  localUp: Point3,
+): AxisMapping | undefined {
+  const partial = mappingWithLocalUp(localUp)
+  if (!partial) return undefined
+  const completions = validAxisMappingCompletions(partial)
+  if (completions.length === 0) return undefined
+
+  const center = scale3(
+    faceCornersLattice(face).reduce(
+      (sum, corner) => add3(sum, corner),
+      { x: 0, y: 0, z: 0 },
+    ),
+    0.25,
+  )
+  const origin = projectScenePoint(scene, center)
+  return completions
+    .map((mapping) => {
+      const north = localVectorForWorld(mapping, { x: 0, y: 0, z: -1 })
+      const endpoint = north
+        ? projectScenePoint(scene, add3(center, north))
+        : undefined
+      const dx = origin && endpoint ? endpoint.x - origin.x : 0
+      const dy = origin && endpoint ? endpoint.y - origin.y : 0
+      const length = Math.hypot(dx, dy)
+      // Prefer the completion whose north direction points most toward the top
+      // of the screenshot. Unprojectable/degenerate candidates fall back to a
+      // stable lexical ordering, so the automatic working frame never drifts.
+      return {
+        mapping,
+        forwardScore: length > EPSILON ? dy / length : Number.POSITIVE_INFINITY,
+        lateralScore: length > EPSILON ? Math.abs(dx) / length : 1,
+      }
+    })
+    .sort(
+      (left, right) =>
+        left.forwardScore - right.forwardScore ||
+        left.lateralScore - right.lateralScore ||
+        mappingSortKey(left.mapping).localeCompare(mappingSortKey(right.mapping)),
+    )[0]?.mapping
+}
+
+export function axisMappingFromUpAndHorizontal(
+  localUp: Point3,
+  localHorizontal: Point3,
+  horizontalDirection: FaceDirection,
+): AxisMapping | undefined {
+  if (horizontalDirection === 'up' || horizontalDirection === 'down') {
+    return undefined
+  }
+  return axisMappingFromReferences(
+    localUp,
+    'up',
+    localHorizontal,
+    horizontalDirection,
+  )
 }
 
 export function possibleFacesForLocalNormal(
@@ -972,15 +1086,22 @@ export function orientationEdgeGeometry(
   face: MeshFace,
   edge: FaceEdge,
 ): FaceEdgeGeometry {
-  const geometry = faceEdgeGeometry(face, edge)
-  return edge === 'bottom' || edge === 'left'
-    ? {
-        ...geometry,
-        start: geometry.end,
-        end: geometry.start,
-        direction: negate3(geometry.direction),
-      }
-    : geometry
+  const corners = faceCornersLattice(face)
+  const center = scale3(
+    corners.reduce(
+      (sum, corner) => add3(sum, corner),
+      { x: 0, y: 0, z: 0 },
+    ),
+    0.25,
+  )
+  const boundary = faceEdgeGeometry(face, edge)
+  const midpoint = scale3(add3(boundary.start, boundary.end), 0.5)
+  return {
+    start: center,
+    end: midpoint,
+    direction: scale3(subtract3(midpoint, center), 2),
+    length: 0.5,
+  }
 }
 
 const point3Key = (point: Point3): string => `${point.x},${point.y},${point.z}`
@@ -1440,17 +1561,6 @@ export function faceNormalIndicator(
       y: delta.y / length,
     },
   }
-}
-
-function localVectorForWorld(
-  mapping: AxisMapping,
-  world: Point3,
-): Point3 | undefined {
-  for (const axis of extrusionDirections) {
-    const mapped = mappedVector(mapping, axis)
-    if (mapped && same3(mapped, world)) return axis
-  }
-  return undefined
 }
 
 function orientedFaceCorners(
