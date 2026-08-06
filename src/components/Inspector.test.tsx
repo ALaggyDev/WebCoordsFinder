@@ -70,6 +70,51 @@ describe('partial perspective inspector', () => {
 })
 
 describe('face inspector batch selection', () => {
+  it('reveals grass tint controls for a grass block', () => {
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+    useEditorStore.getState().setBlockForSelection('grass_block')
+    useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    expect(screen.getByLabelText('Grass tint controls')).toBeInTheDocument()
+    const temperature = screen.getByRole('slider', { name: /Temperature/ })
+    expect(temperature).toHaveValue('0.8')
+    expect(screen.getByRole('slider', { name: /Downfall/ })).toHaveValue('0.4')
+    fireEvent.change(temperature, { target: { value: '0.65' } })
+    expect(useEditorStore.getState().document.evidence[0].blockSettings).toEqual({
+      grassTint: { temperature: 0.65, downfall: 0.4 },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(useEditorStore.getState().document.evidence[0].blockSettings).toEqual({
+      grassTint: { temperature: 0.8, downfall: 0.4 },
+    })
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.pointerDown(screen.getByLabelText('Block profile'))
+    expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.pointerDown(screen.getByText('Block profile'))
+    expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.click(screen.getByRole('tab', { name: /Auto Analyze/ }))
+    expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
+  })
+
   it('selects a face while world orientation is unresolved', () => {
     const document = createTestDocument()
     useEditorStore.setState({ document, step: 'faces', faceTab: 'selection' })

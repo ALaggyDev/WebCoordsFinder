@@ -103,6 +103,7 @@ const baseProfiles: BlockProfile[] = [
     referenceTextures: topAndBottomTextures('grass_block_top', 'dirt'),
     transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
     notes: 'Non-snowy top and bottom faces only.',
+    settings: { grassTint: true },
   },
   {
     id: 'dirt_path',

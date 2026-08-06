@@ -651,3 +651,22 @@ describe('unit-face geometry', () => {
     )
   })
 })
+
+describe('block-specific evidence settings', () => {
+  it('applies grass tint settings to every selected grass block', () => {
+    const [first, second] = useEditorStore.getState().document.scene.faces
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().selectFace(second.id, true)
+    useEditorStore.getState().setBlockForSelection('grass_block')
+
+    useEditorStore.getState().updateBlockSettingsForSelection({
+      grassTint: { temperature: 0.65, downfall: 0.9 },
+    })
+
+    expect(useEditorStore.getState().document.evidence).toHaveLength(2)
+    expect(useEditorStore.getState().document.evidence.every((entry) =>
+      entry.blockSettings?.grassTint?.temperature === 0.65 &&
+      entry.blockSettings.grassTint.downfall === 0.9,
+    )).toBe(true)
+  })
+})

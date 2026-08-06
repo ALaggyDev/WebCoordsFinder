@@ -1,7 +1,9 @@
 import type {
   CandidateTransform,
+  GrassTintSettings,
   Point2,
 } from './types'
+import { defaultGrassTintSettings } from './types'
 import {
   computeHomography,
   projectPoint,
@@ -11,11 +13,9 @@ import {
 // coalesces concurrent requests for the same bundled reference image.
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
+const grassColorMapSource = '/textures/minecraft/1.21.11/colormap/grass.png'
 
-// Minecraft's default plains biome grass tint (the vanilla grass colormap's
-// default lookup). The bundled grass textures remain the original grayscale
-// assets; this tint is applied only when the browser consumes them.
-const defaultGrassTint = { red: 0x7f, green: 0xb2, blue: 0x38 }
+type RgbColor = { red: number; green: number; blue: number }
 
 function isGrassTexture(source: string): boolean {
   return ['/grass.png', '/grass_block_top.png', '/grass_side.png'].some((name) =>
@@ -23,15 +23,55 @@ function isGrassTexture(source: string): boolean {
   )
 }
 
-function applyGrassTint(imageData: ImageData): ImageData {
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+// Minecraft scales downfall by temperature before indexing the colormap from
+// its bottom-right origin. The clamp keeps any persisted out-of-range values
+// on the nearest edge, matching the game's lookup behavior.
+export function grassColorMapCoordinates(
+  settings: GrassTintSettings,
+  width: number,
+  height: number,
+): [number, number] {
+  const temperature = clampUnit(settings.temperature)
+  const downfall = clampUnit(settings.downfall)
+  const humidity = clampUnit(temperature * downfall)
+  return [
+    Math.floor((1 - temperature) * (width - 1)),
+    Math.floor((1 - humidity) * (height - 1)),
+  ]
+}
+
+async function grassTintColor(
+  settings = defaultGrassTintSettings,
+): Promise<RgbColor> {
+  const colorMap = await loadImage(grassColorMapSource)
+  const canvas = document.createElement('canvas')
+  canvas.width = colorMap.naturalWidth
+  canvas.height = colorMap.naturalHeight
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Grass colormap extraction is unavailable.')
+  context.drawImage(colorMap, 0, 0)
+  const [x, y] = grassColorMapCoordinates(
+    settings,
+    canvas.width,
+    canvas.height,
+  )
+  const pixel = context.getImageData(x, y, 1, 1).data
+  return { red: pixel[0], green: pixel[1], blue: pixel[2] }
+}
+
+function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {
   for (let offset = 0; offset < imageData.data.length; offset += 4) {
     const shade = imageData.data[offset]
-    imageData.data[offset] = Math.round((shade * defaultGrassTint.red) / 255)
+    imageData.data[offset] = Math.round((shade * tint.red) / 255)
     imageData.data[offset + 1] = Math.round(
-      (shade * defaultGrassTint.green) / 255,
+      (shade * tint.green) / 255,
     )
     imageData.data[offset + 2] = Math.round(
-      (shade * defaultGrassTint.blue) / 255,
+      (shade * tint.blue) / 255,
     )
   }
   return imageData
@@ -51,11 +91,15 @@ export function loadImage(source: string): Promise<HTMLImageElement> {
   return promise
 }
 
-export function colorizedReferenceTexture(source: string): Promise<string> {
+export function colorizedReferenceTexture(
+  source: string,
+  grassTint = defaultGrassTintSettings,
+): Promise<string> {
   if (!isGrassTexture(source)) return Promise.resolve(source)
-  const cached = colorizedReferenceCache.get(source)
+  const cacheKey = `${source}:${grassTint.temperature}:${grassTint.downfall}`
+  const cached = colorizedReferenceCache.get(cacheKey)
   if (cached) return cached
-  const promise = loadImage(source).then((image) => {
+  const promise = Promise.all([loadImage(source), grassTintColor(grassTint)]).then(([image, tint]) => {
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
     canvas.height = image.naturalHeight
@@ -64,11 +108,12 @@ export function colorizedReferenceTexture(source: string): Promise<string> {
     context.drawImage(image, 0, 0)
     const imageData = applyGrassTint(
       context.getImageData(0, 0, canvas.width, canvas.height),
+      tint,
     )
     context.putImageData(imageData, 0, 0)
     return canvas.toDataURL('image/png')
   })
-  colorizedReferenceCache.set(source, promise)
+  colorizedReferenceCache.set(cacheKey, promise)
   return promise
 }
 
@@ -152,7 +197,11 @@ export async function warpQuad(
   return result
 }
 
-export async function imageToPixels(source: string, size = 96): Promise<ImageData> {
+export async function imageToPixels(
+  source: string,
+  size = 96,
+  grassTint = defaultGrassTintSettings,
+): Promise<ImageData> {
   const image = await loadImage(source)
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -162,7 +211,9 @@ export async function imageToPixels(source: string, size = 96): Promise<ImageDat
   context.imageSmoothingEnabled = false
   context.drawImage(image, 0, 0, size, size)
   const imageData = context.getImageData(0, 0, size, size)
-  return isGrassTexture(source) ? applyGrassTint(imageData) : imageData
+  return isGrassTexture(source)
+    ? applyGrassTint(imageData, await grassTintColor(grassTint))
+    : imageData
 }
 
 export function imageDataUrl(imageData: ImageData): string {

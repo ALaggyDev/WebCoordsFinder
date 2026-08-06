@@ -158,6 +158,24 @@ export interface FaceEvidence {
   reviewStatus: ReviewStatus
   scores?: CandidateScore[]
   confidence?: number
+  // Settings belong to the observed block, so separate parts of a screenshot
+  // can retain their own visual properties.
+  blockSettings?: BlockSettings
+}
+
+export interface GrassTintSettings {
+  temperature: number
+  downfall: number
+}
+
+export interface BlockSettings {
+  grassTint?: GrassTintSettings
+}
+
+export const defaultGrassTintSettings: GrassTintSettings = {
+  // Plains matches the previous fixed grass tint.
+  temperature: 0.8,
+  downfall: 0.4,
 }
 
 export interface SearchBounds {
@@ -233,6 +251,11 @@ export interface BlockProfile {
   referenceTextures: Partial<Record<FaceDirection, string>>
   transforms: CandidateTransform[]
   notes: string
+  // Profiles opt into their own controls, keeping this extensible for future
+  // settings such as the deepslate axis.
+  settings?: {
+    grassTint?: boolean
+  }
 }
 
 export interface ValidationResult {

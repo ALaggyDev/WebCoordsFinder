@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import {
   Check,
   ChevronRight,
@@ -14,6 +21,7 @@ import {
   LoaderCircle,
   RotateCcw,
   ScanSearch,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -46,6 +54,7 @@ import {
   sharedStatesForFaces,
 } from '../domain/references'
 import {
+  defaultGrassTintSettings,
   scanOrders,
   searchDirections,
   textureAlgorithms,
@@ -441,6 +450,9 @@ function FaceInspector({
   const document = useEditorStore((state) => state.document)
   const selectedIds = useEditorStore((state) => state.selectedEvidenceIds)
   const setBlockForSelection = useEditorStore((state) => state.setBlockForSelection)
+  const updateBlockSettingsForSelection = useEditorStore(
+    (state) => state.updateBlockSettingsForSelection,
+  )
   const setVariant = useEditorStore((state) => state.setVariant)
   const selectedEvidence = document.evidence.filter((entry) =>
     selectedIds.includes(entry.id),
@@ -473,6 +485,30 @@ function FaceInspector({
   const [cropStatus, setCropStatus] = useState<
     'loading' | 'ready' | 'unresolved' | 'error'
   >('loading')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const settingsMenuRef = useRef<HTMLDivElement>(null)
+  const supportsGrassSettings =
+    selectedEvidence.length > 0 &&
+    selectedEvidence.every((entry) => entry.blockId === 'grass_block')
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (
+        settingsButtonRef.current?.contains(target) ||
+        settingsMenuRef.current?.contains(target)
+      ) return
+      setSettingsOpen(false)
+    }
+    globalThis.document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => globalThis.document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [settingsOpen])
+
+  useEffect(() => {
+    if (!supportsGrassSettings) setSettingsOpen(false)
+  }, [supportsGrassSettings])
 
   useEffect(() => {
     let active = true
@@ -534,13 +570,14 @@ function FaceInspector({
           possibleEvidenceFaces,
         )
     : undefined
+  const grassTint = evidence?.blockSettings?.grassTint ?? defaultGrassTintSettings
   const [displayReferenceUrl, setDisplayReferenceUrl] = useState('')
 
   useEffect(() => {
     let active = true
     setDisplayReferenceUrl('')
     if (!referenceUrl) return
-    colorizedReferenceTexture(referenceUrl)
+    colorizedReferenceTexture(referenceUrl, grassTint)
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
       })
@@ -550,7 +587,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [referenceUrl])
+  }, [grassTint, referenceUrl])
 
   if (!document.scene.projection) {
     return (
@@ -590,6 +627,23 @@ function FaceInspector({
   const blockIds = new Set(selectedEvidence.map((entry) => entry.blockId))
   const selectedBlockId = blockIds.size === 1 ? evidence.blockId : ''
   const profile = selectedBlockId ? blockProfileMap.get(selectedBlockId) : undefined
+  const grassTints = selectedEvidence.map(
+    (entry) => entry.blockSettings?.grassTint ?? defaultGrassTintSettings,
+  )
+  const sharedGrassTint = (key: 'temperature' | 'downfall') => {
+    const value = grassTints[0][key]
+    return grassTints.every((tint) => tint[key] === value) ? value : undefined
+  }
+  const temperature = sharedGrassTint('temperature')
+  const downfall = sharedGrassTint('downfall')
+  const resolvedTemperature = temperature ?? defaultGrassTintSettings.temperature
+  const resolvedDownfall = downfall ?? defaultGrassTintSettings.downfall
+  const grassTintIsDefault =
+    temperature === defaultGrassTintSettings.temperature &&
+    downfall === defaultGrassTintSettings.downfall
+  const tintSliderStyle = (value: number) => ({
+    '--tint-position': `${value * 100}%`,
+  }) as CSSProperties
   const renderedReferenceUrl = displayReferenceUrl || referenceUrl
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const selectedTransform =
@@ -705,9 +759,24 @@ function FaceInspector({
           </div>
         </div>
       )}
-      <label className="field">
-        <span>Block profile</span>
+      <div className="field block-profile-field">
+        <div className="block-profile-heading">
+          <label htmlFor="block-profile">Block profile</label>
+          {profile?.settings?.grassTint && (
+            <button
+              ref={settingsButtonRef}
+              type="button"
+              className={settingsOpen ? 'profile-settings-button active' : 'profile-settings-button'}
+              aria-label="Grass block settings"
+              aria-expanded={settingsOpen}
+              onClick={() => setSettingsOpen((open) => !open)}
+            >
+              <SlidersHorizontal size={15} />
+            </button>
+          )}
+        </div>
         <select
+          id="block-profile"
           value={selectedBlockId}
           onChange={(event) => setBlockForSelection(event.target.value)}
         >
@@ -741,7 +810,64 @@ function FaceInspector({
             </option>
           ))}
         </select>
-      </label>
+        {settingsOpen && profile?.settings?.grassTint && (
+          <div
+            ref={settingsMenuRef}
+            className="block-settings-menu"
+            aria-label="Grass tint controls"
+          >
+            <div className="block-settings-menu-header">
+              <div className="block-settings-title">Grass tint</div>
+              <button
+                type="button"
+                className="reset-tint-button"
+                disabled={grassTintIsDefault}
+                onClick={() => updateBlockSettingsForSelection({
+                  grassTint: { ...defaultGrassTintSettings },
+                })}
+              >
+                <RotateCcw size={12} /> Reset
+              </button>
+            </div>
+            <label className="tint-slider">
+              <span>Temperature <output>{temperature?.toFixed(2) ?? 'Mixed'}</output></span>
+              <input
+                type="range"
+                aria-label="Temperature"
+                min="0"
+                max="1"
+                step="0.01"
+                value={resolvedTemperature}
+                style={tintSliderStyle(resolvedTemperature)}
+                onChange={(event) => updateBlockSettingsForSelection({
+                  grassTint: {
+                    temperature: Number(event.target.value),
+                    downfall: resolvedDownfall,
+                  },
+                })}
+              />
+            </label>
+            <label className="tint-slider">
+              <span>Downfall <output>{downfall?.toFixed(2) ?? 'Mixed'}</output></span>
+              <input
+                type="range"
+                aria-label="Downfall"
+                min="0"
+                max="1"
+                step="0.01"
+                value={resolvedDownfall}
+                style={tintSliderStyle(resolvedDownfall)}
+                onChange={(event) => updateBlockSettingsForSelection({
+                  grassTint: {
+                    temperature: resolvedTemperature,
+                    downfall: Number(event.target.value),
+                  },
+                })}
+              />
+            </label>
+          </div>
+        )}
+      </div>
       {profile ? (
         <div className="profile-note">
           <span style={{ background: profile.accent }} />

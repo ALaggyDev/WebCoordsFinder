@@ -657,7 +657,7 @@ function App() {
         const [sample, reference] = await Promise.all([
           // Both paths use the same square resolution before gradient scoring.
           warpQuad(state.document.image.src, quad, 96),
-          imageToPixels(referenceUrl, 96),
+          imageToPixels(referenceUrl, 96, entry.blockSettings?.grassTint),
         ])
         const requestId = crypto.randomUUID()
         const result = new Promise<WorkerResponse>((resolve) => {

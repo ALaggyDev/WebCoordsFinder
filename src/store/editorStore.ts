@@ -27,9 +27,14 @@ import {
   validAxisMappingCompletions,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
-import { searchDirections, worldAxisLabels } from '../domain/types'
+import {
+  defaultGrassTintSettings,
+  searchDirections,
+  worldAxisLabels,
+} from '../domain/types'
 import type {
   AxisMapping,
+  BlockSettings,
   CandidateScore,
   EditorDocument,
   EditorStep,
@@ -252,6 +257,14 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   normalized.scanner.compassResolved =
     Boolean(normalized.scanner.compassResolved) &&
     isAxisMappingComplete(normalized.scene.axisMapping)
+  normalized.evidence.forEach((entry) => {
+    if (entry.blockId === 'grass_block' && !entry.blockSettings?.grassTint) {
+      entry.blockSettings = {
+        ...entry.blockSettings,
+        grassTint: { ...defaultGrassTintSettings },
+      }
+    }
+  })
   return normalized
 }
 
@@ -309,6 +322,7 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
     blockId: 'deepslate',
     stateCount: sharedStatesForFaces('deepslate', faces) ?? 4,
     reviewStatus: 'unlabeled',
+    blockSettings: {},
   }
 }
 
@@ -385,6 +399,7 @@ interface EditorState {
   selectAllFaces: () => void
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
+  updateBlockSettingsForSelection: (patch: Partial<BlockSettings>) => void
   setVariant: (evidenceId: string, variant: number) => void
   setEvidenceStatus: (
     evidenceIds: string[],
@@ -997,13 +1012,57 @@ export const useEditorStore = create<EditorState>((set) => ({
         )
         selected.forEach((entry, index) => {
           if (states[index] === undefined) return
+          const blockChanged = entry.blockId !== blockId
           entry.blockId = blockId
+          if (blockChanged) {
+            entry.blockSettings = blockId === 'grass_block'
+              ? { grassTint: { ...defaultGrassTintSettings } }
+              : {}
+          }
           entry.stateCount = states[index]!
           entry.selectedVariant = undefined
           entry.reviewStatus = 'unlabeled'
           entry.scores = undefined
           entry.confidence = undefined
         })
+      }),
+    ),
+  updateBlockSettingsForSelection: (patch) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const selectedCoordinates = new Set(
+          document.evidence
+            .filter((entry) => state.selectedEvidenceIds.includes(entry.id))
+            .map((entry) =>
+              [
+                entry.latticeCoordinate.x,
+                entry.latticeCoordinate.y,
+                entry.latticeCoordinate.z,
+              ].join(','),
+            ),
+        )
+        document.evidence
+          .filter((entry) =>
+            selectedCoordinates.has(
+              [
+                entry.latticeCoordinate.x,
+                entry.latticeCoordinate.y,
+                entry.latticeCoordinate.z,
+              ].join(','),
+            ),
+          )
+          .forEach((entry) => {
+            if (patch.grassTint && entry.blockId !== 'grass_block') return
+            entry.blockSettings = { ...entry.blockSettings, ...patch }
+            // Proposals contain scores for the previous reference pixels.
+            // Confirmed evidence has already been explicitly reviewed.
+            if (entry.reviewStatus === 'proposed') {
+              entry.selectedVariant = undefined
+              entry.reviewStatus = 'unlabeled'
+            }
+            entry.scores = undefined
+            entry.confidence = undefined
+          })
       }),
     ),
   setVariant: (id, variant) =>
