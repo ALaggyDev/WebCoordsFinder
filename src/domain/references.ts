@@ -2,7 +2,7 @@ import type { BlockProfile, FaceDirection } from './types'
 
 // Reference paths mirror the checked-in Minecraft asset tree. Profiles name
 // concrete face textures explicitly so analysis never guesses model lookups.
-const textureRoot = '/textures/minecraft/1.21.11/block'
+const textureRoot = '/minecraft/textures/block'
 
 function texture(name: string): string {
   return `${textureRoot}/${name}.png`

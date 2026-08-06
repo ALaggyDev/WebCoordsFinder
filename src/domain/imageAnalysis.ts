@@ -13,7 +13,7 @@ import {
 // coalesces concurrent requests for the same bundled reference image.
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
-const grassColorMapSource = '/textures/minecraft/1.21.11/colormap/grass.png'
+const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
 
 type RgbColor = { red: number; green: number; blue: number }
 
