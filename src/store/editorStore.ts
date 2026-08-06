@@ -18,6 +18,7 @@ import {
   negate3,
   outerEdgeForExtrusion,
   orientationEdgeGeometry,
+  planarProjectionForCoplanarFaces,
   planarProjectionForPlane,
   possibleFacesForLocalNormal,
   projectionInfo,
@@ -434,6 +435,19 @@ function mutateDocument(
 function removeFaces(document: EditorDocument, ids: Set<string>): void {
   document.scene.faces = document.scene.faces.filter((face) => !ids.has(face.id))
   pruneGeometry(document)
+  if (document.scene.projection?.kind !== 'camera') return
+
+  // A face edit can reduce a calibrated mesh to a different single plane.
+  // Keep all dots and world orientation intact, but use dots on that surviving
+  // plane to replace the no-longer-needed camera solve.
+  const planar = planarProjectionForCoplanarFaces(
+    document.scene.faces,
+    document.scene.observations,
+  )
+  if (planar) {
+    document.scene.observations = planar.observations
+    document.scene.projection = planar.projection
+  }
 }
 
 function applyAxisMapping(

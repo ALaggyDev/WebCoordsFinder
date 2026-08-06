@@ -365,6 +365,36 @@ describe('unit-face geometry', () => {
     })
   })
 
+  it('demotes a camera to the original plane after deleting its perpendicular faces', () => {
+    const state = useEditorStore.getState()
+    const depthIds = state.document.scene.faces
+      .filter((face) => face.id.startsWith('test-depth-'))
+      .map((face) => face.id)
+
+    depthIds.forEach((id) => useEditorStore.getState().deleteFace(id))
+
+    const scene = useEditorStore.getState().document.scene
+    expect(scene.projection?.kind).toBe('planar')
+    expect(scene.observations).toHaveLength(4)
+    expect(scene.axisMapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+  })
+
+  it('demotes a camera to the surviving perpendicular plane after deleting its base', () => {
+    const state = useEditorStore.getState()
+    const baseIds = state.document.scene.faces
+      .filter((face) => face.id.startsWith('test-base-'))
+      .map((face) => face.id)
+
+    baseIds.forEach((id) => useEditorStore.getState().deleteFace(id))
+
+    const scene = useEditorStore.getState().document.scene
+    expect(scene.projection?.kind).toBe('planar')
+    expect(scene.observations).toHaveLength(4)
+    expect(scene.axisMapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+  })
+
   it('extrudes through an existing camera without recalibrating it', () => {
     const face = useEditorStore.getState().document.scene.faces[0]
     useEditorStore

@@ -763,6 +763,53 @@ export function planarProjectionForPlane(
   }
 }
 
+/**
+ * Rebuilds a planar solve when every surviving face lies on one lattice plane.
+ * Calibration observations deliberately remain independent of face lifetime;
+ * only observations on the remaining plane contribute to the replacement fit.
+ */
+export function planarProjectionForCoplanarFaces(
+  faces: MeshFace[],
+  observations: CalibrationObservation[],
+): { projection: PlanarProjection; observations: CalibrationObservation[] } | undefined {
+  const firstFace = faces[0]
+  if (!firstFace) return undefined
+
+  const cornerLattice = faceCornersLattice(firstFace)
+  const origin = cornerLattice[0]
+  const uAxis = subtract3(cornerLattice[1], origin)
+  const vAxis = subtract3(cornerLattice[3], origin)
+  const normal = cross3(uAxis, vAxis)
+  if (dot3(normal, normal) <= EPSILON) return undefined
+
+  const liesOnPlane = (point: Point3) =>
+    dot3(normal, subtract3(point, origin)) === 0
+
+  if (faces.some((face) => faceCornersLattice(face).some((corner) => !liesOnPlane(corner)))) {
+    return undefined
+  }
+
+  const planarObservations = observations.filter((observation) =>
+    liesOnPlane(observation.lattice),
+  )
+  try {
+    return {
+      projection: planarProjectionForPlane(
+        origin,
+        uAxis,
+        vAxis,
+        cornerLattice,
+        planarObservations,
+      ),
+      observations: planarObservations,
+    }
+  } catch {
+    // Fewer than four usable dots, or a degenerate dot arrangement, cannot
+    // replace a camera solve with a meaningful homography.
+    return undefined
+  }
+}
+
 function localCoordinatesOnPlane(
   origin: Point3,
   uAxis: Point3,
