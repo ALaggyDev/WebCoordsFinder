@@ -84,7 +84,7 @@ describe('face inspector batch selection', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Grass tint settings' }))
     expect(screen.getByLabelText('Grass tint controls')).toBeInTheDocument()
     const temperature = screen.getByRole('slider', { name: /Temperature/ })
     expect(temperature).toHaveValue('0.8')
@@ -102,15 +102,15 @@ describe('face inspector batch selection', () => {
     fireEvent.pointerDown(document.body)
     expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Grass tint settings' }))
     fireEvent.pointerDown(screen.getByLabelText('Block profile'))
     expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Grass tint settings' }))
     fireEvent.pointerDown(screen.getByText('Block profile'))
     expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Grass block settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Grass tint settings' }))
     fireEvent.click(screen.getByRole('tab', { name: /Auto Analyze/ }))
     expect(screen.queryByLabelText('Grass tint controls')).not.toBeInTheDocument()
   })

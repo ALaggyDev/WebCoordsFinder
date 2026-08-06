@@ -36,6 +36,7 @@ describe('bundled reference textures', () => {
     expect(referenceTextureForFace('podzol', 'down')).toMatch(/\/dirt\.png$/)
     expect(referenceTextureForFace('mycelium', 'down')).toMatch(/\/dirt\.png$/)
     expect(referenceTextureForFace('lily_pad', 'up')).toMatch(/\/lily_pad\.png$/)
+    expect(blockProfiles.find((profile) => profile.id === 'lily_pad')?.settings?.grassTint).toBe(true)
     expect(referenceTextureForFace('rooted_dirt', 'up')).toMatch(/\/rooted_dirt\.png$/)
     expect(referenceTextureForFace('sculk', 'north')).toMatch(/\/sculk\.png$/)
   })

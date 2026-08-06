@@ -490,7 +490,7 @@ function FaceInspector({
   const settingsMenuRef = useRef<HTMLDivElement>(null)
   const supportsGrassSettings =
     selectedEvidence.length > 0 &&
-    selectedEvidence.every((entry) => entry.blockId === 'grass_block')
+    selectedEvidence.every((entry) => blockProfileMap.get(entry.blockId)?.settings?.grassTint)
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -767,7 +767,7 @@ function FaceInspector({
               ref={settingsButtonRef}
               type="button"
               className={settingsOpen ? 'profile-settings-button active' : 'profile-settings-button'}
-              aria-label="Grass block settings"
+              aria-label="Grass tint settings"
               aria-expanded={settingsOpen}
               onClick={() => setSettingsOpen((open) => !open)}
             >

@@ -18,7 +18,7 @@ const grassColorMapSource = '/textures/minecraft/1.21.11/colormap/grass.png'
 type RgbColor = { red: number; green: number; blue: number }
 
 function isGrassTexture(source: string): boolean {
-  return ['/grass.png', '/grass_block_top.png', '/grass_side.png'].some((name) =>
+  return ['/grass.png', '/grass_block_top.png', '/grass_side.png', '/lily_pad.png'].some((name) =>
     source.endsWith(name),
   )
 }

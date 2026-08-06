@@ -669,4 +669,18 @@ describe('block-specific evidence settings', () => {
       entry.blockSettings.grassTint.downfall === 0.9,
     )).toBe(true)
   })
+
+  it('applies grass tint settings to lily pads', () => {
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(face.id, false)
+    useEditorStore.getState().setBlockForSelection('lily_pad')
+
+    useEditorStore.getState().updateBlockSettingsForSelection({
+      grassTint: { temperature: 0.35, downfall: 0.7 },
+    })
+
+    expect(useEditorStore.getState().document.evidence[0].blockSettings).toEqual({
+      grassTint: { temperature: 0.35, downfall: 0.7 },
+    })
+  })
 })

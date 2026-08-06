@@ -125,6 +125,7 @@ const baseProfiles: BlockProfile[] = [
     referenceTextures: topAndBottomTextures('lily_pad'),
     transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
     notes: 'Four rotations of the flat top/bottom model.',
+    settings: { grassTint: true },
   },
   {
     id: 'grass_block',

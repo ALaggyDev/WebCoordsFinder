@@ -258,7 +258,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     Boolean(normalized.scanner.compassResolved) &&
     isAxisMappingComplete(normalized.scene.axisMapping)
   normalized.evidence.forEach((entry) => {
-    if (entry.blockId === 'grass_block' && !entry.blockSettings?.grassTint) {
+    if (['grass_block', 'lily_pad'].includes(entry.blockId) && !entry.blockSettings?.grassTint) {
       entry.blockSettings = {
         ...entry.blockSettings,
         grassTint: { ...defaultGrassTintSettings },
@@ -1015,7 +1015,7 @@ export const useEditorStore = create<EditorState>((set) => ({
           const blockChanged = entry.blockId !== blockId
           entry.blockId = blockId
           if (blockChanged) {
-            entry.blockSettings = blockId === 'grass_block'
+            entry.blockSettings = ['grass_block', 'lily_pad'].includes(blockId)
               ? { grassTint: { ...defaultGrassTintSettings } }
               : {}
           }
@@ -1052,7 +1052,10 @@ export const useEditorStore = create<EditorState>((set) => ({
             ),
           )
           .forEach((entry) => {
-            if (patch.grassTint && entry.blockId !== 'grass_block') return
+            if (
+              patch.grassTint &&
+              !['grass_block', 'lily_pad'].includes(entry.blockId)
+            ) return
             entry.blockSettings = { ...entry.blockSettings, ...patch }
             // Proposals contain scores for the previous reference pixels.
             // Confirmed evidence has already been explicitly reviewed.
