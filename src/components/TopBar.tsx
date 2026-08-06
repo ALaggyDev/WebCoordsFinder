@@ -1,6 +1,5 @@
 import {
   BoxSelect,
-  Crosshair,
   Download,
   FileImage,
   FolderOpen,
@@ -57,9 +56,7 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="brand">
-        <div className="brand-mark" aria-hidden="true">
-          <Crosshair size={19} />
-        </div>
+        <img className="brand-mark" src="/favicon.svg" alt="" aria-hidden="true" />
         <div>
           <strong>WebCoordsFinder</strong>
           <span>Coordinates Cracking Studio</span>

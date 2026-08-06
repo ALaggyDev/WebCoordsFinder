@@ -34,10 +34,7 @@
   height: 34px;
   display: grid;
   place-items: center;
-  color: #08120e;
-  background: var(--accent);
   border-radius: 9px;
-  box-shadow: 0 0 24px rgba(83, 230, 165, 0.18);
 }
 
 .brand strong,
