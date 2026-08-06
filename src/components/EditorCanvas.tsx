@@ -798,13 +798,14 @@ export function EditorCanvas() {
         setDraftGridSize(undefined)
         setDraftControlOffset({ x: 0, y: 0 })
         if (tool === 'extrude' || tool === 'anchor' || tool === 'orient' || tool === 'plane') {
+          if (tool === 'orient') cancelOrientation()
           setTool('select')
         } else if (tool === 'select') clearSelectedEdges()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [clearSelectedEdges, setTool, tool])
+  }, [cancelOrientation, clearSelectedEdges, setTool, tool])
 
   useEffect(() => {
     setOrientationPopupOffset({ x: 0, y: 0 })
