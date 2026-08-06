@@ -35,6 +35,9 @@ describe('bundled reference textures', () => {
     expect(referenceTextureForFace('dirt_path', 'down')).toMatch(/\/dirt\.png$/)
     expect(referenceTextureForFace('podzol', 'down')).toMatch(/\/dirt\.png$/)
     expect(referenceTextureForFace('mycelium', 'down')).toMatch(/\/dirt\.png$/)
+    expect(referenceTextureForFace('lily_pad', 'up')).toMatch(/\/lily_pad\.png$/)
+    expect(referenceTextureForFace('rooted_dirt', 'up')).toMatch(/\/rooted_dirt\.png$/)
+    expect(referenceTextureForFace('sculk', 'north')).toMatch(/\/sculk\.png$/)
   })
 
   it('exposes each concrete powder color as its own profile', () => {
