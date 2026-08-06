@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   automaticAxisMappingForUp,
+  availableExtrusionBlocks,
   axisMappingFromUpAndHorizontal,
   axisMappingFromReferences,
   blockCoordinateForFace,
@@ -414,6 +415,48 @@ describe('global perspective geometry', () => {
       blocks: 4,
       createsAxis: false,
     })
+  })
+
+  it('rejects an extrusion direction that would recreate the selected face', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: { kind: 'camera', matrix: cameraMatrix, rmsError: 0, maxError: 0 },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    // The top edge's +Y side is inside this Z-facing source square.
+    expect(
+      availableExtrusionBlocks(
+        scene,
+        [{ faceId: face.id, edge: 'top' }],
+        { x: 0, y: 1, z: 0 },
+      ),
+    ).toBe(0)
+  })
+
+  it('stops an extrusion before it overlaps a distant existing face', () => {
+    const blockingFace: MeshFace = {
+      id: 'distant-face',
+      // This is the fifth unit square that a +Z extrusion from the top edge
+      // would create. Its opposite visible normal still occupies the surface.
+      blockCoordinate: { x: 0, y: 0, z: 4 },
+      normal: { x: 0, y: 1, z: 0 },
+    }
+    const scene: SceneGeometry = {
+      faces: [face, blockingFace],
+      observations: [],
+      projection: { kind: 'camera', matrix: cameraMatrix, rmsError: 0, maxError: 0 },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+
+    expect(
+      availableExtrusionBlocks(
+        scene,
+        [{ faceId: face.id, edge: 'top' }],
+        { x: 0, y: 0, z: 1 },
+      ),
+    ).toBe(4)
   })
 
   it('normalizes a negative extrusion to the adjacent block coordinate', () => {

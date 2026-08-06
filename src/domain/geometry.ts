@@ -1204,6 +1204,97 @@ export interface EdgeExtrusion {
   createsAxis: boolean
 }
 
+function faceSurfaceKey(face: MeshFace): string {
+  // A face's visible normal may be flipped, but its square still occupies the
+  // same surface.  Collision detection therefore keys the plane axis and the
+  // canonical minimum corner, rather than the signed normal.
+  const planeAxis = face.normal.x !== 0 ? 'x' : face.normal.y !== 0 ? 'y' : 'z'
+  return `${planeAxis}:${point3Key(face.blockCoordinate)}`
+}
+
+function extrusionMovesIntoSelectedFace(
+  scene: SceneGeometry,
+  selections: SelectedEdge[],
+  axis: Point3,
+): boolean {
+  return selections.some((selection) => {
+    const face = scene.faces.find((entry) => entry.id === selection.faceId)
+    const edge = selectedEdgeGeometry(scene, selection)
+    if (!face || !edge) return false
+    const center = scale3(
+      faceCornersLattice(face).reduce((sum, corner) => add3(sum, corner), {
+        x: 0,
+        y: 0,
+        z: 0,
+      }),
+      0.25,
+    )
+    const midpoint = scale3(add3(edge.start, edge.end), 0.5)
+    // Moving from the selected boundary toward this center would recreate the
+    // source unit square on the first extrusion step.
+    return dot3(axis, subtract3(center, midpoint)) > EPSILON
+  })
+}
+
+/**
+ * Returns how many whole extrusion steps can be added before the generated
+ * surface reaches an existing face.  A collision caps the extension instead
+ * of allowing it to pass through and create duplicate evidence geometry.
+ */
+export function availableExtrusionBlocks(
+  scene: SceneGeometry,
+  selections: SelectedEdge[],
+  axis: Point3,
+  maxBlocks = 64,
+): number {
+  if (extrusionMovesIntoSelectedFace(scene, selections, axis)) return 0
+
+  const occupied = new Set(scene.faces.map(faceSurfaceKey))
+  const layerFaceCount = createEdgeExtrusionFaces(
+    scene,
+    selections,
+    axis,
+    1,
+    () => '__collision_layer__',
+  ).length
+  if (layerFaceCount === 0) return 0
+  for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
+    const allFaces = createEdgeExtrusionFaces(
+      scene,
+      selections,
+      axis,
+      blocks,
+      () => `__collision_${blocks}__`,
+    )
+    const priorKeys = new Set(
+      blocks === 1
+        ? []
+        : createEdgeExtrusionFaces(
+            scene,
+            selections,
+            axis,
+            blocks - 1,
+            () => `__collision_${blocks - 1}__`,
+          ).map(faceSurfaceKey),
+    )
+    const nextFaces = allFaces.filter(
+      (face) => !priorKeys.has(faceSurfaceKey(face)),
+    )
+    // createEdgeExtrusionFaces de-duplicates repeated selected edges. Compare
+    // only the newly-added depth layer, including overlaps within that layer.
+    const nextKeys = nextFaces.map(faceSurfaceKey)
+    if (
+      nextKeys.length === 0 ||
+      new Set(nextKeys).size !== nextKeys.length ||
+      nextKeys.some((key) => occupied.has(key))
+    ) {
+      return blocks - 1
+    }
+    nextKeys.forEach((key) => occupied.add(key))
+  }
+  return maxBlocks
+}
+
 function distanceToSegment(point: Point2, start: Point2, end: Point2): number {
   const dx = end.x - start.x
   const dy = end.y - start.y
@@ -1267,6 +1358,13 @@ export function chooseEdgeExtrusion(
         })
       | undefined
     for (const axis of inPlaneAxes) {
+      const availableBlocks = availableExtrusionBlocks(
+        scene,
+        selections,
+        axis,
+        maxBlocks,
+      )
+      if (availableBlocks === 0) continue
       let previous = projectScenePoint(scene, midpoint)
       if (!previous) continue
       const first = projectScenePoint(scene, add3(midpoint, axis))
@@ -1275,7 +1373,7 @@ export function chooseEdgeExtrusion(
       let pathDistance = Number.POSITIVE_INFINITY
       let pointerDistance = Number.POSITIVE_INFINITY
       let bestBlocks = 1
-      for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
+      for (let blocks = 1; blocks <= availableBlocks; blocks += 1) {
         const projected = projectScenePoint(
           scene,
           add3(midpoint, scale3(axis, blocks)),
@@ -1322,19 +1420,27 @@ export function chooseEdgeExtrusion(
         }
       }
     }
-    return { axis: face.normal, blocks: 1, createsAxis: true }
+    return availableExtrusionBlocks(scene, selections, face.normal, 1) > 0
+      ? { axis: face.normal, blocks: 1, createsAxis: true }
+      : undefined
   }
 
-  const candidates = extrusionDirections.filter((axis) =>
-    geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
-  )
+  const candidates = extrusionDirections
+    .filter((axis) =>
+      geometries.every((geometry) => dot3(axis, geometry.direction) === 0),
+    )
+    .map((axis) => ({
+      axis,
+      availableBlocks: availableExtrusionBlocks(scene, selections, axis, maxBlocks),
+    }))
+    .filter((candidate) => candidate.availableBlocks > 0)
   let best: (EdgeExtrusion & { distance: number }) | undefined
-  for (const axis of candidates) {
+  for (const { axis, availableBlocks } of candidates) {
     const midpoint = scale3(
       add3(referenceGeometry.start, referenceGeometry.end),
       0.5,
     )
-    for (let blocks = 1; blocks <= maxBlocks; blocks += 1) {
+    for (let blocks = 1; blocks <= availableBlocks; blocks += 1) {
       const projected = projectScenePoint(
         scene,
         add3(midpoint, scale3(axis, blocks)),
