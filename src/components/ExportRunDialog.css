@@ -479,7 +479,7 @@ body.export-run-dialog-open {
 .field-help {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.45;
 }
 

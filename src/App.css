@@ -766,7 +766,7 @@ button:disabled {
 }
 
 .inspector-heading {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -840,21 +840,22 @@ button:disabled {
 .field {
   min-width: 0;
   display: grid;
-  gap: 5px;
 }
 
 .field > span,
 .field-label,
 .range-field > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .field-label {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  padding: 6px 0;
+  gap: 6px;
+  line-height: 14px;
 }
 
 .field input,
@@ -879,16 +880,19 @@ button:disabled {
 }
 
 .subsection {
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--border-soft);
 }
 
-.subsection h3,
-.candidate-section h3 {
+.subsection h3 {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 0 0 10px;
   color: #c8d2d7;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
@@ -1856,12 +1860,15 @@ button:disabled {
 }
 
 .info-tip {
+  flex: 0 0 14px;
   width: 14px;
   height: 14px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   color: var(--muted);
   cursor: help;
+  line-height: 0;
 }
 
 .info-tip > svg {
@@ -1874,8 +1881,10 @@ button:disabled {
   top: calc(100% + 7px);
   left: 0;
   width: 100%;
-  padding: 9px;
+  padding: 12px 9px;
   color: var(--text);
+  font-size: 11px;
+  font-weight: 400;
   background: #0d1418;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1883,6 +1892,7 @@ button:disabled {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-3px);
+  line-height: 1.45;
   transition: opacity 120ms 250ms, transform 120ms 250ms, visibility 0s 370ms;
 }
 
@@ -1950,7 +1960,7 @@ button:disabled {
   padding: 10px 0;
   color: var(--muted);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .advanced-settings > div {
@@ -1964,20 +1974,11 @@ button:disabled {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .check-field input {
   accent-color: var(--accent);
-}
-
-.directions-subsection {
-  margin-top: 10px;
-  padding-top: 10px;
-}
-
-.directions-subsection h3 {
-  margin-bottom: 5px;
 }
 
 .direction-list {

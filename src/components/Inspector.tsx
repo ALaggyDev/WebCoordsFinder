@@ -90,12 +90,14 @@ function NumberField({
   onChange,
   min,
   max,
+  info,
 }: {
   label: string
   value: number
   onChange: (value: number) => void
   min?: number
   max?: number
+  info?: ReactNode
 }) {
   const [draft, setDraft] = useState(() => String(value))
 
@@ -109,8 +111,12 @@ function NumberField({
 
   return (
     <label className="field">
-      <span>{label}</span>
+      <div className="field-label">
+        <span>{label}</span>
+        {info ? <InfoTip label={`${label} information`}>{info}</InfoTip> : null}
+      </div>
       <input
+        aria-label={label}
         type="number"
         value={draft}
         min={min}
@@ -1246,7 +1252,14 @@ function ExportInspector() {
         </select>
       </div>
       <label className="field">
-        <span>Scan order</span>
+        <div className="field-label">
+          <span>Scan order</span>
+          <InfoTip label="Scan order information">
+            "Linear" starts from -X and end in +X, then -Z to +Z.
+            <br />
+            "Spiral" starts from the center and spirals outward clockwise.
+          </InfoTip>
+        </div>
         <select
           value={document.scanner.scanOrder}
           onChange={(event) =>
@@ -1258,8 +1271,20 @@ function ExportInspector() {
           ))}
         </select>
       </label>
-      <div className="subsection directions-subsection">
-        <h3>XZ rotations to search</h3>
+      <div className="subsection">
+        <div className="field-label subsection-label">
+          Automatic horizontal rotations
+          <InfoTip label="XZ rotations to search information">
+            This setting is necessary when the cardinal direction of the camera is unknown.
+            <br />
+            The scanner will automatically rotate the coordinates and variants of each block clockwise by either 0°, 90°, 180°, and 270° horizontally.
+            <br />
+            If the camera is known to be facing a specific direction, uncheck the other directions to reduce search time.
+            <br />
+            <br />
+            Note: For stone/deepslate/bedrock/sculk textures, only 0° and 180° are enough.
+          </InfoTip>
+        </div>
         <div className="direction-list" aria-label="Directions to search">
           {searchDirections.map((direction) => {
             const checked = document.scanner.directions.includes(direction)
@@ -1283,13 +1308,9 @@ function ExportInspector() {
             )
           })}
         </div>
-        <p className="field-help">
-          Automatic horizontal orientation selects all four rotations. Confirming
-          the horizontal orientation resets this list to 0°; extra rotations remain optional.
-        </p>
       </div>
       <div className="subsection">
-        <h3>Inclusive search bounds</h3>
+        <div className="field-label subsection-label">Search area</div>
         <div className="bounds-grid">
           {(['x', 'y', 'z'] as const).map((axis) => (
             <div key={axis} className="bounds-row">
@@ -1317,17 +1338,14 @@ function ExportInspector() {
           label="Error tolerance"
           value={document.scanner.errorTolerance}
           min={0}
+          info={<>The maximum amount of texture mismatches allowed by the scanner.<br />High error tolerance increases search time.</>}
           onChange={(errorTolerance) => updateScanner({ errorTolerance })}
         />
-        <p className="field-help">
-          Maximum number of confirmed observations that may disagree. Zero
-          requires an exact match.
-        </p>
       </div>
       <details className="advanced-settings">
-        <summary>CoordsFinder settings</summary>
+        <summary>CoordsFinder settings (advanced)</summary>
         <p className="field-help">
-          These options affect only the downloaded CoordsFinder configuration.
+          These options only affect the CoordsFinder configuration.
         </p>
         <div className="field-grid two">
           <NumberField label="CPU tile size X" value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
