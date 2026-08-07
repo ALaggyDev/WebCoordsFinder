@@ -478,7 +478,7 @@ function applyAxisMapping(
 
 export const useEditorStore = create<EditorState>((set) => ({
   document: createEmptyDocument(),
-  step: 'image',
+  step: 'grid',
   faceTab: 'selection',
   tool: 'select',
   orientationDraft: null,
@@ -555,8 +555,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedEvidenceIds: [],
       selectedEdges: [],
       orientationDraft: null,
-      // Restored projects reopen at the earliest meaningful workflow stage.
-      step: document.scene.faces.length > 0 ? 'grid' : 'image',
+      step: 'grid',
       tool: document.scene.faces.length > 0 ? 'select' : 'plane',
     })
   },
@@ -1220,7 +1219,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       orientationDraft: null,
       selectedEdges: [],
       selectedEvidenceIds: [],
-      step: 'image',
+      step: 'grid',
       tool: 'select',
     }),
 }))

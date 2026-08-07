@@ -1,7 +1,6 @@
 import {
   BoxSelect,
   Download,
-  FileImage,
   FolderOpen,
   Grid3X3,
   ImagePlus,
@@ -18,9 +17,8 @@ import { useEditorStore } from '../store/editorStore'
 const steps: Array<{
   id: EditorStep
   label: string
-  icon: typeof FileImage
+  icon: typeof Grid3X3
 }> = [
-  { id: 'image', label: 'Image', icon: FileImage },
   { id: 'grid', label: 'Geometry', icon: Grid3X3 },
   { id: 'faces', label: 'Faces', icon: BoxSelect },
   { id: 'export', label: 'Export', icon: Download },

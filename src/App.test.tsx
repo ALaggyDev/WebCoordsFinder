@@ -123,7 +123,7 @@ afterEach(() => {
 
 describe('face keyboard shortcuts', () => {
   it('shows the start menu instead of opening the demo for a fresh visitor', async () => {
-    useEditorStore.setState({ document: createEmptyDocument(), step: 'image' })
+    useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
 
     render(<App />)
 

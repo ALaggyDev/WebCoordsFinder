@@ -788,7 +788,6 @@ function App() {
             <EditorCanvas />
             <Inspector
               busy={busy}
-              onOpenImage={openImagePicker}
               onAutoFill={autoFill}
             />
           </>

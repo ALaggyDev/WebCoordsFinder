@@ -43,7 +43,7 @@ export const searchDirections = [0, 90, 180, 270] as const
 export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
-export type EditorStep = 'image' | 'grid' | 'faces' | 'export'
+export type EditorStep = 'grid' | 'faces' | 'export'
 export type EditorTool = 'select' | 'anchor' | 'plane' | 'orient' | 'extrude'
 
 export type CandidateTransform =

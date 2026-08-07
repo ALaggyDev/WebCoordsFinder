@@ -13,7 +13,6 @@ import {
   Crosshair,
   Download,
   Eye,
-  FileImage,
   FlipHorizontal2,
   Grid3X3,
   Info,
@@ -24,7 +23,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
-  Upload,
 } from 'lucide-react'
 import {
   generateCoordsFinderConfig,
@@ -71,7 +69,7 @@ import { ExportRunDialog } from './ExportRunDialog'
 // state from the document while delegating all persisted mutations to Zustand.
 interface InspectorProps {
   busy: boolean
-  onOpenImage: () => void
+  onOpenImage?: () => void
   onAutoFill: (evidenceIds?: string[]) => void
 }
 
@@ -135,7 +133,7 @@ function SectionTitle({
   title,
   eyebrow,
 }: {
-  icon: typeof FileImage
+  icon: typeof Grid3X3
   title: string
   eyebrow: string
 }) {
@@ -1184,29 +1182,6 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   )
 }
 
-function ImageInspector({
-  onOpenImage,
-}: Pick<InspectorProps, 'onOpenImage'>) {
-  const document = useEditorStore((state) => state.document)
-
-  return (
-    <>
-      <SectionTitle icon={FileImage} eyebrow="Source material" title="Project image" />
-      <div className="image-summary">
-        <div className="image-thumbnail"><img src={document.image.src} alt="" /></div>
-        <div>
-          <strong>{document.image.name}</strong>
-          <span>{document.image.width} × {document.image.height}</span>
-          <span>{document.image.mime}</span>
-        </div>
-      </div>
-      <button className="primary-button full" type="button" onClick={onOpenImage}>
-        <Upload size={16} /> Open image in new project
-      </button>
-    </>
-  )
-}
-
 function ExportInspector() {
   const document = useEditorStore((state) => state.document)
   const updateScanner = useEditorStore((state) => state.updateScanner)
@@ -1390,7 +1365,6 @@ export function Inspector(props: InspectorProps) {
   return (
     <aside className="inspector">
       <div className="inspector-scroll">
-        {step === 'image' && <ImageInspector onOpenImage={props.onOpenImage} />}
         {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
         {step === 'export' && <ExportInspector />}
