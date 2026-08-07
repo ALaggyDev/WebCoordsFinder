@@ -419,7 +419,10 @@ function App() {
       }
       const projectId = crypto.randomUUID()
       const nextDocument = createEmptyDocument()
-      nextDocument.projectName = projectNameFromFile(file)
+      nextDocument.projectName = uniqueProjectName(projectNameFromFile(file), [
+        ...projects,
+        ...(currentSummary ? [currentSummary] : []),
+      ])
       nextDocument.image = importedImage
       const summary = await persistProject(projectId, nextDocument)
       revokeObjectUrl(document.image.src)
@@ -468,6 +471,7 @@ function App() {
     try {
       const imported = await readProjectBundle(file)
       const restored = normalizeEditorDocument(imported.document)
+      restored.projectName = uniqueProjectName(restored.projectName, projects)
       if (imported.imageBlob) {
         const key = crypto.randomUUID()
         await persistImage(key, imported.imageBlob)
