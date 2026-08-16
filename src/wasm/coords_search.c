@@ -13,6 +13,8 @@ enum {
     MODE_VANILLA_3 = 2,
     MODE_SODIUM_1 = 3,
     MODE_SODIUM_2 = 4,
+    SCAN_ORDER_LINEAR = 0,
+    SCAN_ORDER_SPIRAL = 1,
     MAX_DIRECTIONS = 4,
     MAX_FILTERS = 256,
     MAX_BATCH_RESULTS = 1024
@@ -49,12 +51,14 @@ static int32_t cursor_x;
 static int32_t cursor_y;
 static int32_t cursor_z;
 static int32_t search_mode;
+static int32_t search_scan_order;
 static int32_t search_max_bad_blocks;
 static int32_t search_filter_count;
 static int32_t search_direction_count;
 static int32_t cursor_direction;
 static uint32_t batch_result_count;
-static uint64_t positions_per_direction;
+static uint64_t xz_positions;
+static uint64_t cursor_xz_index;
 static uint64_t processed_positions;
 static uint64_t total_positions;
 static uint64_t matching_positions;
@@ -226,43 +230,143 @@ static uint32_t texture_variant(
     }
 }
 
-/*
- * Cursor order is X, then Y, then Z, then direction. search_restore relies on
- * this exact ordering to recover a cursor from the processed-position count.
- */
-static void advance_cursor(void)
+static uint64_t spiral_positions_through_radius(int64_t radius)
 {
-    if (cursor_x != search_x_end) {
-        cursor_x += 1;
+    int64_t center_x = (int64_t)search_x_start +
+        ((int64_t)search_x_end - search_x_start) / 2;
+    int64_t center_z = (int64_t)search_z_start +
+        ((int64_t)search_z_end - search_z_start) / 2;
+    int64_t min_x = center_x - radius > search_x_start ? center_x - radius : search_x_start;
+    int64_t max_x = center_x + radius < search_x_end ? center_x + radius : search_x_end;
+    int64_t min_z = center_z - radius > search_z_start ? center_z - radius : search_z_start;
+    int64_t max_z = center_z + radius < search_z_end ? center_z + radius : search_z_end;
+    uint64_t width = (uint64_t)(max_x - min_x) + 1ull;
+    uint64_t height = (uint64_t)(max_z - min_z) + 1ull;
+    return width * height;
+}
+
+/* Map an X/Z ordinal to the native clockwise, center-out ring traversal. */
+static void set_spiral_xz_cursor(uint64_t index)
+{
+    int64_t center_x = (int64_t)search_x_start +
+        ((int64_t)search_x_end - search_x_start) / 2;
+    int64_t center_z = (int64_t)search_z_start +
+        ((int64_t)search_z_end - search_z_start) / 2;
+    int64_t maximum_radius = center_x - search_x_start;
+    if (center_z - search_z_start > maximum_radius) maximum_radius = center_z - search_z_start;
+    if (search_x_end - center_x > maximum_radius) maximum_radius = search_x_end - center_x;
+    if (search_z_end - center_z > maximum_radius) maximum_radius = search_z_end - center_z;
+    int64_t low = 0;
+    int64_t high = maximum_radius;
+
+    while (low < high) {
+        int64_t middle = low + (high - low) / 2;
+        if (spiral_positions_through_radius(middle) > index) high = middle;
+        else low = middle + 1;
+    }
+
+    int64_t radius = low;
+    if (radius == 0) {
+        cursor_x = (int32_t)center_x;
+        cursor_z = (int32_t)center_z;
         return;
     }
-    cursor_x = search_x_start;
 
+    uint64_t offset = index - spiral_positions_through_radius(radius - 1);
+    int64_t from;
+    int64_t to;
+    uint64_t length;
+
+    int64_t right = center_x + radius;
+    if (right >= search_x_start && right <= search_x_end) {
+        from = center_z - radius + 1 > search_z_start ? center_z - radius + 1 : search_z_start;
+        to = center_z + radius < search_z_end ? center_z + radius : search_z_end;
+        length = (uint64_t)(to - from) + 1ull;
+        if (offset < length) {
+            cursor_x = (int32_t)right;
+            cursor_z = (int32_t)(from + (int64_t)offset);
+            return;
+        }
+        offset -= length;
+    }
+
+    int64_t bottom = center_z + radius;
+    if (bottom >= search_z_start && bottom <= search_z_end) {
+        from = center_x + radius - 1 < search_x_end ? center_x + radius - 1 : search_x_end;
+        to = center_x - radius > search_x_start ? center_x - radius : search_x_start;
+        length = (uint64_t)(from - to) + 1ull;
+        if (offset < length) {
+            cursor_x = (int32_t)(from - (int64_t)offset);
+            cursor_z = (int32_t)bottom;
+            return;
+        }
+        offset -= length;
+    }
+
+    int64_t left = center_x - radius;
+    if (left >= search_x_start && left <= search_x_end) {
+        from = center_z + radius - 1 < search_z_end ? center_z + radius - 1 : search_z_end;
+        to = center_z - radius > search_z_start ? center_z - radius : search_z_start;
+        length = (uint64_t)(from - to) + 1ull;
+        if (offset < length) {
+            cursor_x = (int32_t)left;
+            cursor_z = (int32_t)(from - (int64_t)offset);
+            return;
+        }
+        offset -= length;
+    }
+
+    from = center_x - radius + 1 > search_x_start ? center_x - radius + 1 : search_x_start;
+    cursor_x = (int32_t)(from + (int64_t)offset);
+    cursor_z = (int32_t)(center_z - radius);
+}
+
+/* Linear scans run X -> Z -> Y -> direction. */
+static void advance_cursor(void)
+{
     if (cursor_y != search_y_end) {
         cursor_y += 1;
         return;
     }
     cursor_y = search_y_start;
 
-    if (cursor_z != search_z_end) {
-        cursor_z += 1;
+    if (search_scan_order == SCAN_ORDER_SPIRAL) {
+        if (cursor_direction + 1 < search_direction_count) {
+            cursor_direction += 1;
+            return;
+        }
+        cursor_direction = 0;
+        cursor_xz_index += 1;
+        if (cursor_xz_index < xz_positions) {
+            set_spiral_xz_cursor(cursor_xz_index);
+            return;
+        }
+        search_finished = 1;
         return;
     }
 
     if (cursor_direction + 1 < search_direction_count) {
         cursor_direction += 1;
-        cursor_x = search_x_start;
-        cursor_y = search_y_start;
-        cursor_z = search_z_start;
         return;
     }
-
+    cursor_direction = 0;
+    if (cursor_z != search_z_end) {
+        cursor_z += 1;
+        return;
+    }
+    cursor_z = search_z_start;
+    if (cursor_x != search_x_end) {
+        cursor_x += 1;
+        return;
+    }
+    cursor_x = search_x_start;
     search_finished = 1;
 }
 
 EXPORT("search_configure")
 int32_t search_configure(
     int32_t mode,
+    int32_t scan_order,
     int32_t x_start,
     int32_t x_end,
     int32_t y_start,
@@ -275,6 +379,7 @@ int32_t search_configure(
 {
     /* Numeric error codes keep the JS/WASM ABI independent of linear memory. */
     if (mode < MODE_VANILLA_1 || mode > MODE_SODIUM_2) return 1;
+    if (scan_order != SCAN_ORDER_LINEAR && scan_order != SCAN_ORDER_SPIRAL) return 7;
     if (x_start > x_end || y_start > y_end || z_start > z_end) return 2;
     if (max_bad_blocks < 0) return 3;
     if (filter_count < 1 || filter_count > MAX_FILTERS) return 4;
@@ -296,6 +401,7 @@ int32_t search_configure(
     }
 
     search_mode = mode;
+    search_scan_order = scan_order;
     search_x_start = x_start;
     search_x_end = x_end;
     search_y_start = y_start;
@@ -306,11 +412,17 @@ int32_t search_configure(
     search_filter_count = filter_count;
     search_direction_count = direction_count;
     cursor_direction = 0;
-    cursor_x = x_start;
     cursor_y = y_start;
-    cursor_z = z_start;
+    cursor_xz_index = 0;
+    xz_positions = x_size * z_size;
+    if (scan_order == SCAN_ORDER_SPIRAL) {
+        set_spiral_xz_cursor(0);
+    }
+    else {
+        cursor_x = x_start;
+        cursor_z = z_start;
+    }
     batch_result_count = 0;
-    positions_per_direction = volume;
     processed_positions = 0;
     matching_positions = 0;
     total_positions = directional_volume;
@@ -423,21 +535,33 @@ int32_t search_restore(uint64_t processed, uint64_t matches)
         return 0;
     }
 
-    uint64_t directional_processed = processed % positions_per_direction;
-    cursor_direction = (int32_t)(processed / positions_per_direction);
-    uint64_t x_size =
-        (uint64_t)((int64_t)search_x_end - search_x_start) + 1ull;
     uint64_t y_size =
         (uint64_t)((int64_t)search_y_end - search_y_start) + 1ull;
-    uint64_t xy_size = x_size * y_size;
-    uint64_t z_index = directional_processed / xy_size;
-    uint64_t within_z = directional_processed % xy_size;
-    uint64_t y_index = within_z / x_size;
-    uint64_t x_index = within_z % x_size;
+    uint64_t z_size =
+        (uint64_t)((int64_t)search_z_end - search_z_start) + 1ull;
 
-    cursor_x = (int32_t)((int64_t)search_x_start + (int64_t)x_index);
-    cursor_y = (int32_t)((int64_t)search_y_start + (int64_t)y_index);
-    cursor_z = (int32_t)((int64_t)search_z_start + (int64_t)z_index);
+    if (search_scan_order == SCAN_ORDER_SPIRAL) {
+        uint64_t positions_per_xz = y_size * (uint64_t)search_direction_count;
+        cursor_xz_index = processed / positions_per_xz;
+        uint64_t within_xz = processed % positions_per_xz;
+        cursor_direction = (int32_t)(within_xz / y_size);
+        cursor_y = (int32_t)((int64_t)search_y_start +
+            (int64_t)(within_xz % y_size));
+        set_spiral_xz_cursor(cursor_xz_index);
+    }
+    else {
+        cursor_direction = (int32_t)(processed % (uint64_t)search_direction_count);
+        uint64_t positional_processed = processed / (uint64_t)search_direction_count;
+        uint64_t zy_size = z_size * y_size;
+        uint64_t x_index = positional_processed / zy_size;
+        uint64_t within_x = positional_processed % zy_size;
+        uint64_t z_index = within_x / y_size;
+        uint64_t y_index = within_x % y_size;
+
+        cursor_x = (int32_t)((int64_t)search_x_start + (int64_t)x_index);
+        cursor_y = (int32_t)((int64_t)search_y_start + (int64_t)y_index);
+        cursor_z = (int32_t)((int64_t)search_z_start + (int64_t)z_index);
+    }
     search_finished = 0;
     return 0;
 }

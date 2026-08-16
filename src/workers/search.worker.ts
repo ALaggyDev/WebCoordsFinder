@@ -12,6 +12,7 @@ import type { SearchDirection } from '../domain/types'
 interface SearchExports extends WebAssembly.Exports {
   search_configure: (
     mode: number,
+    scanOrder: number,
     xStart: number,
     xEnd: number,
     yStart: number,
@@ -195,6 +196,7 @@ async function startSearch(
     const request = command.request
     const configureError = module.search_configure(
       request.mode,
+      request.scanOrder,
       request.xStart,
       request.xEnd,
       request.yStart,

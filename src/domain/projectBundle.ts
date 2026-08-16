@@ -41,7 +41,7 @@ const projectSchema = z
           ),
         webSearch: z
           .object({
-            engineVersion: z.literal(2),
+            engineVersion: z.union([z.literal(2), z.literal(3)]),
             requestKey: z.string(),
             phase: z.enum([
               'running',

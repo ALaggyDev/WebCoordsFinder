@@ -2,6 +2,7 @@ import { confirmedUniqueEvidence, validateForExport } from './exportConfig'
 import type {
   EditorDocument,
   PersistedWebSearchPhase,
+  ScanOrder,
   SearchDirection,
   TextureAlgorithm,
   WebSearchCheckpoint,
@@ -11,7 +12,7 @@ import type {
 // The web-search protocol keeps exact counters as BigInt in memory and as
 // decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 2
+export const WEB_SEARCH_ENGINE_VERSION = 3
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -19,6 +20,11 @@ const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-3': 2,
   'Sodium-1': 3,
   'Sodium-2': 4,
+}
+
+const scanOrderIds: Record<ScanOrder, number> = {
+  linear: 0,
+  spiral: 1,
 }
 
 export interface WebSearchConstraint {
@@ -31,6 +37,7 @@ export interface WebSearchConstraint {
 
 export interface WebSearchRequest {
   mode: number
+  scanOrder: number
   directions: SearchDirection[]
   xStart: number
   xEnd: number
@@ -124,6 +131,7 @@ export function createWebSearchRequest(
 
   return {
     mode: textureModeIds[document.scanner.textureAlgorithm],
+    scanOrder: scanOrderIds[document.scanner.scanOrder],
     directions: document.scanner.directions,
     xStart,
     xEnd,
