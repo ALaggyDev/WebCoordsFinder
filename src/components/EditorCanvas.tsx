@@ -66,6 +66,7 @@ const ANCHOR = '#ff626b'
 const CONFIRMED = '#53e6a5'
 const EDGE = '#d6e0e5'
 const HOVERED = '#d8c66b'
+const VISUALIZATION_SETTINGS_STORAGE_KEY = 'web-coords-finder:visualization-settings'
 
 interface CanvasSize {
   width: number
@@ -73,11 +74,42 @@ interface CanvasSize {
 }
 
 interface VisualizationSettings {
+  grid: boolean
   axisGizmo: boolean
   faceNormals: boolean
   anchorMarker: boolean
   calibrationPoints: boolean
   calibrationResiduals: boolean
+}
+
+const defaultVisualizationSettings: VisualizationSettings = {
+  grid: true,
+  axisGizmo: true,
+  anchorMarker: true,
+  calibrationPoints: true,
+  calibrationResiduals: true,
+  faceNormals: false,
+}
+
+function loadVisualizationSettings(): VisualizationSettings {
+  try {
+    const stored = localStorage.getItem(VISUALIZATION_SETTINGS_STORAGE_KEY)
+    if (!stored) return defaultVisualizationSettings
+    const parsed: unknown = JSON.parse(stored)
+    if (!parsed || typeof parsed !== 'object') return defaultVisualizationSettings
+
+    return Object.fromEntries(
+      Object.entries(defaultVisualizationSettings).map(([key, value]) => [
+        key,
+        typeof (parsed as Record<string, unknown>)[key] === 'boolean'
+          ? (parsed as Record<string, boolean>)[key]
+          : value,
+      ]),
+    ) as VisualizationSettings
+  } catch {
+    // The editor remains usable when storage is unavailable or corrupt.
+    return defaultVisualizationSettings
+  }
 }
 
 interface DraggedObservation {
@@ -191,6 +223,11 @@ const visualizationOptions: Array<{
   label: string
   description: string
 }> = [
+  {
+    key: 'grid',
+    label: 'Mesh grid',
+    description: 'Show the block-face grid and its selectable edges.',
+  },
   {
     key: 'axisGizmo',
     label: 'Anchor axes',
@@ -573,13 +610,20 @@ export function EditorCanvas() {
   const [pointerPoint, setPointerPoint] = useState<Point2>()
   const [boxSelection, setBoxSelection] = useState<BoxSelectionDrag>()
   const [hoveredOrientationEdge, setHoveredOrientationEdge] = useState<FaceEdge>()
-  const [visualizations, setVisualizations] = useState<VisualizationSettings>({
-    axisGizmo: true,
-    anchorMarker: true,
-    calibrationPoints: true,
-    calibrationResiduals: true,
-    faceNormals: false,
-  })
+  const [visualizations, setVisualizations] = useState<VisualizationSettings>(
+    loadVisualizationSettings,
+  )
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        VISUALIZATION_SETTINGS_STORAGE_KEY,
+        JSON.stringify(visualizations),
+      )
+    } catch {
+      // Settings are optional; a storage failure should not disrupt editing.
+    }
+  }, [visualizations])
 
   const renderedScene = useMemo(() => {
     if (!draggedObservation) return document.scene
@@ -1283,7 +1327,7 @@ export function EditorCanvas() {
           )}
         </Layer>
         <Layer>
-          {sceneForRendering.faces.map((face) => {
+          {visualizations.grid && sceneForRendering.faces.map((face) => {
             const isPreview = face.id.startsWith('__preview_')
             const evidence = evidenceMap.get(face.id)
             const selected = selectedEvidenceIds.includes(face.id)
@@ -1337,7 +1381,7 @@ export function EditorCanvas() {
               />
             )
           })}
-          {meshEdges.map(({ key, selection }) => {
+          {visualizations.grid && meshEdges.map(({ key, selection }) => {
             const geometry = selectedEdgeGeometry(renderedScene, selection)
             if (!geometry) return null
             const start = projectScenePoint(renderedScene, geometry.start)
