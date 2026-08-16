@@ -317,6 +317,39 @@ describe('global perspective geometry', () => {
     )
   })
 
+  it.each([4, 16, 64])(
+    'refits an exact camera without lattice-scale bias at size %i',
+    (gridSize) => {
+      const latticePoints = [
+        { x: 0, y: 0, z: 0 },
+        { x: gridSize, y: 0, z: 0 },
+        { x: gridSize, y: gridSize, z: 0 },
+        { x: 0, y: gridSize, z: 0 },
+        { x: 0, y: 0, z: 1 },
+        { x: 1, y: 0, z: 1 },
+      ]
+      const observations: CalibrationObservation[] = latticePoints.map(
+        (lattice, index) => ({
+          id: String(index),
+          lattice,
+          image: projectCamera(cameraMatrix, lattice),
+          weight: 1,
+        }),
+      )
+
+      const fitted = fitCameraProjection(observations)
+
+      expect(fitted.rmsError).toBeLessThan(1e-4)
+      observations.forEach((observation) => {
+        expectPointClose(
+          projectCamera(fitted.matrix, observation.lattice),
+          observation.image,
+          4,
+        )
+      })
+    },
+  )
+
   it('creates one stored face per selected edge and depth block', () => {
     const scene: SceneGeometry = {
       faces: [face],

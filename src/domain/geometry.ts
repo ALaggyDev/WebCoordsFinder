@@ -1059,9 +1059,28 @@ export function projectionInfo(scene: SceneGeometry): ProjectionInfo {
 
 function solveLeastSquares(rows: number[][], values: number[]): number[] {
   const size = rows[0]?.length ?? 0
+  const columnScales = Array.from({ length: size }, (_, column) =>
+    rows.reduce(
+      (scale, row) => Math.hypot(scale, row[column]),
+      0,
+    ),
+  )
+  if (
+    columnScales.some(
+      (scale) => !Number.isFinite(scale) || scale <= EPSILON,
+    )
+  ) {
+    throw new Error('The calibration equations are degenerate.')
+  }
+  // Camera coefficients mix lattice, pixel, and pixel-times-lattice units.
+  // Preconditioning makes the ridge dimensionless instead of letting the
+  // largest raw column bias weak translation or depth coefficients.
+  const scaledRows = rows.map((row) =>
+    row.map((value, column) => value / columnScales[column]),
+  )
   const normal = Array.from({ length: size }, () => Array(size).fill(0))
   const rhs = Array(size).fill(0)
-  rows.forEach((row, rowIndex) => {
+  scaledRows.forEach((row, rowIndex) => {
     for (let i = 0; i < size; i += 1) {
       rhs[i] += row[i] * values[rowIndex]
       for (let j = 0; j < size; j += 1) normal[i][j] += row[i] * row[j]
@@ -1074,7 +1093,9 @@ function solveLeastSquares(rows: number[][], values: number[]): number[] {
   // A tiny scale-relative ridge stabilizes nearly singular calibration poses
   // without materially moving a well-conditioned solution.
   for (let index = 0; index < size; index += 1) normal[index][index] += ridge
-  return solveLinearSystem(normal, rhs)
+  return solveLinearSystem(normal, rhs).map(
+    (value, column) => value / columnScales[column],
+  )
 }
 
 export function fitCameraProjection(
