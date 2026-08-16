@@ -17,6 +17,7 @@ interface AssetRecord {
 
 export interface ProjectSummary {
   id: string
+  createdAt: number
   name: string
   imageName: string
   imageKey: string
@@ -67,6 +68,9 @@ function projectSummary(record: ProjectRecord): ProjectSummary {
   const evidence = Array.isArray(document.evidence) ? document.evidence : []
   return {
     id: record.id,
+    // Projects written before creation timestamps were introduced retain their
+    // original ordering by treating their last-known update as creation time.
+    createdAt: record.createdAt ?? record.updatedAt,
     name: document.projectName?.trim() || 'Untitled project',
     imageName: document.image?.name || 'No image',
     imageKey: document.image?.key || '',
@@ -124,7 +128,11 @@ export async function loadProject(id: string): Promise<StoredProject | null> {
 export async function listProjects(): Promise<ProjectSummary[]> {
   const records = await db.projects.toArray()
   return records
-    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .sort(
+      (left, right) =>
+        (right.createdAt ?? right.updatedAt) -
+        (left.createdAt ?? left.updatedAt),
+    )
     .map(projectSummary)
 }
 

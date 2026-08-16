@@ -61,9 +61,11 @@ function summaryFor(
   id: string,
   nextDocument: ReturnType<typeof createEmptyDocument>,
   updatedAt = Date.now(),
+  createdAt = updatedAt,
 ) {
   return {
     id,
+    createdAt,
     name: nextDocument.projectName,
     imageName: nextDocument.image.name,
     imageKey: nextDocument.image.key,

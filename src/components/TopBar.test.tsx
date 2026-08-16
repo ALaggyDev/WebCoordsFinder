@@ -8,6 +8,7 @@ import { TopBar } from './TopBar'
 const projects = [
   {
     id: 'project-a',
+    createdAt: 2,
     name: 'Nether ceiling',
     imageName: 'nether.png',
     imageKey: 'image-a',

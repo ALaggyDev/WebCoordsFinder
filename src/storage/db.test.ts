@@ -89,6 +89,33 @@ describe('project storage', () => {
     expect(restored?.imageBlob).toBeDefined()
   })
 
+  it('lists projects by creation date instead of their most recent update', async () => {
+    const older = createEmptyDocument()
+    older.projectName = 'Older project'
+    const newer = createEmptyDocument()
+    newer.projectName = 'Newer project'
+
+    await db.projects.bulkPut([
+      {
+        id: 'older',
+        createdAt: 100,
+        updatedAt: 1_000,
+        document: older,
+      },
+      {
+        id: 'newer',
+        createdAt: 200,
+        updatedAt: 300,
+        document: newer,
+      },
+    ])
+
+    expect((await listProjects()).map((project) => project.id)).toEqual([
+      'newer',
+      'older',
+    ])
+  })
+
   it('remembers the active project and clears every project and image', async () => {
     const document = createEmptyDocument()
     document.image.key = 'only-image'

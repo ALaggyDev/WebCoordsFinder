@@ -211,7 +211,7 @@ function App() {
         .then((summary) =>
           setProjects((current) =>
             [summary, ...current.filter((project) => project.id !== summary.id)]
-              .sort((left, right) => right.updatedAt - left.updatedAt),
+              .sort((left, right) => right.createdAt - left.createdAt),
           ),
         )
         .catch(() => notify('Autosave is temporarily unavailable.', 'warning'))
@@ -582,7 +582,7 @@ function App() {
         [
           selectedSummary,
           ...current.filter((project) => project.id !== projectId),
-        ].sort((left, right) => right.updatedAt - left.updatedAt),
+        ].sort((left, right) => right.createdAt - left.createdAt),
       )
       notify(`Opened ${restored.projectName}.`, 'success')
     } catch (error) {
@@ -740,7 +740,7 @@ function App() {
       const summary = await persistProject(projectId, renamedDocument)
       setProjects((current) =>
         [summary, ...current.filter((project) => project.id !== projectId)]
-          .sort((left, right) => right.updatedAt - left.updatedAt),
+          .sort((left, right) => right.createdAt - left.createdAt),
       )
       notify(`Renamed project to ${nextName}.`, 'success')
     } catch (error) {

@@ -7,6 +7,7 @@ import { ProjectDialog } from './ProjectDialog'
 const projects: ProjectSummary[] = [
   {
     id: 'project-a',
+    createdAt: 2,
     name: 'Nether ceiling',
     imageName: 'nether.png',
     imageKey: 'image-a',
@@ -23,6 +24,7 @@ const projects: ProjectSummary[] = [
   },
   {
     id: 'project-b',
+    createdAt: 1,
     name: 'End island',
     imageName: 'end.png',
     imageKey: 'image-b',
