@@ -1,8 +1,19 @@
 // Store tests assert both document results and transaction semantics: geometry,
 // evidence, history, and runtime checkpoints must evolve together correctly.
 import { beforeEach, describe, expect, it } from 'vitest'
-import { projectScenePoint } from '../domain/geometry'
-import type { WebSearchCheckpoint } from '../domain/types'
+import {
+  axisMappingParity,
+  cameraCenter,
+  cameraLatticeParity,
+  dot3,
+  faceCornersLattice,
+  projectScenePoint,
+  scale3,
+  sceneLatticeParity,
+  subtract3,
+  worldAlignedFaceQuad,
+} from '../domain/geometry'
+import type { SceneGeometry, WebSearchCheckpoint } from '../domain/types'
 import {
   createEmptyDocument,
   evidenceWorldCoordinate,
@@ -11,9 +22,28 @@ import {
 } from './editorStore'
 import { createTestDocument } from '../test/createTestDocument'
 
+function expectNormalsFaceCamera(scene: SceneGeometry): void {
+  const center = cameraCenter(scene)
+  expect(center).toBeDefined()
+  scene.faces.forEach((face) => {
+    const faceCenter = scale3(
+      faceCornersLattice(face).reduce(
+        (sum, corner) => ({
+          x: sum.x + corner.x,
+          y: sum.y + corner.y,
+          z: sum.z + corner.z,
+        }),
+        { x: 0, y: 0, z: 0 },
+      ),
+      0.25,
+    )
+    expect(dot3(face.normal, subtract3(center!, faceCenter))).toBeGreaterThan(0)
+  })
+}
+
 beforeEach(() => {
   const document = createTestDocument()
-  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
     document,
@@ -109,14 +139,6 @@ describe('unit-face geometry', () => {
       4,
     )
     const face = useEditorStore.getState().document.scene.faces[0]
-    const originalNormals = new Map(
-      useEditorStore
-        .getState()
-        .document.scene.faces.map((candidate) => [
-          candidate.id,
-          structuredClone(candidate.normal),
-        ]),
-    )
     useEditorStore
       .getState()
       .selectEdge({ faceId: face.id, edge: 'top' }, false)
@@ -130,12 +152,7 @@ describe('unit-face geometry', () => {
     expect(state.document.scene.observations).toHaveLength(6)
     expect(state.document.scene.faces).toHaveLength(25)
     expect(state.document.anchorFaceId).toBe(state.document.scene.faces[0].id)
-    originalNormals.forEach((normal, faceId) => {
-      expect(
-        state.document.scene.faces.find((candidate) => candidate.id === faceId)
-          ?.normal,
-      ).toEqual(normal)
-    })
+    expectNormalsFaceCamera(state.document.scene)
     planarAnchors.forEach((anchor) => {
       const projected = projectScenePoint(state.document.scene, anchor.lattice)!
       expect(projected.x).toBeCloseTo(anchor.image.x, 6)
@@ -146,6 +163,55 @@ describe('unit-face geometry', () => {
       expect(projected.x).toBeCloseTo(anchor.image.x, 6)
       expect(projected.y).toBeCloseTo(anchor.image.y, 6)
     })
+  })
+
+  it('uses opposite camera parities for opposite first-extrusion gestures', () => {
+    const results: Array<{ parity: number; upLabel: string }> = []
+    for (const pointer of [
+      { x: 300, y: 100 },
+      { x: 300, y: 300 },
+    ]) {
+      useEditorStore.setState({ document: createEmptyDocument() })
+      useEditorStore.getState().addBaseFaces(
+        [
+          { x: 100, y: 200 },
+          { x: 500, y: 200 },
+          { x: 550, y: 500 },
+          { x: 50, y: 500 },
+        ],
+        4,
+        4,
+      )
+      const base = useEditorStore.getState().document.scene.faces[0]
+      useEditorStore.getState().startUpOrientation()
+      useEditorStore.getState().setOrientationFace(base.id)
+      useEditorStore.getState().setOrientationSurfaceKind('top')
+      const planar = useEditorStore.getState().document.scene
+      expect(planar.axisMapping.c).toBe('y+')
+      expect(axisMappingParity(planar.axisMapping)).toBe(
+        sceneLatticeParity(planar),
+      )
+      useEditorStore
+        .getState()
+        .selectEdge({ faceId: base.id, edge: 'top' }, false)
+      useEditorStore.getState().extrudeSelectedEdges(pointer)
+      const promoted = useEditorStore.getState().document.scene
+      expect(promoted.projection?.kind).toBe('camera')
+      expectNormalsFaceCamera(promoted)
+      const parity = cameraLatticeParity(promoted)
+      expect(axisMappingParity(promoted.axisMapping)).toBe(parity)
+      results.push({
+        parity: parity!,
+        upLabel: promoted.axisMapping.c,
+      })
+    }
+
+    expect(new Set(results.map((result) => result.parity))).toEqual(
+      new Set([-1, 1]),
+    )
+    expect(new Set(results.map((result) => result.upLabel))).toEqual(
+      new Set(['y+', 'y-']),
+    )
   })
 
   it('removes an extra calibration anchor and refits the camera in one transaction', () => {
@@ -328,7 +394,7 @@ describe('unit-face geometry', () => {
         normal: { x: 0, y: 0, z: 1 },
       },
     ]
-    document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
     useEditorStore.setState({ document })
 
     useEditorStore.getState().selectFace('side', false)
@@ -376,8 +442,12 @@ describe('unit-face geometry', () => {
     const scene = useEditorStore.getState().document.scene
     expect(scene.projection?.kind).toBe('planar')
     expect(scene.observations).toHaveLength(4)
-    expect(scene.axisMapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
-    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+    expect(scene.axisMapping).toEqual({
+      a: 'unknown',
+      b: 'unknown',
+      c: 'y+',
+    })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(false)
   })
 
   it('demotes a camera to the surviving perpendicular plane after deleting its base', () => {
@@ -391,8 +461,12 @@ describe('unit-face geometry', () => {
     const scene = useEditorStore.getState().document.scene
     expect(scene.projection?.kind).toBe('planar')
     expect(scene.observations).toHaveLength(4)
-    expect(scene.axisMapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
-    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+    expect(scene.axisMapping).toEqual({
+      a: 'unknown',
+      b: 'unknown',
+      c: 'y+',
+    })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(false)
   })
 
   it('extrudes through an existing camera without recalibrating it', () => {
@@ -471,9 +545,10 @@ describe('unit-face geometry', () => {
     useEditorStore.getState().setOrientationSurfaceKind('top')
 
     const state = useEditorStore.getState()
-    expect(state.document.scene.axisMapping).toEqual({
-      a: 'x+', b: 'z+', c: 'y+',
-    })
+    expect(state.document.scene.axisMapping.c).toBe('y+')
+    expect(axisMappingParity(state.document.scene.axisMapping)).toBe(
+      cameraLatticeParity(state.document.scene),
+    )
     expect(state.document.scanner.compassResolved).toBe(false)
     expect(state.document.scanner.directions).toEqual([0, 90, 180, 270])
     expect(
@@ -491,6 +566,69 @@ describe('unit-face geometry', () => {
     )
     expect(state.orientationDraft).toBeNull()
     expect(state.tool).toBe('select')
+  })
+
+  it('preselects a usable horizontal frame while the projection remains planar', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+    const face = useEditorStore.getState().document.scene.faces[0]
+
+    useEditorStore.getState().startUpOrientation()
+    useEditorStore.getState().setOrientationFace(face.id)
+    useEditorStore.getState().setOrientationSurfaceKind('top')
+
+    const scene = useEditorStore.getState().document.scene
+    expect(scene.projection?.kind).toBe('planar')
+    expect(scene.axisMapping.c).toBe('y-')
+    expect(axisMappingParity(scene.axisMapping)).toBe(sceneLatticeParity(scene))
+    expect(worldAlignedFaceQuad(scene, face)).toBeDefined()
+    expect(scene.worldUpIntent).toEqual({
+      faceId: face.id,
+      surfaceKind: 'top',
+      edge: null,
+    })
+    expect(useEditorStore.getState().document.scanner.compassResolved).toBe(false)
+    expect(useEditorStore.getState().document.scanner.directions).toEqual([
+      0, 90, 180, 270,
+    ])
+
+    useEditorStore.getState().startHorizontalOrientation()
+    expect(useEditorStore.getState().orientationDraft?.mode).toBe('horizontal')
+  })
+
+  it('upgrades a saved planar UP intent to a complete working frame', () => {
+    useEditorStore.setState({ document: createEmptyDocument() })
+    useEditorStore.getState().addBaseFaces([
+      { x: 40, y: 100 },
+      { x: 360, y: 100 },
+      { x: 300, y: 300 },
+      { x: 100, y: 300 },
+    ])
+    const face = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().startUpOrientation()
+    useEditorStore.getState().setOrientationFace(face.id)
+    useEditorStore.getState().setOrientationSurfaceKind('top')
+
+    const saved = structuredClone(useEditorStore.getState().document)
+    const upLabel = saved.scene.axisMapping.c
+    saved.scene.axisMapping = {
+      a: 'unknown',
+      b: 'unknown',
+      c: upLabel,
+    }
+    const normalized = normalizeEditorDocument(saved)
+
+    expect(axisMappingParity(normalized.scene.axisMapping)).toBe(
+      sceneLatticeParity(normalized.scene),
+    )
+    expect(normalized.scene.axisMapping.c).toBe(upLabel)
+    expect(normalized.scanner.compassResolved).toBe(false)
+    expect(normalized.scanner.directions).toEqual([0, 90, 180, 270])
   })
 
   it('determines UP from a side-face arrow', () => {
@@ -541,7 +679,7 @@ describe('unit-face geometry', () => {
 
     expect(useEditorStore.getState().document.scene.axisMapping).toEqual({
       a: 'x+',
-      b: 'z+',
+      b: 'z-',
       c: 'y+',
     })
     expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
@@ -578,10 +716,42 @@ describe('unit-face geometry', () => {
 
   it('preserves an automatic complete mapping without marking compass confirmed', () => {
     const document = createTestDocument()
-    document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
     document.scanner.compassResolved = false
 
     expect(normalizeEditorDocument(document).scanner.compassResolved).toBe(false)
+  })
+
+  it('downgrades a persisted mapping that conflicts with camera parity', () => {
+    const document = createTestDocument()
+    const face = document.scene.faces[0]
+    document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+    document.scanner.compassResolved = true
+    document.evidence = [{
+      id: face.id,
+      faceId: face.id,
+      latticeCoordinate: { x: 0, y: 0, z: 0 },
+      localNormal: face.normal,
+      blockId: 'deepslate',
+      stateCount: 4,
+      selectedVariant: 2,
+      reviewStatus: 'confirmed',
+      blockSettings: {},
+    }]
+
+    const normalized = normalizeEditorDocument(document)
+
+    expect(normalized.scene.axisMapping).toEqual({
+      a: 'unknown',
+      b: 'unknown',
+      c: 'y+',
+    })
+    expect(normalized.scanner.compassResolved).toBe(false)
+    expect(normalized.scanner.directions).toEqual([0, 90, 180, 270])
+    expect(normalized.evidence[0]).toMatchObject({
+      reviewStatus: 'unlabeled',
+      selectedVariant: undefined,
+    })
   })
 
   it('rejects malformed planar projections without their lattice basis', () => {

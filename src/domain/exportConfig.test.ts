@@ -42,7 +42,7 @@ const documentWith = (entries: FaceEvidence[]): EditorDocument => {
     evidence: entries,
     scene: {
       ...document.scene,
-      axisMapping: { a: 'x+', b: 'y-', c: 'z+' },
+      axisMapping: { a: 'x+', b: 'y-', c: 'z-' },
     },
     scanner: {
       ...document.scanner,
@@ -61,8 +61,8 @@ describe('CoordsFinder export', () => {
     const document = documentWith(entries)
 
     expect(confirmedUniqueEvidence(document).map((entry) => entry.id)).toEqual([
-      'top',
       'other',
+      'top',
     ])
     expect(constraintBits(document)).toBe(3)
   })
@@ -175,7 +175,7 @@ describe('CoordsFinder export', () => {
 
   it('rejects offsets that overflow after a selected X/Z rotation', () => {
     const document = documentWith([
-      evidence('edge', { x: 0, y: 0, z: -128 }, 4, 0),
+      evidence('edge', { x: 0, y: 0, z: 128 }, 4, 0),
     ])
     document.scanner.directions = [0, 90]
 

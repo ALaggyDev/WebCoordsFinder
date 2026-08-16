@@ -3,17 +3,19 @@ import {
   automaticAxisMappingForUp,
   axisMappingFromUpAndHorizontal,
   blockCoordinateForFace,
+  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
+  dot3,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
   initialCameraForPlanarExtrusion,
   isAxisMappingComplete,
   isWorldUpResolved,
   localUpForSurfaceKind,
+  localUpForWorldUpIntent,
   localVectorForWorld,
   mappedAnchorOffset,
-  mappedVector,
   meshEdgeKey,
   negate3,
   outerEdgeForExtrusion,
@@ -23,6 +25,7 @@ import {
   possibleFacesForLocalNormal,
   projectionInfo,
   refitProjection,
+  sceneLatticeParity,
   selectedEdgeGeometry,
   same3,
   validAxisMappingCompletions,
@@ -109,6 +112,7 @@ function createPlanarScene(
       observations,
     ),
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    worldUpIntent: null,
   }
 }
 
@@ -154,6 +158,7 @@ export const createEmptyDocument = (): EditorDocument => ({
     observations: [],
     projection: null,
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    worldUpIntent: null,
   },
   evidence: [],
   scanner: createDefaultScanner(),
@@ -172,6 +177,33 @@ function isValidAxisMapping(input: unknown): input is AxisMapping {
     return false
   }
   return validAxisMappingCompletions(mapping as unknown as AxisMapping).length > 0
+}
+
+function isValidWorldUpIntent(input: unknown): boolean {
+  if (input === undefined || input === null) return true
+  if (typeof input !== 'object') return false
+  const intent = input as Record<string, unknown>
+  const surfaceKind = String(intent.surfaceKind)
+  const edgeIsValid = ['top', 'right', 'bottom', 'left'].includes(
+    String(intent.edge),
+  )
+  return (
+    typeof intent.faceId === 'string' &&
+    ['top', 'bottom', 'side'].includes(surfaceKind) &&
+    (surfaceKind === 'side' ? edgeIsValid : intent.edge === null)
+  )
+}
+
+function worldUpOnlyMapping(mapping: AxisMapping): AxisMapping {
+  const partial: AxisMapping = {
+    a: 'unknown',
+    b: 'unknown',
+    c: 'unknown',
+  }
+  for (const axis of ['a', 'b', 'c'] as const) {
+    if (mapping[axis].startsWith('y')) partial[axis] = mapping[axis]
+  }
+  return partial
 }
 
 function isPoint3(input: unknown): input is Point3 {
@@ -227,6 +259,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     typeof candidate.projectName !== 'string' ||
     !scene ||
     !isValidAxisMapping(scene.axisMapping) ||
+    !isValidWorldUpIntent(scene.worldUpIntent) ||
     !Array.isArray(scene.faces) ||
     !Array.isArray(scene.observations) ||
     (scene.faces.length === 0
@@ -245,6 +278,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     throw new Error('This project uses an unsupported document schema.')
   }
   const normalized = structuredClone(input as EditorDocument)
+  normalized.scene.worldUpIntent ??= null
   const defaults = createDefaultScanner()
   // Current-format fields default independently so existing project bundles
   // remain usable without interpreting superseded scanner settings.
@@ -255,9 +289,52 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
     cudaTileSize: { ...defaults.cudaTileSize, ...normalized.scanner.cudaTileSize },
   }
+  const parity = sceneLatticeParity(normalized.scene)
+  const mappingWasComplete = (['a', 'b', 'c'] as const).every(
+    (axis) => normalized.scene.axisMapping[axis] !== 'unknown',
+  )
+  const intent = normalized.scene.worldUpIntent
+  const referenceFace = intent
+    ? normalized.scene.faces.find((face) => face.id === intent.faceId)
+    : undefined
+  const localUp = localUpForWorldUpIntent(normalized.scene, intent)
+  const automaticMapping =
+    referenceFace && localUp
+      ? automaticAxisMappingForUp(normalized.scene, referenceFace, localUp)
+      : undefined
+  const mappingIsInvalid =
+    mappingWasComplete &&
+    !isAxisMappingComplete(normalized.scene.axisMapping, parity)
+  const replacementMapping = mappingIsInvalid
+    ? automaticMapping ?? worldUpOnlyMapping(normalized.scene.axisMapping)
+    : !mappingWasComplete && automaticMapping
+      ? automaticMapping
+      : undefined
+  if (
+    replacementMapping &&
+    (['a', 'b', 'c'] as const).some(
+      (axis) => normalized.scene.axisMapping[axis] !== replacementMapping[axis],
+    )
+  ) {
+    // Rebuild camera-inconsistent legacy mappings and upgrade planar projects
+    // that stored only UP before homography parity was supported.
+    normalized.scene.axisMapping = replacementMapping
+    normalized.scanner.compassResolved = false
+    normalized.scanner.directions = [...searchDirections]
+    normalized.evidence.forEach((entry) => {
+      entry.stateCount = evidenceStateCount(normalized, entry) ?? 4
+      entry.selectedVariant = undefined
+      entry.reviewStatus = 'unlabeled'
+      entry.scores = undefined
+      entry.confidence = undefined
+    })
+  }
   normalized.scanner.compassResolved =
     Boolean(normalized.scanner.compassResolved) &&
-    isAxisMappingComplete(normalized.scene.axisMapping)
+    isAxisMappingComplete(
+      normalized.scene.axisMapping,
+      sceneLatticeParity(normalized.scene),
+    )
   normalized.evidence.forEach((entry) => {
     if (['grass_block', 'lily_pad'].includes(entry.blockId) && !entry.blockSettings?.grassTint) {
       entry.blockSettings = {
@@ -298,6 +375,7 @@ function evidenceFaces(
   return possibleFacesForLocalNormal(
     document.scene.axisMapping,
     evidence.localNormal,
+    sceneLatticeParity(document.scene),
   )
 }
 
@@ -314,6 +392,7 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
   const faces = possibleFacesForLocalNormal(
     document.scene.axisMapping,
     face.normal,
+    sceneLatticeParity(document.scene),
   )
   return {
     id: face.id,
@@ -367,7 +446,13 @@ function pruneGeometry(document: EditorDocument): void {
     document.scene.observations = []
     document.scene.projection = null
     document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scene.worldUpIntent = null
     document.scanner.compassResolved = false
+  } else if (
+    document.scene.worldUpIntent &&
+    !faceIds.has(document.scene.worldUpIntent.faceId)
+  ) {
+    document.scene.worldUpIntent = null
   }
 }
 
@@ -465,6 +550,18 @@ function removeFaces(document: EditorDocument, ids: Set<string>): void {
   if (planar) {
     document.scene.observations = planar.observations
     document.scene.projection = planar.projection
+    if (
+      !isAxisMappingComplete(
+        document.scene.axisMapping,
+        sceneLatticeParity(document.scene),
+      )
+    ) {
+      applyAxisMapping(
+        document,
+        worldUpOnlyMapping(document.scene.axisMapping),
+        false,
+      )
+    }
   }
 }
 
@@ -478,7 +575,8 @@ function applyAxisMapping(
   )
   document.scene.axisMapping = mapping
   document.scanner.compassResolved =
-    compassResolved && isAxisMappingComplete(mapping)
+    compassResolved &&
+    isAxisMappingComplete(mapping, sceneLatticeParity(document.scene))
   document.scanner.directions = compassResolved
     ? [0]
     : [...searchDirections]
@@ -492,6 +590,57 @@ function applyAxisMapping(
     entry.scores = undefined
     entry.confidence = undefined
   })
+}
+
+function reconcileCameraFacingGeometry(document: EditorDocument): void {
+  if (document.scene.projection?.kind !== 'camera') return
+  const changedFaceIds = new Set<string>()
+  document.scene.faces.forEach((face) => {
+    const normal = cameraFacingNormal(document.scene, face)
+    if (same3(normal, face.normal)) return
+    face.normal = normal
+    changedFaceIds.add(face.id)
+  })
+
+  document.evidence
+    .filter((entry) => changedFaceIds.has(entry.faceId))
+    .forEach((entry) => {
+      const face = document.scene.faces.find(
+        (candidate) => candidate.id === entry.faceId,
+      )
+      if (!face) return
+      entry.latticeCoordinate = blockCoordinateForFace(face)
+      entry.localNormal = face.normal
+      entry.selectedVariant = undefined
+      entry.reviewStatus = 'unlabeled'
+      entry.scores = undefined
+      entry.confidence = undefined
+    })
+
+  const intent = document.scene.worldUpIntent
+  const localUp = localUpForWorldUpIntent(document.scene, intent)
+  const referenceFace = intent
+    ? document.scene.faces.find((face) => face.id === intent.faceId)
+    : undefined
+  const intentMapping =
+    localUp && referenceFace
+      ? automaticAxisMappingForUp(document.scene, referenceFace, localUp)
+      : undefined
+  const mapping =
+    intentMapping ??
+    (isAxisMappingComplete(
+      document.scene.axisMapping,
+      sceneLatticeParity(document.scene),
+    )
+      ? document.scene.axisMapping
+      : worldUpOnlyMapping(document.scene.axisMapping))
+  applyAxisMapping(document, mapping, false)
+
+  if (changedFaceIds.size > 0) {
+    document.evidence.forEach((entry) => {
+      entry.stateCount = evidenceStateCount(document, entry) ?? 4
+    })
+  }
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -591,6 +740,7 @@ export const useEditorStore = create<EditorState>((set) => ({
           b: 'unknown',
           c: 'unknown',
         }
+        document.scene.worldUpIntent = null
         document.evidence = []
         document.anchorFaceId = null
         document.scanner.compassResolved = false
@@ -695,8 +845,11 @@ export const useEditorStore = create<EditorState>((set) => ({
               point,
             )
       if (!extrusion) return state
+      const extrusionScene = planarCamera
+        ? { ...state.document.scene, projection: planarCamera.projection }
+        : state.document.scene
       const faces = createEdgeExtrusionFaces(
-        state.document.scene,
+        extrusionScene,
         state.selectedEdges,
         extrusion.axis,
         extrusion.blocks,
@@ -740,6 +893,7 @@ export const useEditorStore = create<EditorState>((set) => ({
               })
             })
             document.scene.projection = planarCamera.projection
+            reconcileCameraFacingGeometry(document)
             document.anchorFaceId ??= document.scene.faces[0]?.id ?? null
           }
         }),
@@ -802,6 +956,19 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.scores = undefined
             entry.confidence = undefined
           })
+        const intent = document.scene.worldUpIntent
+        const localUp = localUpForWorldUpIntent(document.scene, intent)
+        const referenceFace = intent
+          ? document.scene.faces.find((face) => face.id === intent.faceId)
+          : undefined
+        if (localUp && referenceFace) {
+          const mapping = automaticAxisMappingForUp(
+            document.scene,
+            referenceFace,
+            localUp,
+          )
+          if (mapping) applyAxisMapping(document, mapping, false)
+        }
       })
     }),
   startUpOrientation: () =>
@@ -828,7 +995,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       if (
         !state.document.scene.projection ||
-        !isWorldUpResolved(state.document.scene.axisMapping)
+        !isWorldUpResolved(state.document.scene.axisMapping) ||
+        sceneLatticeParity(state.document.scene) === undefined
       ) {
         return state
       }
@@ -881,6 +1049,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!mapping) return state
       return {
         ...mutateDocument(state, (document) => {
+          document.scene.worldUpIntent = {
+            faceId: face.id,
+            surfaceKind,
+            edge: null,
+          }
           applyAxisMapping(document, mapping, false)
         }),
         orientationDraft: null,
@@ -897,11 +1070,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!face) return state
       const arrow = orientationEdgeGeometry(face, edge)
       if (draft.mode === 'horizontal') {
-        const world = mappedVector(
+        const localUp = localVectorForWorld(
           state.document.scene.axisMapping,
-          arrow.direction,
+          { x: 0, y: 1, z: 0 },
         )
-        if (!world || world.y !== 0) return state
+        if (!localUp || Math.abs(dot3(localUp, arrow.direction)) > 1e-8) {
+          return state
+        }
         return { orientationDraft: { ...draft, edge } }
       }
       if (draft.surfaceKind !== 'side') return state
@@ -913,6 +1088,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!mapping) return state
       return {
         ...mutateDocument(state, (document) => {
+          document.scene.worldUpIntent = {
+            faceId: face.id,
+            surfaceKind: 'side',
+            edge,
+          }
           applyAxisMapping(document, mapping, false)
         }),
         orientationDraft: null,
@@ -935,6 +1115,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!face || !localUp) return state
       const arrow = orientationEdgeGeometry(face, draft.edge)
       const mapping = axisMappingFromUpAndHorizontal(
+        state.document.scene,
         localUp,
         arrow.direction,
         horizontalDirection,

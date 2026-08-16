@@ -122,6 +122,20 @@ export interface AxisMapping {
   c: WorldAxisLabel
 }
 
+export type OrientationMode = 'up' | 'horizontal'
+export type OrientationSurfaceKind = 'top' | 'bottom' | 'side'
+
+/**
+ * Persists what the user identified as world UP. The referenced visible side
+ * supplies planar winding parity and is re-evaluated if a later camera solve
+ * reconciles the face normal.
+ */
+export interface WorldUpIntent {
+  faceId: string
+  surfaceKind: OrientationSurfaceKind
+  edge: FaceEdge | null
+}
+
 export interface SceneGeometry {
   faces: MeshFace[]
   observations: CalibrationObservation[]
@@ -129,10 +143,10 @@ export interface SceneGeometry {
   // homography until non-coplanar observations promote it to a camera fit.
   projection: SceneProjection | null
   axisMapping: AxisMapping
+  // Optional for schema-v1 compatibility with projects saved before the
+  // planar-orientation intent was persisted.
+  worldUpIntent?: WorldUpIntent | null
 }
-
-export type OrientationMode = 'up' | 'horizontal'
-export type OrientationSurfaceKind = 'top' | 'bottom' | 'side'
 
 export interface OrientationDraft {
   mode: OrientationMode

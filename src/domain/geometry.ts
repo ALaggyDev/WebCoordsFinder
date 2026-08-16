@@ -14,6 +14,7 @@ import type {
   SceneGeometry,
   SceneProjection,
   SelectedEdge,
+  WorldUpIntent,
   WorldAxisLabel,
 } from './types'
 
@@ -78,6 +79,11 @@ export const abstractAxisVector = (axis: AbstractAxis): Point3 => ({
   z: axis === 'c' ? 1 : 0,
 })
 
+export type LatticeParity = -1 | 1
+
+// All structurally valid signed permutations are retained here. Whether a
+// complete mapping is physically valid depends on the scene's projected
+// parity; it is not an intrinsic property of the abstract A/B/C labels.
 const completeAxisMappings: AxisMapping[] = (() => {
   const labels = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'] as const
   const mappings: AxisMapping[] = []
@@ -86,18 +92,7 @@ const completeAxisMappings: AxisMapping[] = (() => {
       for (const c of labels) {
         const mapping = { a, b, c }
         if (new Set([a[0], b[0], c[0]]).size !== 3) continue
-        const mappedA = mappedVector(mapping, { x: 1, y: 0, z: 0 })
-        const mappedB = mappedVector(mapping, { x: 0, y: 1, z: 0 })
-        const mappedC = mappedVector(mapping, { x: 0, y: 0, z: 1 })
-        // The gizmo orders the basis as A (forward), C (up), B (right).
-        if (
-          mappedA &&
-          mappedB &&
-          mappedC &&
-          same3(cross3(mappedA, mappedC), mappedB)
-        ) {
-          mappings.push(mapping)
-        }
+        mappings.push(mapping)
       }
     }
   }
@@ -119,11 +114,26 @@ function worldAxisSign(label: WorldAxisLabel): number | undefined {
   return undefined
 }
 
-export function isAxisMappingComplete(mapping: AxisMapping): boolean {
+export function axisMappingParity(
+  mapping: AxisMapping,
+): LatticeParity | undefined {
+  const mappedA = mappedVector(mapping, { x: 1, y: 0, z: 0 })
+  const mappedB = mappedVector(mapping, { x: 0, y: 1, z: 0 })
+  const mappedC = mappedVector(mapping, { x: 0, y: 0, z: 1 })
+  if (!mappedA || !mappedB || !mappedC) return undefined
+  const determinant = dot3(cross3(mappedA, mappedB), mappedC)
+  return determinant === 1 ? 1 : determinant === -1 ? -1 : undefined
+}
+
+export function isAxisMappingComplete(
+  mapping: AxisMapping,
+  parity: LatticeParity | undefined,
+): boolean {
   const labels = [mapping.a, mapping.b, mapping.c]
   return (
+    parity !== undefined &&
     labels.every((label) => worldAxisSign(label) !== undefined) &&
-    validAxisMappingCompletions(mapping).length === 1
+    axisMappingParity(mapping) === parity
   )
 }
 
@@ -139,9 +149,12 @@ function mappingMatchesPartial(
 
 export function validAxisMappingCompletions(
   mapping: AxisMapping,
+  parity?: LatticeParity,
 ): AxisMapping[] {
-  return completeAxisMappings.filter((candidate) =>
-    mappingMatchesPartial(candidate, mapping),
+  return completeAxisMappings.filter(
+    (candidate) =>
+      mappingMatchesPartial(candidate, mapping) &&
+      (parity === undefined || axisMappingParity(candidate) === parity),
   )
 }
 
@@ -253,6 +266,7 @@ export function axisMappingFromReferences(
   faceDirection: FaceDirection,
   localEdgeDirection: Point3,
   edgeDirection: FaceDirection,
+  parity?: LatticeParity,
 ): AxisMapping | undefined {
   const normal = axisAssignment(localNormal, faceDirection)
   const edge = axisAssignment(localEdgeDirection, edgeDirection)
@@ -261,7 +275,7 @@ export function axisMappingFromReferences(
   const mapping: AxisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
   mapping[normal.axis] = normal.label
   mapping[edge.axis] = edge.label
-  const completions = validAxisMappingCompletions(mapping)
+  const completions = validAxisMappingCompletions(mapping, parity)
   return completions.length === 1 ? completions[0] : undefined
 }
 
@@ -306,6 +320,20 @@ export function localUpForSurfaceKind(
   return undefined
 }
 
+export function localUpForWorldUpIntent(
+  scene: SceneGeometry,
+  intent: WorldUpIntent | null | undefined = scene.worldUpIntent,
+): Point3 | undefined {
+  if (!intent) return undefined
+  const face = scene.faces.find((candidate) => candidate.id === intent.faceId)
+  if (!face) return undefined
+  if (intent.surfaceKind === 'top') return face.normal
+  if (intent.surfaceKind === 'bottom') return negate3(face.normal)
+  return intent.edge
+    ? orientationEdgeGeometry(face, intent.edge).direction
+    : undefined
+}
+
 function mappingWithLocalUp(localUp: Point3): AxisMapping | undefined {
   const up = axisAssignment(localUp, 'up')
   if (!up) return undefined
@@ -325,7 +353,9 @@ export function automaticAxisMappingForUp(
 ): AxisMapping | undefined {
   const partial = mappingWithLocalUp(localUp)
   if (!partial) return undefined
-  const completions = validAxisMappingCompletions(partial)
+  const parity = sceneLatticeParity(scene, face)
+  if (parity === undefined) return partial
+  const completions = validAxisMappingCompletions(partial, parity)
   if (completions.length === 0) return undefined
 
   const center = scale3(
@@ -363,6 +393,7 @@ export function automaticAxisMappingForUp(
 }
 
 export function axisMappingFromUpAndHorizontal(
+  scene: SceneGeometry,
   localUp: Point3,
   localHorizontal: Point3,
   horizontalDirection: FaceDirection,
@@ -375,16 +406,18 @@ export function axisMappingFromUpAndHorizontal(
     'up',
     localHorizontal,
     horizontalDirection,
+    sceneLatticeParity(scene),
   )
 }
 
 export function possibleFacesForLocalNormal(
   mapping: AxisMapping,
   normal: Point3,
+  parity?: LatticeParity,
 ): FaceDirection[] {
   return [
     ...new Set(
-      validAxisMappingCompletions(mapping)
+      validAxisMappingCompletions(mapping, parity)
         .map((candidate) => faceForLocalNormal(candidate, normal))
         .filter((face): face is FaceDirection => face !== undefined),
     ),
@@ -628,6 +661,149 @@ export function projectCamera(matrix: Matrix3x4, point: Point3): Point2 {
   return Math.abs(w) < EPSILON
     ? { x: Number.NaN, y: Number.NaN }
     : { x: x / w, y: y / w }
+}
+
+function projectiveMatrixParity(
+  matrix: readonly number[],
+  depths: number[],
+): LatticeParity | undefined {
+  const determinant =
+    matrix[0] * (matrix[4] * matrix[8] - matrix[5] * matrix[7]) -
+    matrix[1] * (matrix[3] * matrix[8] - matrix[5] * matrix[6]) +
+    matrix[2] * (matrix[3] * matrix[7] - matrix[4] * matrix[6])
+  const columnLengths = [0, 1, 2].map((column) =>
+    Math.hypot(matrix[column], matrix[3 + column], matrix[6 + column]),
+  )
+  const determinantScale = columnLengths.reduce(
+    (product, length) => product * length,
+    1,
+  )
+  if (
+    !Number.isFinite(determinant) ||
+    determinantScale <= EPSILON ||
+    Math.abs(determinant) / determinantScale <= 1e-8
+  ) {
+    return undefined
+  }
+  const depthScale = Math.max(1, ...depths.map(Math.abs))
+  if (
+    depths.some(
+      (depth) =>
+        !Number.isFinite(depth) || Math.abs(depth) <= depthScale * 1e-8,
+    )
+  ) {
+    return undefined
+  }
+  const depthSign = Math.sign(depths[0])
+  if (depths.some((depth) => Math.sign(depth) !== depthSign)) return undefined
+  return Math.sign(determinant * depths[0]) as LatticeParity
+}
+
+/**
+ * Returns the parity of the abstract A/B/C lattice relative to an ordinary
+ * unmirrored, right-handed camera frame (pixel X right, pixel Y down, depth
+ * forward). The determinant alone is projective-scale dependent; multiplying
+ * it by a representative homogeneous depth makes the sign scale invariant.
+ */
+export function cameraLatticeParity(
+  scene: SceneGeometry,
+): LatticeParity | undefined {
+  if (scene.projection?.kind !== 'camera') return undefined
+  const matrix = scene.projection.matrix
+  const linear = [
+    matrix[0], matrix[1], matrix[2],
+    matrix[4], matrix[5], matrix[6],
+    matrix[8], matrix[9], matrix[10],
+  ]
+  const observationPoints = scene.observations.map(
+    (observation) => observation.lattice,
+  )
+  const referencePoints =
+    observationPoints.length > 0
+      ? observationPoints
+      : scene.faces.length > 0
+        ? scene.faces.map((face) =>
+            scale3(
+              faceCornersLattice(face).reduce(
+                (sum, corner) => add3(sum, corner),
+                { x: 0, y: 0, z: 0 },
+              ),
+              0.25,
+            ),
+          )
+        : [{ x: 0, y: 0, z: 0 }]
+  const depths = referencePoints.map(
+    (point) =>
+      matrix[8] * point.x +
+      matrix[9] * point.y +
+      matrix[10] * point.z +
+      matrix[11],
+  )
+  return projectiveMatrixParity(linear, depths)
+}
+
+/**
+ * A planar homography does not recover the missing projection column, but a
+ * camera-facing plane normal supplies its required sign. For an unmirrored
+ * image, the homography winding and that signed normal determine the same
+ * lattice parity that a later full camera fit would report.
+ */
+export function planarLatticeParity(
+  scene: SceneGeometry,
+  referenceFace?: MeshFace,
+): LatticeParity | undefined {
+  const projection = scene.projection
+  if (projection?.kind !== 'planar') return undefined
+  const face =
+    referenceFace ??
+    (scene.worldUpIntent
+      ? scene.faces.find((candidate) => candidate.id === scene.worldUpIntent?.faceId)
+      : undefined)
+  if (!face) return undefined
+
+  const planeNormal = cross3(projection.uAxis, projection.vAxis)
+  const normalOrientation = dot3(planeNormal, face.normal)
+  const orientationScale =
+    Math.hypot(planeNormal.x, planeNormal.y, planeNormal.z) *
+    Math.hypot(face.normal.x, face.normal.y, face.normal.z)
+  if (
+    orientationScale <= EPSILON ||
+    Math.abs(normalOrientation) / orientationScale < 1 - 1e-8
+  ) {
+    return undefined
+  }
+
+  const localCorners = faceCornersLattice(face).map((corner) =>
+    localCoordinatesOnPlane(
+      projection.origin,
+      projection.uAxis,
+      projection.vAxis,
+      corner,
+    ),
+  )
+  if (localCorners.some((corner) => corner === undefined)) return undefined
+  const depths = localCorners.map(
+    (corner) =>
+      projection.homography[6] * corner!.x +
+      projection.homography[7] * corner!.y +
+      projection.homography[8],
+  )
+  const projectedParity = projectiveMatrixParity(
+    projection.homography,
+    depths,
+  )
+  if (projectedParity === undefined) return undefined
+
+  return (-Math.sign(normalOrientation) * projectedParity) as LatticeParity
+}
+
+export function sceneLatticeParity(
+  scene: SceneGeometry,
+  planarReferenceFace?: MeshFace,
+): LatticeParity | undefined {
+  return scene.projection?.kind === 'camera'
+    ? cameraLatticeParity(scene)
+    : planarLatticeParity(scene, planarReferenceFace)
 }
 
 export function faceVertex(
@@ -1746,6 +1922,14 @@ export function worldAlignedFaceCorners(
   scene: SceneGeometry,
   meshFace: MeshFace,
 ): [Point3, Point3, Point3, Point3] | undefined {
+  if (
+    !isAxisMappingComplete(
+      scene.axisMapping,
+      sceneLatticeParity(scene),
+    )
+  ) {
+    return undefined
+  }
   const face = faceForLocalNormal(scene.axisMapping, meshFace.normal)
   if (!face) return undefined
   const target =

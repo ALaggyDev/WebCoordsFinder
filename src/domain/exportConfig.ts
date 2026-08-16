@@ -10,6 +10,7 @@ import {
   isAxisMappingComplete,
   isWorldUpResolved,
   mappedAnchorOffset,
+  sceneLatticeParity,
 } from './geometry'
 
 // Export rows are derived values: they are anchor-relative and mapped from the
@@ -86,9 +87,12 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   }
   if (
     !isWorldUpResolved(document.scene.axisMapping) ||
-    !isAxisMappingComplete(document.scene.axisMapping)
+    !isAxisMappingComplete(
+      document.scene.axisMapping,
+      sceneLatticeParity(document.scene),
+    )
   ) {
-    errors.push('Determine which way is up before export.')
+    errors.push('Determine world orientation before export.')
   }
   if (
     document.scanner.directions.length === 0 ||

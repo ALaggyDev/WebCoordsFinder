@@ -29,6 +29,7 @@ import {
   faceHasWorldOrientation,
   faceForLocalNormal,
   isWorldUpResolved,
+  sceneLatticeParity,
   worldAlignedFaceQuad,
 } from './domain/geometry'
 import {
@@ -353,7 +354,10 @@ function App() {
         event.key.toLowerCase() === 'd'
       ) {
         const scene = useEditorStore.getState().document.scene
-        if (isWorldUpResolved(scene.axisMapping)) {
+        if (
+          isWorldUpResolved(scene.axisMapping) &&
+          sceneLatticeParity(scene) !== undefined
+        ) {
           startHorizontalOrientation()
         } else {
           startUpOrientation()

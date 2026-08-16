@@ -8,7 +8,10 @@ import {
   Undo2,
 } from 'lucide-react'
 import type { EditorTool } from '../domain/types'
-import { isWorldUpResolved } from '../domain/geometry'
+import {
+  isWorldUpResolved,
+  sceneLatticeParity,
+} from '../domain/geometry'
 import { useEditorStore } from '../store/editorStore'
 
 // Tool definitions share the visible shortcut labels; global key handling
@@ -68,7 +71,10 @@ export function ToolRail() {
             type="button"
             className={tool === 'orient' ? 'tool-button active' : 'tool-button'}
             onClick={() => {
-              if (isWorldUpResolved(scene.axisMapping)) {
+              if (
+                isWorldUpResolved(scene.axisMapping) &&
+                sceneLatticeParity(scene) !== undefined
+              ) {
                 startHorizontalOrientation()
               } else {
                 startUpOrientation()

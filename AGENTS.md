@@ -101,8 +101,91 @@ retains the stable planar solve. Do not reintroduce per-face independent
 coordinate systems.
 
 World orientation is intentionally explicit. Establishing UP constrains the
-mapping first; choosing the horizontal direction completes its right-handed
-world basis. Export and search stay blocked until that mapping is complete.
+mapping first. The app may preselect one of the four remaining compass
+rotations, while choosing a horizontal direction confirms it. Export,
+canonical crops, and search require a complete parity-consistent mapping.
+
+### Projected Parity and Right-Handedness
+
+Do not impose a universal cross-product identity on the screenshot-local
+`a/b/c` lattice. In particular, neither `A × B = C` nor `A × C = B` is valid
+for every screenshot. The lattice was constructed from image observations and
+may be reflected relative to the right-handed Minecraft world basis. Its
+parity must be recovered from the projection under the assumption that the
+source image has not been horizontally or vertically mirrored.
+
+For a complete `AxisMapping`, let `mA`, `mB`, and `mC` be the signed world
+vectors assigned to local `+A`, `+B`, and `+C`. Its mapping parity is:
+
+```text
+pMapping = sign((mA × mB) · mC)        // either -1 or +1
+```
+
+This is implemented by `axisMappingParity`. A complete mapping is physically
+valid only when `pMapping` equals the parity recovered from the current scene
+projection. `validAxisMappingCompletions` must retain all 48 signed
+permutations before this parity filter is applied. Never restore a fixed set of
+24 "right-handed" local mappings.
+
+For a camera projection `P = [M | t]`, where `M` is the leading 3×3 matrix and
+`q(r)` is the homogeneous depth of a visible reference lattice point `r`, the
+scene parity is:
+
+```text
+pCamera = sign(det(M) * q(r))
+```
+
+All relevant reference depths must be finite, nonzero, and have the same sign.
+The depth factor is essential: projective matrices are defined only up to a
+nonzero scale. Replacing `P` with `sP` multiplies `det(M) * q(r)` by `s^4`, so
+the reported sign is scale invariant. Using `sign(det(M))` alone is wrong.
+This calculation is implemented by `cameraLatticeParity`.
+
+A planar homography does not contain the missing out-of-plane camera column,
+but the signed camera-facing side supplies the one sign needed for parity. Let
+`u` and `v` be the stored lattice basis of the solved plane, `n` the
+camera-facing normal of the user-referenced visible face, `H` the homography,
+and `q(s,t)` its homogeneous denominator at a point on that face. Then:
+
+```text
+k        = sign((u × v) · n)
+pPlanar  = -k * sign(det(H) * q(s,t))
+         = sign(-((u × v) · n) * det(H) * q(s,t))
+```
+
+The minus sign follows from `n` pointing from the plane toward the camera,
+using the app's unmirrored camera convention of pixel X right, pixel Y down,
+and depth forward. As with the camera matrix, scaling `H` by `s` multiplies
+`det(H) * q` by `s^4` and cannot change the result. Flipping the visible-side
+normal or mirroring one image axis flips the recovered parity. This calculation
+is implemented by `planarLatticeParity`.
+
+`sceneLatticeParity` is the production entry point: it uses camera parity for a
+`CameraProjection` and planar parity for a `PlanarProjection`. Planar parity
+requires the camera-facing reference face persisted in `worldUpIntent` (or the
+face currently being used to establish UP). Degenerate homographies, faces not
+on the solved plane, points on/crossing the projective horizon, or a missing
+visible-side reference must leave parity unresolved. Do not silently select a
+fallback parity in those cases.
+
+The orientation workflow follows these consequences:
+
+- Identifying UP maps one signed local direction to world `+Y`.
+- UP plus scene parity leaves four valid mappings, corresponding to the four
+  possible compass rotations around Y. The app may choose a stable working
+  default, preferring projected north toward the top of the screenshot, but it
+  must keep `compassResolved` false and retain search directions
+  `[0, 90, 180, 270]` until the user confirms one.
+- Once the user maps one directed horizontal arrow to north, east, south, or
+  west, scene parity determines the final local axis uniquely.
+- A complete mapping whose determinant disagrees with scene parity is invalid,
+  even if all three axis labels are populated.
+
+Planar face normals are provisional visible-side choices. On the first
+successful promotion to a 3D camera, reorient every face normal toward the
+fitted camera, re-derive local UP from `worldUpIntent`, and rebuild the mapping
+against camera parity. If either normals or mapping change, invalidate affected
+variant evidence rather than preserving a silently mirrored interpretation.
 
 ## Evidence, Analysis, and Search Invariants
 

@@ -37,6 +37,7 @@ import {
   mappedAnchorOffset,
   possibleFacesForLocalNormal,
   projectionInfo,
+  sceneLatticeParity,
   worldAlignedFaceQuad,
 } from '../domain/geometry'
 import {
@@ -191,7 +192,11 @@ function GeometryInspector() {
     (state) => state.document.scanner.compassResolved,
   )
   const upResolved = isWorldUpResolved(scene.axisMapping)
-  const mappingComplete = isAxisMappingComplete(scene.axisMapping)
+  const sceneParity = sceneLatticeParity(scene)
+  const mappingComplete = isAxisMappingComplete(
+    scene.axisMapping,
+    sceneParity,
+  )
 
   if (!scene.projection) {
     return (
@@ -407,9 +412,20 @@ function GeometryInspector() {
             </div>
           ) : (
             <div className="orientation-empty">
-              <p>A default horizontal orientation will be pre-selected by the app. Select a face and click the horizontal arrow to change it.</p>
-              <button className="secondary-button full" type="button" disabled>
-                Select horizontal orientation
+              <p>
+                {sceneParity === undefined
+                  ? 'Choose world UP on a visible face before selecting a horizontal direction.'
+                  : 'Select a face and click a horizontal arrow to choose its world direction.'}
+              </p>
+              <button
+                className="secondary-button full"
+                type="button"
+                disabled={sceneParity === undefined || !upResolved}
+                onClick={startHorizontalOrientation}
+              >
+                {sceneParity === undefined
+                  ? 'Determine world UP first'
+                  : 'Select horizontal orientation'}
               </button>
             </div>
           )}
@@ -473,6 +489,7 @@ function FaceInspector({
     ? possibleFacesForLocalNormal(
         document.scene.axisMapping,
         evidence.localNormal,
+        sceneLatticeParity(document.scene),
       )
     : []
   const evidenceCoordinate = evidence
@@ -796,6 +813,7 @@ function FaceInspector({
                   const faces = possibleFacesForLocalNormal(
                     document.scene.axisMapping,
                     entry.localNormal,
+                    sceneLatticeParity(document.scene),
                   )
                   return !sharedStatesForFaces(candidate.id, faces)
                 },
@@ -806,6 +824,7 @@ function FaceInspector({
                 const faces = possibleFacesForLocalNormal(
                   document.scene.axisMapping,
                   entry.localNormal,
+                  sceneLatticeParity(document.scene),
                 )
                 return !sharedStatesForFaces(candidate.id, faces)
               })

@@ -16,9 +16,12 @@ import {
 import {
   abstractAxisVector,
   add3,
+  automaticAxisMappingForUp,
+  cameraFacingNormal,
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   distance,
+  dot3,
   faceCornersLattice,
   faceEdgeGeometry,
   faceNormalIndicator,
@@ -26,8 +29,9 @@ import {
   fitHomography,
   flattenPoints,
   initialCameraForPlanarExtrusion,
+  localUpForWorldUpIntent,
+  localVectorForWorld,
   meshEdgeKey,
-  mappedVector,
   orientationEdgeGeometry,
   projectionInfo,
   projectPoint,
@@ -242,19 +246,6 @@ function makeExtrusionPreview(
 ): { scene: SceneGeometry; blocks: number; createsAxis: boolean } | undefined {
   const extrusion = chooseEdgeExtrusion(scene, selections, pointer)
   if (!extrusion) return undefined
-  let previewId = 0
-  const faces = createEdgeExtrusionFaces(
-    scene,
-    selections,
-    extrusion.axis,
-    extrusion.blocks,
-    () => `__preview_${previewId++}__`,
-  )
-  const previewScene: SceneGeometry = {
-    ...scene,
-    faces: [...scene.faces, ...faces],
-    observations: [...scene.observations],
-  }
   const planarCamera = extrusion.createsAxis
     ? initialCameraForPlanarExtrusion(
         scene,
@@ -265,6 +256,30 @@ function makeExtrusionPreview(
       )
     : undefined
   if (extrusion.createsAxis && !planarCamera) return undefined
+  const extrusionScene = planarCamera
+    ? { ...scene, projection: planarCamera.projection }
+    : scene
+  let previewId = 0
+  const faces = createEdgeExtrusionFaces(
+    extrusionScene,
+    selections,
+    extrusion.axis,
+    extrusion.blocks,
+    () => `__preview_${previewId++}__`,
+  )
+  const previewScene: SceneGeometry = {
+    ...extrusionScene,
+    faces: [
+      ...scene.faces.map((face) => ({
+        ...face,
+        normal: planarCamera
+          ? cameraFacingNormal(extrusionScene, face)
+          : face.normal,
+      })),
+      ...faces,
+    ],
+    observations: [...scene.observations],
+  }
   if (planarCamera) {
     const anchors = planarCamera.endpoints.map((endpoint, index) => ({
       id: `__preview_anchor_${index}__`,
@@ -280,6 +295,17 @@ function makeExtrusionPreview(
       ...anchors,
     ]
     previewScene.projection = planarCamera.projection
+    const localUp = localUpForWorldUpIntent(previewScene)
+    const referenceFace = previewScene.worldUpIntent
+      ? previewScene.faces.find(
+          (face) => face.id === previewScene.worldUpIntent?.faceId,
+        )
+      : undefined
+    if (localUp && referenceFace) {
+      previewScene.axisMapping =
+        automaticAxisMappingForUp(previewScene, referenceFace, localUp) ??
+        previewScene.axisMapping
+    }
   }
   return {
     scene: previewScene,
@@ -617,9 +643,14 @@ export function EditorCanvas() {
     if (orientationDraft.mode === 'up') {
       return orientationDraft.surfaceKind === 'side' ? faceEdges : []
     }
+    const localUp = localVectorForWorld(
+      sceneForRendering.axisMapping,
+      { x: 0, y: 1, z: 0 },
+    )
+    if (!localUp) return []
     return faceEdges.filter((edge) => {
       const arrow = orientationEdgeGeometry(orientationFace, edge)
-      return mappedVector(sceneForRendering.axisMapping, arrow.direction)?.y === 0
+      return Math.abs(dot3(localUp, arrow.direction)) <= 1e-8
     })
   }, [orientationDraft, orientationFace, sceneForRendering.axisMapping])
   const orientationPopupAnchor = useMemo(() => {

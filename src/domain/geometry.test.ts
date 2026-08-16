@@ -4,11 +4,14 @@ import { describe, expect, it } from 'vitest'
 import {
   automaticAxisMappingForUp,
   availableExtrusionBlocks,
+  axisMappingParity,
   axisMappingFromUpAndHorizontal,
   axisMappingFromReferences,
   blockCoordinateForFace,
   cameraFitDiagnostics,
   cameraCenter,
+  cameraFacingNormal,
+  cameraLatticeParity,
   chooseEdgeExtrusion,
   computeHomography,
   createEdgeExtrusionFaces,
@@ -26,9 +29,11 @@ import {
   mappedVector,
   negate3,
   orientationEdgeGeometry,
+  planarLatticeParity,
   possibleFacesForLocalNormal,
   projectCamera,
   projectPoint,
+  sceneLatticeParity,
   validAxisMappingCompletions,
   worldAlignedFaceCorners,
 } from './geometry'
@@ -36,6 +41,7 @@ import type {
   CalibrationObservation,
   Matrix3x4,
   MeshFace,
+  PlanarProjection,
   Point2,
   Point3,
   SceneGeometry,
@@ -71,7 +77,7 @@ describe('global perspective geometry', () => {
     ])
   })
 
-  it('chooses one stable screen-forward horizontal completion after UP is known', () => {
+  it('preselects a parity-consistent horizontal frame for a planar UP reference', () => {
     const scene: SceneGeometry = {
       faces: [face],
       observations: [],
@@ -89,6 +95,11 @@ describe('global perspective geometry', () => {
         homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       },
       axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+      worldUpIntent: {
+        faceId: face.id,
+        surfaceKind: 'top',
+        edge: null,
+      },
     }
 
     const mapping = automaticAxisMappingForUp(
@@ -97,6 +108,10 @@ describe('global perspective geometry', () => {
       { x: 0, y: 0, z: 1 },
     )!
     expect(mapping).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    scene.axisMapping = mapping
+    expect(sceneLatticeParity(scene)).toBe(-1)
+    expect(isAxisMappingComplete(mapping, sceneLatticeParity(scene))).toBe(true)
+    expect(worldAlignedFaceCorners(scene, face)).toBeDefined()
     expect(isWorldUpResolved(mapping)).toBe(true)
     expect(localVectorForWorld(mapping, { x: 0, y: 1, z: 0 })).toEqual({
       x: 0,
@@ -105,14 +120,26 @@ describe('global perspective geometry', () => {
     })
   })
 
-  it('completes horizontal orientation from UP and one horizontal arrow', () => {
+  it('completes horizontal orientation using the fitted camera parity', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: cameraMatrix,
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'y+' },
+    }
     expect(
       axisMappingFromUpAndHorizontal(
+        scene,
         { x: 0, y: 0, z: 1 },
         { x: 1, y: 0, z: 0 },
         'west',
       ),
-    ).toEqual({ a: 'x-', b: 'z-', c: 'y+' })
+    ).toEqual({ a: 'x-', b: 'z+', c: 'y+' })
   })
 
   it.each([
@@ -186,7 +213,7 @@ describe('global perspective geometry', () => {
         rmsError: 0,
         maxError: 0,
       },
-      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
     }
     const leftQuad = faceQuad(scene, face)!
     const rightQuad = faceQuad(scene, right)!
@@ -496,7 +523,7 @@ describe('global perspective geometry', () => {
         rmsError: 0,
         maxError: 0,
       },
-      axisMapping: { a: 'x+', b: 'z+', c: 'y+' },
+      axisMapping: { a: 'x+', b: 'z-', c: 'y+' },
     }
     const topFromPositiveExtrusion: MeshFace = {
       id: 'positive',
@@ -510,16 +537,16 @@ describe('global perspective geometry', () => {
     }
 
     expect(worldAlignedFaceCorners(scene, topFromPositiveExtrusion)).toEqual([
-      { x: 0, y: 0, z: 0 },
-      { x: 1, y: 0, z: 0 },
-      { x: 1, y: 1, z: 0 },
       { x: 0, y: 1, z: 0 },
+      { x: 1, y: 1, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
     ])
     expect(worldAlignedFaceCorners(scene, topAfterNegativeExtrusionAndFlip)).toEqual([
-      { x: 0, y: -1, z: 0 },
-      { x: 1, y: -1, z: 0 },
-      { x: 1, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 1, y: -1, z: 0 },
+      { x: 0, y: -1, z: 0 },
     ])
   })
 
@@ -546,15 +573,16 @@ describe('global perspective geometry', () => {
     },
   )
 
-  // Partial mappings remain useful for UI hints, but only one right-handed
-  // completion is considered a resolved world orientation.
+  // Partial mappings remain useful for UI hints, but projected parity is
+  // required before a complete mapping is considered physically resolved.
   it('keeps partial and complete world-axis mappings distinct', () => {
     const partial = { a: 'x+' as const, b: 'unknown' as const, c: 'y+' as const }
-    expect(isAxisMappingComplete(partial)).toBe(false)
+    expect(isAxisMappingComplete(partial, -1)).toBe(false)
     expect(faceForLocalNormal(partial, { x: 0, y: 0, z: 1 })).toBe('up')
 
     const complete = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
-    expect(isAxisMappingComplete(complete)).toBe(true)
+    expect(isAxisMappingComplete(complete, -1)).toBe(true)
+    expect(isAxisMappingComplete(complete, 1)).toBe(false)
     expect(mappedVector(complete, { x: 2, y: 3, z: 4 })).toEqual({
       x: 2,
       y: 4,
@@ -562,39 +590,209 @@ describe('global perspective geometry', () => {
     })
   })
 
-  it('completes a partial mapping using A cross C equals B', () => {
+  it('uses camera parity to determine C after A and B are known', () => {
     const partial = {
       a: 'x+' as const,
-      b: 'unknown' as const,
-      c: 'y+' as const,
+      b: 'z+' as const,
+      c: 'unknown' as const,
     }
-    const opposite = { a: 'x+' as const, b: 'z-' as const, c: 'y+' as const }
-    const proper = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
-
-    expect(validAxisMappingCompletions(partial)).toEqual([proper])
-    expect(isAxisMappingComplete(opposite)).toBe(false)
-    expect(isAxisMappingComplete(proper)).toBe(true)
-  })
-
-  it('infers negative X to the right of positive Z when C is up', () => {
-    const partial = {
-      a: 'z+' as const,
-      b: 'unknown' as const,
-      c: 'y+' as const,
-    }
+    const negativeParity = { a: 'x+' as const, b: 'z+' as const, c: 'y+' as const }
+    const positiveParity = { a: 'x+' as const, b: 'z+' as const, c: 'y-' as const }
 
     expect(validAxisMappingCompletions(partial)).toEqual([
-      { a: 'z+', b: 'x-', c: 'y+' },
+      negativeParity,
+      positiveParity,
     ])
+    expect(validAxisMappingCompletions(partial, -1)).toEqual([negativeParity])
+    expect(validAxisMappingCompletions(partial, 1)).toEqual([positiveParity])
+    expect(axisMappingParity(negativeParity)).toBe(-1)
+    expect(axisMappingParity(positiveParity)).toBe(1)
   })
 
-  it('derives a complete right-handed mapping from a face and directed edge', () => {
+  it('keeps the same horizontal axes across top and bottom camera views', () => {
+    expect(
+      validAxisMappingCompletions(
+        { a: 'x+', b: 'unknown', c: 'y+' },
+        -1,
+      ),
+    ).toContainEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    expect(
+      validAxisMappingCompletions(
+        { a: 'x+', b: 'unknown', c: 'y-' },
+        1,
+      ),
+    ).toContainEqual({ a: 'x+', b: 'z+', c: 'y-' })
+  })
+
+  it('derives a projective-scale-invariant parity from the camera', () => {
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: { kind: 'camera', matrix: cameraMatrix, rmsError: 0, maxError: 0 },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const negated: SceneGeometry = {
+      ...scene,
+      projection: {
+        kind: 'camera',
+        matrix: cameraMatrix.map((value) => -value) as Matrix3x4,
+        rmsError: 0,
+        maxError: 0,
+      },
+    }
+
+    expect(cameraLatticeParity(scene)).toBe(1)
+    expect(cameraLatticeParity(negated)).toBe(1)
+  })
+
+  it('derives scale-invariant planar parity from winding and visible side', () => {
+    const projection: PlanarProjection = {
+      kind: 'planar',
+      origin: { x: 0, y: 0, z: 0 },
+      uAxis: { x: 1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 1, z: 0 },
+      cornerLattice: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 1, y: 1, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ],
+      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    }
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection,
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+      worldUpIntent: { faceId: face.id, surfaceKind: 'top', edge: null },
+    }
+    const negated: SceneGeometry = {
+      ...scene,
+      projection: {
+        ...projection,
+        homography: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
+      },
+    }
+    const mirrored: SceneGeometry = {
+      ...scene,
+      projection: {
+        ...projection,
+        homography: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+    }
+    const oppositeSide: SceneGeometry = {
+      ...scene,
+      faces: [{ ...face, normal: negate3(face.normal) }],
+    }
+
+    expect(planarLatticeParity(scene)).toBe(-1)
+    expect(planarLatticeParity(negated)).toBe(-1)
+    expect(planarLatticeParity(mirrored)).toBe(1)
+    expect(planarLatticeParity(oppositeSide)).toBe(1)
+  })
+
+  it('matches planar winding parity to the full camera on the same plane', () => {
+    const cameraScene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: {
+        kind: 'camera',
+        matrix: cameraMatrix,
+        rmsError: 0,
+        maxError: 0,
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const visibleFace = {
+      ...face,
+      normal: cameraFacingNormal(cameraScene, face),
+    }
+    const planarScene: SceneGeometry = {
+      faces: [visibleFace],
+      observations: [],
+      projection: {
+        kind: 'planar',
+        origin: { x: 0, y: 0, z: 0 },
+        uAxis: { x: 1, y: 0, z: 0 },
+        vAxis: { x: 0, y: 1, z: 0 },
+        cornerLattice: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 1, y: 1, z: 0 },
+          { x: 0, y: 1, z: 0 },
+        ],
+        homography: [800, 0, 100, 0, 700, 200, 0.1, 0.05, 5],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+      worldUpIntent: {
+        faceId: visibleFace.id,
+        surfaceKind: 'top',
+        edge: null,
+      },
+    }
+
+    expect(planarLatticeParity(planarScene)).toBe(
+      cameraLatticeParity(cameraScene),
+    )
+  })
+
+  it('keeps horizontal axes consistent across planar top and bottom views', () => {
+    const projection: PlanarProjection = {
+      kind: 'planar',
+      origin: { x: 0, y: 0, z: 0 },
+      uAxis: { x: 1, y: 0, z: 0 },
+      vAxis: { x: 0, y: 1, z: 0 },
+      cornerLattice: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 1, y: 1, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ],
+      homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    }
+    const top: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection,
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'y+' },
+      worldUpIntent: { faceId: face.id, surfaceKind: 'top', edge: null },
+    }
+    const bottom: SceneGeometry = {
+      ...top,
+      projection: {
+        ...projection,
+        homography: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'y-' },
+      worldUpIntent: { faceId: face.id, surfaceKind: 'bottom', edge: null },
+    }
+
+    expect(
+      axisMappingFromUpAndHorizontal(
+        top,
+        face.normal,
+        { x: 1, y: 0, z: 0 },
+        'east',
+      ),
+    ).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
+    expect(
+      axisMappingFromUpAndHorizontal(
+        bottom,
+        negate3(face.normal),
+        { x: 1, y: 0, z: 0 },
+        'east',
+      ),
+    ).toEqual({ a: 'x+', b: 'z+', c: 'y-' })
+  })
+
+  it('derives the remaining axis from references and camera parity', () => {
     expect(
       axisMappingFromReferences(
         { x: 0, y: 0, z: 1 },
         'up',
         { x: 1, y: 0, z: 0 },
         'east',
+        -1,
       ),
     ).toEqual({ a: 'x+', b: 'z+', c: 'y+' })
 
@@ -603,7 +801,18 @@ describe('global perspective geometry', () => {
         { x: 0, y: 0, z: 1 },
         'up',
         { x: 1, y: 0, z: 0 },
+        'east',
+        1,
+      ),
+    ).toEqual({ a: 'x+', b: 'z-', c: 'y+' })
+
+    expect(
+      axisMappingFromReferences(
+        { x: 0, y: 0, z: 1 },
+        'up',
+        { x: 1, y: 0, z: 0 },
         'down',
+        1,
       ),
     ).toBeUndefined()
   })

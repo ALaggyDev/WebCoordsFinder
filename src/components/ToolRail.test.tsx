@@ -11,7 +11,7 @@ import { ToolRail } from './ToolRail'
 
 beforeEach(() => {
   const document = createTestDocument()
-  document.scene.axisMapping = { a: 'x+', b: 'z+', c: 'y+' }
+  document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
   document.scanner.compassResolved = true
   useEditorStore.setState({
     document,

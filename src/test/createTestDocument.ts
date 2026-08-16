@@ -82,6 +82,7 @@ export function createTestDocument(): EditorDocument {
     observations,
     projection: fitCameraProjection(observations),
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    worldUpIntent: null,
   }
   document.scene.faces.forEach((face) => {
     face.normal = cameraFacingNormal(document.scene, face)
