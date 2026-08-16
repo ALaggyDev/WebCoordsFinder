@@ -1072,12 +1072,12 @@ export function EditorCanvas() {
     setBoxSelection({
       start: point,
       current: point,
-      additive: event.evt.shiftKey,
+      additive: true,
     })
     boxSelectionRef.current = {
       start: point,
       current: point,
-      additive: event.evt.shiftKey,
+      additive: true,
     }
     suppressBoxClickRef.current = false
     stageRef.current?.draggable(false)
@@ -1331,7 +1331,7 @@ export function EditorCanvas() {
                     tool === 'select' &&
                     !suppressBoxClickRef.current
                   ) {
-                    selectFace(face.id, event.evt.shiftKey)
+                    selectFace(face.id, event.evt.shiftKey || event.evt.ctrlKey)
                   }
                 }}
               />
