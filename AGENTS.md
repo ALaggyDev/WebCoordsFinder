@@ -6,100 +6,105 @@ Read it before planning or changing the application.
 ## Premise
 
 Minecraft selects the visual model variant of certain blocks deterministically
-from the block's absolute world position. Depending on the block and visible
-face, this can appear as a rotation or mirror of the texture.
+from an absolute world position. Depending on the block and visible face, this
+can appear as a rotation or mirror of the texture.
 
-Each observed face therefore constrains the possible world coordinates:
+Each observed face constrains the possible world coordinates:
 
 - Top and bottom faces normally expose one of four model states.
-- Side faces can fold Minecraft's four model states into two visibly distinct
-  states.
+- Side faces can fold those four states into two visibly distinct states.
 - A useful screenshot normally needs roughly 24 or more independent
   observations to reduce a large search space effectively.
 
-The separate native **CoordsFinder** project consumes these observations and
-uses CUDA to brute-force candidate world positions. WebCoordsFinder does not
-perform that brute-force search.
+WebCoordsFinder is a local-first browser workbench for collecting and checking
+that evidence. It can either export a native CoordsFinder configuration or run
+the compatible single-threaded WebAssembly scanner locally in the browser.
 
 ## Goal
 
-WebCoordsFinder makes the screenshot-analysis stage fast and repeatable in a
-local web application:
+The application makes the screenshot-analysis and coordinate-search workflow
+repeatable without uploading a screenshot or project:
 
-1. Open a Minecraft screenshot and inspect it with pan and zoom controls.
-2. Sketch perspective-aware block planes or individual block faces.
-3. Assign relative block coordinates and visible world-facing directions.
-4. Label blocks and determine their visible texture/model variant manually or
-   with a reviewable image-matching proposal, then export an exact CoordsFinder
-   configuration file for the user to run with their local CUDA executable.
+1. Open a screenshot and inspect it with pan and zoom controls.
+2. Mark a block-aligned base surface, then build a connected 3D mesh by
+   selecting edges and extruding faces.
+3. Calibrate the shared perspective and explicitly establish the world-up and
+   horizontal axis mapping.
+4. Anchor one block, label visible faces, manually confirm their variants or
+   review automatic proposals, and configure the search.
+5. Run a local background WASM search or download an exact
+   `coordsfinder.conf` for the native CPU/CUDA CoordsFinder executable.
 
-Screenshots and projects must remain on the user's device. Vanilla reference
-textures are bundled with the application, and there is no server-side image
-processing.
+Screenshots, project documents, reference comparisons, and browser searches
+remain on the current device. Vanilla reference textures and the scanner WASM
+are bundled with the application.
 
 ## Scope Boundary
 
-The current codebase is an MVP of the browser-side evidence editor. It includes
-manual perspective geometry and assisted texture comparison. It does not yet
-include:
+The editor deliberately assists a human analyst; it does not infer facts that
+require user judgment. It does not currently include:
 
-- Automatic discovery of block boundaries or vanishing points from an image.
+- Automatic discovery of block boundaries, vanishing points, or geometry from
+  an image.
 - A fully automatic block classifier.
-- Automatic compass/world-direction inference.
-- CUDA cracking or any other world-coordinate brute force.
+- Automatic world-up or compass inference.
+- GPU/CUDA execution in the browser.
 
-Automatic matching is deliberately a proposal, not ground truth. A user must
-review proposed variants before they can be exported.
+Automatic texture matching is a proposal only. A user must confirm a proposed
+variant before it becomes search evidence or is exported.
 
 ## User Workflow
 
-The top navigation follows four stages:
+The top navigation has three stages:
 
-1. **Image** — open a screenshot.
-2. **Grid** — create a four-corner perspective plane, set its row and column
-   counts, assign its face direction and relative origin, or hinge a connected
-   plane from an existing edge. Choose the Anchor tool and click a face to make
-   that block the `(0, 0, 0)` coordinate origin.
-3. **Faces** — use the Selection tab to assign block profiles, inspect
-   perspective-correct crops, choose visible states, and request automatic
-   proposals. Use the nested Auto Analyze tab to set the proposal threshold,
-   accept proposals, or open individual faces for correction. Only analyzed
-   results meeting the current threshold are marked as proposed. Bundled,
-   face-correct vanilla reference PNGs enable automatic comparison. The tab
-   contains only analyzed faces, ordered from highest to lowest confidence.
-   Clearing it discards analysis metadata and unaccepted results while
-   preserving confirmed evidence.
-4. **Export** — choose the texture algorithm and search bounds,
-   validate the evidence, preview the generated configuration, and download
-   `coordsfinder.conf`.
+1. **Geometry** — draw four corners around the first block-aligned surface and
+   set its dimensions. The editor saves a planar solve. Select one or more
+   exposed edges and use **Extrude** to add connected block faces; sufficient
+   non-coplanar observations promote the solve to a shared 3D camera
+   projection. Use **Orient** to establish world UP and a horizontal direction,
+   and **Anchor** to choose the block represented by `(0, 0, 0)`.
+2. **Faces** — select one or more mesh faces; assign a bundled block profile,
+   adjust per-block grass tint where supported, inspect a perspective-correct
+   crop, and choose a visible variant. The Auto Analyze tab compares eligible
+   selected faces with the bundled reference texture off the main thread. Its
+   confidence threshold controls which suggestions are proposed; they can be
+   reviewed, bulk-confirmed, corrected, or cleared.
+3. **Export** — choose the texture algorithm, scan order, optional quarter-turn
+   directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
+   settings. Review readiness and estimates, run the browser search, or export
+   / copy the generated configuration.
+
+Projects are autosaved in IndexedDB. The project library supports multiple
+local projects, bundled examples, deletion, and portable `.wcf` project
+import/export. Search progress, exact counters, and the first 1,000 browser
+search matches are checkpointed with the project and can be resumed when the
+search setup is unchanged.
 
 ## Geometry and Coordinate Model
 
-A `PerspectivePlane` stores:
+The scene is a global integer lattice, not a collection of independent planes.
+It stores:
 
-- Four image-space corners in top-left, top-right, bottom-right, bottom-left
-  order.
-- A row and column count.
-- The visible Minecraft face direction.
-- The relative coordinate of its top-left cell.
-- Integer `uAxis` and `vAxis` vectors describing how coordinates change across
-  columns and rows.
+- `MeshFace` entries as a canonical lattice corner plus an abstract local
+  normal.
+- Weighted `CalibrationObservation` entries mapping lattice corners to image
+  points.
+- A `PlanarProjection` (base-surface homography) or a fitted `CameraProjection`
+  (row-major 3×4 projective matrix), both shared by every face.
+- An explicit signed mapping from screenshot-local axes `a`, `b`, and `c` to
+  world X/Y/Z labels.
 
-The relative coordinate of cell `(column, row)` is:
+The initial base grid is a resumable planar homography. Extruding from selected
+edges adds connected faces and calibration observations. Once the evidence is
+well-conditioned, the geometry code fits a camera projection; otherwise it
+retains the stable planar solve. Do not reintroduce per-face independent
+coordinate systems.
 
-```text
-origin + column * uAxis + row * vAxis
-```
+World orientation is intentionally explicit. Establishing UP constrains the
+mapping first; choosing the horizontal direction completes its right-handed
+world basis. Export and search stay blocked until that mapping is complete.
 
-The canvas computes a homography between the logical rectangular plane and its
-four image corners. The same projective transform drives both the drawn grid
-and the perspective-correct face crop.
-
-World direction matters. Export remains blocked until the user confirms that
-the screenshot's X/Z directions have been resolved. Do not silently invent a
-compass direction.
-
-## CoordsFinder Export Invariants
+## Evidence, Analysis, and Search Invariants
 
 The generated scanner file uses:
 
@@ -110,19 +115,21 @@ x y z | variant side
 
 Preserve these behaviors:
 
-- Only confirmed evidence with a selected variant is exported.
-- Evidence coordinates are offsets from the explicitly selected anchor block.
-- Duplicate relative coordinates are removed. If both two-state and four-state
-  evidence exist for a coordinate, the stronger four-state constraint wins.
-- Normal faces use variants `0..3`.
-- Folded side evidence uses variants `0..1` and the `side` suffix.
-- Relative offsets must fit a signed byte (`-128..127`).
-- CoordsFinder accepts at most 256 filter rows.
-- Search bounds are inclusive.
-- Fewer than 24 unique constraints is a warning, not an error.
-- Unreviewed automatic proposals never enter the exported filter.
+- Only confirmed evidence with a selected variant is searched or exported.
+- Export coordinates are offsets from the explicitly selected anchor and are
+  mapped from the local lattice into the confirmed world basis.
+- Duplicate block coordinates are removed. When a two-state side observation
+  and four-state observation collide, the four-state constraint wins.
+- Normal faces use variants `0..3`; folded side evidence uses `0..1` plus the
+  `side` suffix.
+- Every direct and requested quarter-turn-rotated offset must fit a signed byte
+  (`-128..127`), and native CoordsFinder accepts at most 256 filter rows.
+- Bounds are inclusive. The selected search-direction list must be non-empty
+  and contain unique 0°, 90°, 180°, or 270° entries.
+- Unreviewed automatic proposals never enter the filter. Warnings do not block
+  a search; validation errors do.
 
-Texture algorithms are selected directly by the user:
+Texture algorithms are chosen directly by the user:
 
 - Minecraft through 1.12.2: `Vanilla-1`
 - Minecraft 1.13 through 1.21.1: `Vanilla-2`
@@ -131,56 +138,75 @@ Texture algorithms are selected directly by the user:
 - Sodium 4.2 through 4.8: `Sodium-2`
 - Sodium 4.9 and later: use the matching Vanilla algorithm
 
+The local web scanner is a freestanding C-to-WASM port of CoordsFinder's
+texture sampling and brute-force loop. `src/workers/search.worker.ts` owns one
+scanner instance and runs short adaptive batches so pause and stop commands
+remain responsive. It is single-threaded and caps retained result rows at
+1,000; total match counts remain exact. Treat the native scanner parity tests
+as the compatibility contract when changing this code.
+
 ## Current Implementation
 
-The project is a normal React + TypeScript Vite application:
+This is a React 19 + TypeScript + Vite application:
 
-- `src/components/EditorCanvas.tsx` — Konva image viewport, pan/zoom,
-  perspective grids, corner handles, cell selection, and plane drafting.
-- `src/components/Inspector.tsx` — stage-specific forms, crop/reference
-  comparison, review UI, validation, and configuration preview.
-- `src/store/editorStore.ts` — Zustand document state, selection, editing,
-  undo/redo, and the current demo document.
-- `src/domain/geometry.ts` — homography solving, projection, cell geometry, and
-  connected-plane construction.
-- `src/domain/imageAnalysis.ts` — perspective unwarping, pixel transforms, and
-  normalized-gradient comparison.
-- `src/workers/analyze.worker.ts` — off-main-thread candidate scoring.
-- `src/domain/references.ts` — curated block metadata and supported face/state
-  definitions plus mappings to bundled Minecraft 1.21.11 reference textures.
-- `src/domain/exportConfig.ts` — selected texture algorithm output, evidence
-  deduplication, validation, strength estimates, and exact config generation.
-- `src/storage/db.ts` — local Dexie/IndexedDB persistence.
-- `src/domain/projectBundle.ts` — portable zipped `.wcf` project import/export
-  with schema validation.
-- `src/domain/types.ts` — schema version 1 document and geometry types.
+- `src/App.tsx` — project hydration/autosave, object URLs, keyboard shortcuts,
+  project/image import-export, and analysis orchestration.
+- `src/components/EditorCanvas.tsx` — Konva image viewport, geometry drafting,
+  face/edge selection, extrusion, orientation interactions, and calibration
+  handles.
+- `src/components/Inspector.tsx` — geometry orientation, face-labeling and
+  review controls, scanner settings, and export entry point.
+- `src/components/ExportRunDialog.tsx` — readiness/estimate UI, native config
+  handoff, and the resumable in-browser search UI.
+- `src/store/editorStore.ts` — Zustand document mutations, selection, undo/redo,
+  orientation and evidence state. Frequent search-progress updates intentionally
+  bypass the undo history.
+- `src/domain/geometry.ts` — lattice-face geometry, homographies, camera
+  fitting, calibration, axis mapping, and extrusion helpers.
+- `src/domain/imageAnalysis.ts` and `src/workers/analyze.worker.ts` —
+  perspective unwarping, reference transforms, grass tinting, and normalized
+  gradient-based candidate scoring.
+- `src/domain/references.ts` — curated supported block profiles and mappings to
+  bundled face-correct Minecraft reference PNGs in `public/minecraft`.
+- `src/domain/exportConfig.ts` — evidence deduplication, validation, and exact
+  native configuration generation.
+- `src/domain/webSearch.ts`, `src/workers/search.worker.ts`, and `src/wasm/` —
+  browser-search request/checkpoint contracts, worker control, and WASM source.
+- `src/storage/db.ts` — Dexie/IndexedDB project and image persistence.
+- `src/domain/projectBundle.ts` — zipped `.wcf` bundles with schema validation.
+- `src/domain/examples.ts` and `public/examples/` — bundled portable example
+  projects.
 
-The PWA service worker provides local offline support. The current demo is
-`public/demo/demo.png` at 2560 by 1494 pixels.
+The PWA service worker precaches the local shell, textures, examples, and WASM
+for offline use. Its 4 MiB Workbox precache limit intentionally accommodates
+the bundled examples/assets. The production build may still report a
+non-blocking large-chunk warning from the canvas/editor dependencies.
 
 ## Product and Privacy Constraints
 
 - Do not deploy the application unless the user explicitly asks.
-- Keep image processing local. Do not upload screenshots.
-- Do not add analytics or telemetry without explicit approval.
-- The dark, desktop-first interface is intended to feel like a precise forensic
-  workbench rather than a generic dashboard.
+- Keep all screenshot processing, projects, and searches local; do not add any
+  server upload path, analytics, or telemetry without explicit approval.
+- Preserve the dark, desktop-first forensic-workbench feel.
+- Preserve project-bundle compatibility with schema version 1 unless a
+  deliberate migration is implemented and tested.
 
 ## Development and Verification
 
-```
+```sh
 npm install
 npm run dev
 ```
 
 Before handing off a code change, run the checks appropriate to its risk:
 
-```
+```sh
 npm test
 npm run lint
 npm run build
 ```
 
-The production build currently reports a non-blocking large-chunk warning
-because the canvas/editor dependencies are bundled together. The demo PNG also
-requires the configured 4 MiB Workbox precache limit.
+For scanner changes, also run the native-reference parity coverage in
+`src/domain/webSearch.test.ts`. For persistence or bundle changes, cover
+reload/import behavior and validate schema assumptions. For geometry changes,
+protect both planar and camera-projection cases.
