@@ -327,6 +327,24 @@ function createDefaultEvidence(document: EditorDocument, face: MeshFace): FaceEv
   }
 }
 
+function createInheritedEvidence(
+  document: EditorDocument,
+  face: MeshFace,
+  source?: FaceEvidence,
+): FaceEvidence {
+  const evidence = createDefaultEvidence(document, face)
+  if (!source) return evidence
+
+  // An extrusion reveals a new face, so its profile follows the source block
+  // while its variant and any derived analysis remain unreviewed.
+  evidence.blockId = source.blockId
+  evidence.blockSettings = structuredClone(source.blockSettings ?? {})
+  evidence.stateCount =
+    sharedStatesForFaces(source.blockId, evidenceFaces(document, evidence)) ??
+    evidence.stateCount
+  return evidence
+}
+
 export function evidenceWorldCoordinate(
   document: EditorDocument,
   evidence: FaceEvidence,
@@ -685,6 +703,16 @@ export const useEditorStore = create<EditorState>((set) => ({
         () => crypto.randomUUID(),
       )
       if (faces.length === 0) return state
+      // Edge selection is ordered. Use the first selected source with evidence
+      // for a predictable result when an extrusion spans differently labeled
+      // blocks; untouched source faces retain the default profile.
+      const sourceEvidence = state.selectedEdges
+        .map((selection) =>
+          state.document.evidence.find(
+            (evidence) => evidence.faceId === selection.faceId,
+          ),
+        )
+        .find((evidence) => evidence !== undefined)
       const outerEdges = faces
         .filter((_, index) => index % extrusion.blocks === extrusion.blocks - 1)
         .flatMap((face) => {
@@ -694,6 +722,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...mutateDocument(state, (document) => {
           document.scene.faces.push(...faces)
+          document.evidence.push(
+            ...faces.map((face) =>
+              createInheritedEvidence(document, face, sourceEvidence),
+            ),
+          )
           if (
             projectionInfo(document.scene).resolvedAxes < 3 &&
             planarCamera

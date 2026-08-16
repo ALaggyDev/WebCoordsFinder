@@ -683,6 +683,41 @@ describe('unit-face geometry', () => {
 })
 
 describe('block-specific evidence settings', () => {
+  it('inherits the source edge block profile and settings when extruding', () => {
+    const source = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(source.id, false)
+    useEditorStore.getState().setBlockForSelection('grass_block')
+    useEditorStore.getState().updateBlockSettingsForSelection({
+      grassTint: { temperature: 0.65, downfall: 0.9 },
+    })
+    const existingFaceIds = new Set(
+      useEditorStore.getState().document.scene.faces.map((face) => face.id),
+    )
+
+    useEditorStore
+      .getState()
+      .selectEdge({ faceId: source.id, edge: 'top' }, false)
+    useEditorStore.getState().extrudeSelectedEdges({ x: 360, y: 360 })
+
+    const extrudedEvidence = useEditorStore
+      .getState()
+      .document.evidence.filter((entry) => !existingFaceIds.has(entry.faceId))
+    expect(extrudedEvidence).not.toHaveLength(0)
+    expect(extrudedEvidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          blockId: 'grass_block',
+          blockSettings: {
+            grassTint: { temperature: 0.65, downfall: 0.9 },
+          },
+          reviewStatus: 'unlabeled',
+        }),
+      ]),
+    )
+    expect(extrudedEvidence.every((entry) => entry.blockId === 'grass_block')).toBe(true)
+    expect(extrudedEvidence.every((entry) => entry.selectedVariant === undefined)).toBe(true)
+  })
+
   it('applies grass tint settings to every selected grass block', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().selectFace(first.id, false)
