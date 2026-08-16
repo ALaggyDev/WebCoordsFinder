@@ -18,6 +18,7 @@ export type Matrix3x4 = [
 ]
 
 export type FaceDirection = 'up' | 'down' | 'north' | 'south' | 'east' | 'west'
+export type HorizontalDirection = Exclude<FaceDirection, 'up' | 'down'>
 export type AbstractAxis = 'a' | 'b' | 'c'
 export const worldAxisLabels = [
   'unknown',
@@ -136,6 +137,12 @@ export interface WorldUpIntent {
   edge: FaceEdge | null
 }
 
+/** Persists the directed lattice arrow that the user mapped to a compass direction. */
+export interface HorizontalOrientationIntent {
+  localDirection: Point3
+  direction: HorizontalDirection
+}
+
 export interface SceneGeometry {
   faces: MeshFace[]
   observations: CalibrationObservation[]
@@ -146,6 +153,7 @@ export interface SceneGeometry {
   // Optional for schema-v1 compatibility with projects saved before the
   // planar-orientation intent was persisted.
   worldUpIntent?: WorldUpIntent | null
+  horizontalOrientationIntent?: HorizontalOrientationIntent | null
 }
 
 export interface OrientationDraft {

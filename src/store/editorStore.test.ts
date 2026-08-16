@@ -7,6 +7,7 @@ import {
   cameraLatticeParity,
   dot3,
   faceCornersLattice,
+  mappedVector,
   projectScenePoint,
   scale3,
   sceneLatticeParity,
@@ -212,6 +213,70 @@ describe('unit-face geometry', () => {
     expect(new Set(results.map((result) => result.upLabel))).toEqual(
       new Set(['y+', 'y-']),
     )
+  })
+
+  it('preserves confirmed planar north through the first camera extrusion', () => {
+    for (const { pointer, normal } of [
+      {
+        pointer: { x: 300, y: 100 },
+        normal: { x: 0, y: 0, z: 1 },
+      },
+      {
+        pointer: { x: 300, y: 300 },
+        normal: { x: 0, y: 0, z: -1 },
+      },
+    ]) {
+      useEditorStore.setState({ document: createEmptyDocument() })
+      useEditorStore.getState().addBaseFaces(
+        [
+          { x: 100, y: 200 },
+          { x: 500, y: 200 },
+          { x: 550, y: 500 },
+          { x: 50, y: 500 },
+        ],
+        4,
+        4,
+      )
+      const base = useEditorStore.getState().document.scene.faces[0]
+      useEditorStore.getState().startUpOrientation()
+      useEditorStore.getState().setOrientationFace(base.id)
+      useEditorStore.getState().setOrientationSurfaceKind('top')
+      useEditorStore.getState().startHorizontalOrientation()
+      useEditorStore.getState().setOrientationFace(base.id)
+      useEditorStore.getState().setOrientationEdge('right')
+      useEditorStore.getState().setOrientationHorizontalDirection('north')
+
+      const intent = structuredClone(
+        useEditorStore.getState().document.scene.horizontalOrientationIntent,
+      )!
+      expect(useEditorStore.getState().document.scanner.compassResolved).toBe(true)
+
+      useEditorStore
+        .getState()
+        .selectEdge({ faceId: base.id, edge: 'top' }, false)
+      useEditorStore.getState().extrudeSelectedEdges(pointer)
+
+      const document = useEditorStore.getState().document
+      const promotedBase = document.scene.faces.find((face) => face.id === base.id)
+      expect(document.scene.projection?.kind).toBe('camera')
+      expect(promotedBase?.normal).toEqual(normal)
+      expect(document.scene.horizontalOrientationIntent).toEqual(intent)
+      expect(document.scanner.compassResolved).toBe(true)
+      expect(document.scanner.directions).toEqual([0])
+      expect(mappedVector(document.scene.axisMapping, intent.localDirection)).toEqual({
+        x: 0,
+        y: 0,
+        z: -1,
+      })
+      expect(axisMappingParity(document.scene.axisMapping)).toBe(
+        cameraLatticeParity(document.scene),
+      )
+
+      const reloaded = normalizeEditorDocument(document)
+      expect(reloaded.scene.axisMapping).toEqual(document.scene.axisMapping)
+      expect(reloaded.scanner.compassResolved).toBe(true)
+      expect(reloaded.scanner.directions).toEqual([0])
+    }
   })
 
   it('removes an extra calibration anchor and refits the camera in one transaction', () => {

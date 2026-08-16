@@ -93,6 +93,8 @@ It stores:
   (row-major 3×4 projective matrix), both shared by every face.
 - An explicit signed mapping from screenshot-local axes `a`, `b`, and `c` to
   world X/Y/Z labels.
+- Persisted world-UP and directed horizontal orientation intents so a later
+  projection change can rebuild the same user-confirmed world mapping.
 
 The initial base grid is a resumable planar homography. Extruding from selected
 edges adds connected faces and calibration observations. Once the evidence is
@@ -184,8 +186,11 @@ The orientation workflow follows these consequences:
 Planar face normals are provisional visible-side choices. On the first
 successful promotion to a 3D camera, reorient every face normal toward the
 fitted camera, re-derive local UP from `worldUpIntent`, and rebuild the mapping
-against camera parity. If either normals or mapping change, invalidate affected
-variant evidence rather than preserving a silently mirrored interpretation.
+against camera parity. Preserve a valid confirmed mapping, or reconstruct it
+from `horizontalOrientationIntent` when parity changes; never replace confirmed
+north with the automatic working default. If either normals or mapping change,
+invalidate affected variant evidence rather than preserving a silently mirrored
+interpretation.
 
 ## Evidence, Analysis, and Search Invariants
 

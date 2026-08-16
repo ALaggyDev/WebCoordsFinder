@@ -113,6 +113,7 @@ function createPlanarScene(
     ),
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     worldUpIntent: null,
+    horizontalOrientationIntent: null,
   }
 }
 
@@ -159,6 +160,7 @@ export const createEmptyDocument = (): EditorDocument => ({
     projection: null,
     axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
     worldUpIntent: null,
+    horizontalOrientationIntent: null,
   },
   evidence: [],
   scanner: createDefaultScanner(),
@@ -194,6 +196,16 @@ function isValidWorldUpIntent(input: unknown): boolean {
   )
 }
 
+function isValidHorizontalOrientationIntent(input: unknown): boolean {
+  if (input === undefined || input === null) return true
+  if (typeof input !== 'object') return false
+  const intent = input as Record<string, unknown>
+  return (
+    isSignedUnitAxis(intent.localDirection) &&
+    ['north', 'south', 'east', 'west'].includes(String(intent.direction))
+  )
+}
+
 function worldUpOnlyMapping(mapping: AxisMapping): AxisMapping {
   const partial: AxisMapping = {
     a: 'unknown',
@@ -212,6 +224,30 @@ function isPoint3(input: unknown): input is Point3 {
   return ['x', 'y', 'z'].every(
     (axis) => typeof point[axis] === 'number' && Number.isFinite(point[axis]),
   )
+}
+
+function isSignedUnitAxis(input: unknown): input is Point3 {
+  if (!isPoint3(input)) return false
+  const components = [input.x, input.y, input.z]
+  return (
+    components.filter((value) => Math.abs(value) === 1).length === 1 &&
+    components.filter((value) => value === 0).length === 2
+  )
+}
+
+function mappingFromHorizontalOrientationIntent(
+  scene: EditorDocument['scene'],
+): AxisMapping | undefined {
+  const localUp = localUpForWorldUpIntent(scene)
+  const intent = scene.horizontalOrientationIntent
+  return localUp && intent
+    ? axisMappingFromUpAndHorizontal(
+        scene,
+        localUp,
+        intent.localDirection,
+        intent.direction,
+      )
+    : undefined
 }
 
 function isValidCommittedProjection(input: unknown): boolean {
@@ -260,6 +296,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     !scene ||
     !isValidAxisMapping(scene.axisMapping) ||
     !isValidWorldUpIntent(scene.worldUpIntent) ||
+    !isValidHorizontalOrientationIntent(scene.horizontalOrientationIntent) ||
     !Array.isArray(scene.faces) ||
     !Array.isArray(scene.observations) ||
     (scene.faces.length === 0
@@ -279,6 +316,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   }
   const normalized = structuredClone(input as EditorDocument)
   normalized.scene.worldUpIntent ??= null
+  normalized.scene.horizontalOrientationIntent ??= null
   const defaults = createDefaultScanner()
   // Current-format fields default independently so existing project bundles
   // remain usable without interpreting superseded scanner settings.
@@ -298,6 +336,9 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     ? normalized.scene.faces.find((face) => face.id === intent.faceId)
     : undefined
   const localUp = localUpForWorldUpIntent(normalized.scene, intent)
+  const horizontalMapping = mappingFromHorizontalOrientationIntent(
+    normalized.scene,
+  )
   const automaticMapping =
     referenceFace && localUp
       ? automaticAxisMappingForUp(normalized.scene, referenceFace, localUp)
@@ -305,11 +346,13 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   const mappingIsInvalid =
     mappingWasComplete &&
     !isAxisMappingComplete(normalized.scene.axisMapping, parity)
-  const replacementMapping = mappingIsInvalid
-    ? automaticMapping ?? worldUpOnlyMapping(normalized.scene.axisMapping)
-    : !mappingWasComplete && automaticMapping
-      ? automaticMapping
-      : undefined
+  const replacementMapping =
+    horizontalMapping ??
+    (mappingIsInvalid
+      ? automaticMapping ?? worldUpOnlyMapping(normalized.scene.axisMapping)
+      : !mappingWasComplete && automaticMapping
+        ? automaticMapping
+        : undefined)
   if (
     replacementMapping &&
     (['a', 'b', 'c'] as const).some(
@@ -319,8 +362,10 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     // Rebuild camera-inconsistent legacy mappings and upgrade planar projects
     // that stored only UP before homography parity was supported.
     normalized.scene.axisMapping = replacementMapping
-    normalized.scanner.compassResolved = false
-    normalized.scanner.directions = [...searchDirections]
+    normalized.scanner.compassResolved = horizontalMapping !== undefined
+    normalized.scanner.directions = horizontalMapping
+      ? [0]
+      : [...searchDirections]
     normalized.evidence.forEach((entry) => {
       entry.stateCount = evidenceStateCount(normalized, entry) ?? 4
       entry.selectedVariant = undefined
@@ -330,11 +375,15 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     })
   }
   normalized.scanner.compassResolved =
-    Boolean(normalized.scanner.compassResolved) &&
-    isAxisMappingComplete(
-      normalized.scene.axisMapping,
-      sceneLatticeParity(normalized.scene),
-    )
+    horizontalMapping !== undefined ||
+    (Boolean(normalized.scanner.compassResolved) &&
+      isAxisMappingComplete(
+        normalized.scene.axisMapping,
+        sceneLatticeParity(normalized.scene),
+      ))
+  if (normalized.scanner.compassResolved) {
+    normalized.scanner.directions = [0]
+  }
   normalized.evidence.forEach((entry) => {
     if (['grass_block', 'lily_pad'].includes(entry.blockId) && !entry.blockSettings?.grassTint) {
       entry.blockSettings = {
@@ -447,12 +496,14 @@ function pruneGeometry(document: EditorDocument): void {
     document.scene.projection = null
     document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
     document.scene.worldUpIntent = null
+    document.scene.horizontalOrientationIntent = null
     document.scanner.compassResolved = false
   } else if (
     document.scene.worldUpIntent &&
     !faceIds.has(document.scene.worldUpIntent.faceId)
   ) {
     document.scene.worldUpIntent = null
+    document.scene.horizontalOrientationIntent = null
   }
 }
 
@@ -550,18 +601,7 @@ function removeFaces(document: EditorDocument, ids: Set<string>): void {
   if (planar) {
     document.scene.observations = planar.observations
     document.scene.projection = planar.projection
-    if (
-      !isAxisMappingComplete(
-        document.scene.axisMapping,
-        sceneLatticeParity(document.scene),
-      )
-    ) {
-      applyAxisMapping(
-        document,
-        worldUpOnlyMapping(document.scene.axisMapping),
-        false,
-      )
-    }
+    reconcilePersistedOrientation(document)
   }
 }
 
@@ -592,6 +632,34 @@ function applyAxisMapping(
   })
 }
 
+function reconcilePersistedOrientation(document: EditorDocument): void {
+  const parity = sceneLatticeParity(document.scene)
+  const keepConfirmedMapping =
+    document.scanner.compassResolved &&
+    isAxisMappingComplete(document.scene.axisMapping, parity)
+  const horizontalMapping = mappingFromHorizontalOrientationIntent(document.scene)
+  const intent = document.scene.worldUpIntent
+  const localUp = localUpForWorldUpIntent(document.scene, intent)
+  const referenceFace = intent
+    ? document.scene.faces.find((face) => face.id === intent.faceId)
+    : undefined
+  const automaticMapping =
+    localUp && referenceFace
+      ? automaticAxisMappingForUp(document.scene, referenceFace, localUp)
+      : undefined
+  const mapping =
+    horizontalMapping ??
+    (keepConfirmedMapping
+      ? document.scene.axisMapping
+      : automaticMapping ?? worldUpOnlyMapping(document.scene.axisMapping))
+
+  applyAxisMapping(
+    document,
+    mapping,
+    horizontalMapping !== undefined || keepConfirmedMapping,
+  )
+}
+
 function reconcileCameraFacingGeometry(document: EditorDocument): void {
   if (document.scene.projection?.kind !== 'camera') return
   const changedFaceIds = new Set<string>()
@@ -617,24 +685,7 @@ function reconcileCameraFacingGeometry(document: EditorDocument): void {
       entry.confidence = undefined
     })
 
-  const intent = document.scene.worldUpIntent
-  const localUp = localUpForWorldUpIntent(document.scene, intent)
-  const referenceFace = intent
-    ? document.scene.faces.find((face) => face.id === intent.faceId)
-    : undefined
-  const intentMapping =
-    localUp && referenceFace
-      ? automaticAxisMappingForUp(document.scene, referenceFace, localUp)
-      : undefined
-  const mapping =
-    intentMapping ??
-    (isAxisMappingComplete(
-      document.scene.axisMapping,
-      sceneLatticeParity(document.scene),
-    )
-      ? document.scene.axisMapping
-      : worldUpOnlyMapping(document.scene.axisMapping))
-  applyAxisMapping(document, mapping, false)
+  reconcilePersistedOrientation(document)
 
   if (changedFaceIds.size > 0) {
     document.evidence.forEach((entry) => {
@@ -741,6 +792,7 @@ export const useEditorStore = create<EditorState>((set) => ({
           c: 'unknown',
         }
         document.scene.worldUpIntent = null
+        document.scene.horizontalOrientationIntent = null
         document.evidence = []
         document.anchorFaceId = null
         document.scanner.compassResolved = false
@@ -956,19 +1008,7 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.scores = undefined
             entry.confidence = undefined
           })
-        const intent = document.scene.worldUpIntent
-        const localUp = localUpForWorldUpIntent(document.scene, intent)
-        const referenceFace = intent
-          ? document.scene.faces.find((face) => face.id === intent.faceId)
-          : undefined
-        if (localUp && referenceFace) {
-          const mapping = automaticAxisMappingForUp(
-            document.scene,
-            referenceFace,
-            localUp,
-          )
-          if (mapping) applyAxisMapping(document, mapping, false)
-        }
+        reconcilePersistedOrientation(document)
       })
     }),
   startUpOrientation: () =>
@@ -1054,6 +1094,7 @@ export const useEditorStore = create<EditorState>((set) => ({
             surfaceKind,
             edge: null,
           }
+          document.scene.horizontalOrientationIntent = null
           applyAxisMapping(document, mapping, false)
         }),
         orientationDraft: null,
@@ -1093,6 +1134,7 @@ export const useEditorStore = create<EditorState>((set) => ({
             surfaceKind: 'side',
             edge,
           }
+          document.scene.horizontalOrientationIntent = null
           applyAxisMapping(document, mapping, false)
         }),
         orientationDraft: null,
@@ -1101,6 +1143,9 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
   setOrientationHorizontalDirection: (horizontalDirection) =>
     set((state) => {
+      if (horizontalDirection === 'up' || horizontalDirection === 'down') {
+        return state
+      }
       const draft = state.orientationDraft
       if (draft?.mode !== 'horizontal' || !draft.faceId || !draft.edge) {
         return state
@@ -1123,6 +1168,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!mapping) return state
       return {
         ...mutateDocument(state, (document) => {
+          document.scene.horizontalOrientationIntent = {
+            localDirection: arrow.direction,
+            direction: horizontalDirection,
+          }
           applyAxisMapping(document, mapping, true)
         }),
         orientationDraft: null,
