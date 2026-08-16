@@ -782,7 +782,7 @@ export function ExportRunDialog({
                   onClick={onDownload}
                   type="button"
                 >
-                  <Download size={16} /> Download coordsfinder.conf
+                  <Download size={16} /> Download config
                 </button>
                 <button
                   className="secondary-button"

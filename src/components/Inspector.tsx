@@ -1218,7 +1218,10 @@ function ExportInspector() {
 
   const downloadConfig = () => {
     if (validation.errors.length > 0) return
-    downloadBlob(new Blob([config], { type: 'text/plain;charset=utf-8' }), 'coordsfinder.conf')
+    const filename = `${document.projectName
+      .trim()
+      .replace(/[<>:"/\\|?*]/g, '-') || 'coordsfinder'}.conf`
+    downloadBlob(new Blob([config], { type: 'text/plain;charset=utf-8' }), filename)
   }
 
   return (

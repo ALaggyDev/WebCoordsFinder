@@ -233,6 +233,37 @@ describe('Export / Run workspace', () => {
     )
   })
 
+  it('downloads the configuration using the project name', () => {
+    const document = documentWithSavedSearch()
+    document.projectName = 'Nether ceiling'
+    useEditorStore.setState({ document, step: 'export' })
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined)
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:config'),
+      revokeObjectURL: vi.fn(),
+    })
+
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Download config' }),
+    )
+
+    expect(click).toHaveBeenCalledOnce()
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe(
+      'Nether ceiling.conf',
+    )
+  })
+
   it('restores saved progress and candidates as a resumable search', () => {
     useEditorStore.setState({
       document: documentWithSavedSearch(),
