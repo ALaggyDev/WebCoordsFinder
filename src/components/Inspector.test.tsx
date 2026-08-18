@@ -66,6 +66,60 @@ describe('partial perspective inspector', () => {
     expect(screen.getByText('Anchor selected')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Determine world UP' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Extrude edges (E)' })).toBeDisabled()
+    expect(screen.getByText('Camera info')).toBeInTheDocument()
+    expect(screen.getAllByText('-----')).toHaveLength(6)
+  })
+})
+
+describe('camera info', () => {
+  it('shows derived camera data after a 3D solve', () => {
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Camera info')).toBeInTheDocument()
+    expect(screen.getByText('Vertical FOV')).toBeInTheDocument()
+    expect(screen.getByText('Feet position (Standing)')).toBeInTheDocument()
+    expect(screen.getByText(/^\(North -z\)/)).toBeInTheDocument()
+    expect(screen.getByText('Camera info').closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('uses dashed placeholders when world orientation is unavailable', () => {
+    const document = createTestDocument()
+    document.scene.axisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+    document.scanner.compassResolved = false
+    useEditorStore.setState({ document, step: 'grid' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText('-----')).toHaveLength(3)
+  })
+
+  it('uses the guessed horizontal orientation when a complete mapping exists', () => {
+    const document = createTestDocument()
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+    document.scanner.compassResolved = false
+    useEditorStore.setState({ document, step: 'grid' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('-----')).not.toBeInTheDocument()
   })
 })
 

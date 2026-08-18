@@ -12,6 +12,7 @@ import {
   cameraCenter,
   cameraFacingNormal,
   cameraLatticeParity,
+  cameraInfoMetrics,
   chooseEdgeExtrusion,
   computeHomography,
   createEdgeExtrusionFaces,
@@ -62,6 +63,99 @@ const cameraMatrix: Matrix3x4 = [
   0, 700, -100, 200,
   0.1, 0.05, 1, 5,
 ]
+
+describe('camera image metrics', () => {
+  const projection: Matrix3x4 = [
+    800, 0, 800, 0,
+    0, 900, 450, 0,
+    0, 0, 1, 0,
+  ]
+  const scene: SceneGeometry = {
+    faces: [face],
+    observations: [
+      {
+        id: 'in-front-of-camera',
+        lattice: { x: 0, y: 0, z: 10 },
+        image: { x: 800, y: 450 },
+        weight: 1,
+      },
+    ],
+    projection: { kind: 'camera', matrix: projection, rmsError: 0, maxError: 0 },
+    axisMapping: { a: 'x+', b: 'y+', c: 'z+' },
+  }
+
+  it('derives FOV, focal lengths, and a forward centre ray', () => {
+    const metrics = cameraInfoMetrics(scene, { width: 1600, height: 900 }, null)
+
+    expect(metrics?.cameraCenter).toMatchObject({ x: expect.any(Number), y: 0, z: 0 })
+    expect(metrics?.cameraCenter.x).toBeCloseTo(0, 6)
+    expect(metrics?.horizontalFovDegrees).toBeCloseTo(90, 6)
+    expect(metrics?.verticalFovDegrees).toBeCloseTo(53.130102, 6)
+    expect(metrics?.focalLengthX).toBeCloseTo(800, 6)
+    expect(metrics?.focalLengthY).toBeCloseTo(900, 6)
+    expect(metrics?.centerRay).toEqual({ x: 0, y: 0, z: 1 })
+  })
+
+  it('keeps camera metrics stable when the projection scale is negated', () => {
+    const scaled: SceneGeometry = {
+      ...scene,
+      projection: {
+        kind: 'camera',
+        matrix: projection.map((value) => -2 * value) as Matrix3x4,
+        rmsError: 0,
+        maxError: 0,
+      },
+    }
+
+    const metrics = cameraInfoMetrics(scaled, { width: 1600, height: 900 }, null)
+    expect(metrics?.horizontalFovDegrees).toBeCloseTo(90, 6)
+    expect(metrics?.verticalFovDegrees).toBeCloseTo(53.130102, 6)
+    expect(metrics?.centerRay).toEqual({ x: 0, y: 0, z: 1 })
+  })
+
+  it('maps eye, feet, yaw, and pitch into the anchored world frame', () => {
+    const anchorFace: MeshFace = {
+      ...face,
+      id: 'anchor',
+      normal: { x: 0, y: 0, z: -1 },
+    }
+    const metrics = cameraInfoMetrics(
+      { ...scene, faces: [anchorFace] },
+      { width: 1600, height: 900 },
+      anchorFace.id,
+    )
+
+    expect(metrics?.eyePosition).toEqual({ x: 0, y: 0, z: 0 })
+    expect(metrics?.feetPosition).toEqual({ x: 0, y: -1.62, z: 0 })
+    expect(metrics?.yawDegrees).toBeCloseTo(180, 6)
+    expect(metrics?.pitchDegrees).toBeCloseTo(0, 6)
+  })
+
+  it('does not invent metrics for a planar or singular camera solve', () => {
+    expect(
+      cameraInfoMetrics(
+        { ...scene, projection: null },
+        { width: 1600, height: 900 },
+        null,
+      ),
+    ).toBeUndefined()
+    expect(
+      cameraInfoMetrics(
+        {
+          ...scene,
+          projection: {
+            kind: 'camera',
+            matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            rmsError: 0,
+            maxError: 0,
+          },
+        },
+        { width: 1600, height: 900 },
+        null,
+      ),
+    ).toBeUndefined()
+  })
+})
 
 describe('global perspective geometry', () => {
   it('directs orientation arrows around all four sides of a face', () => {

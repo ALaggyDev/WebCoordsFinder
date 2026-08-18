@@ -872,6 +872,168 @@ export function cameraCenter(scene: SceneGeometry): Point3 | undefined {
   }
 }
 
+export interface CameraInfoMetrics {
+  cameraCenter: Point3
+  centerRay: Point3 | undefined
+  horizontalFovDegrees: number
+  verticalFovDegrees: number
+  focalLengthX: number
+  focalLengthY: number
+  eyePosition: Point3 | undefined
+  feetPosition: Point3 | undefined
+  yawDegrees: number | undefined
+  pitchDegrees: number | undefined
+}
+
+function normalize3(value: Point3): Point3 | undefined {
+  const length = Math.hypot(value.x, value.y, value.z)
+  if (!Number.isFinite(length) || length <= EPSILON) return undefined
+  return scale3(value, 1 / length)
+}
+
+function cameraRayForImagePoint(
+  matrix: Matrix3x4,
+  image: Point2,
+): Point3 | undefined {
+  try {
+    // A point on this ray satisfies M * direction = [imageX, imageY, 1].
+    // Solving it directly avoids imposing zero-skew or square-pixel
+    // assumptions on the freely fitted projective camera.
+    const [x, y, z] = solveLinearSystem(
+      [
+        [matrix[0], matrix[1], matrix[2]],
+        [matrix[4], matrix[5], matrix[6]],
+        [matrix[8], matrix[9], matrix[10]],
+      ],
+      [image.x, image.y, 1],
+    )
+    return normalize3({ x, y, z })
+  } catch {
+    return undefined
+  }
+}
+
+function angleBetween3(left: Point3, right: Point3): number | undefined {
+  const cosine = Math.max(-1, Math.min(1, dot3(left, right)))
+  const radians = Math.acos(cosine)
+  return Number.isFinite(radians) ? (radians * 180) / Math.PI : undefined
+}
+
+function focalLengthForFov(
+  imageExtent: number,
+  fovDegrees: number,
+): number | undefined {
+  const denominator = 2 * Math.tan((fovDegrees * Math.PI) / 360)
+  const focalLength = imageExtent / denominator
+  return Number.isFinite(focalLength) && focalLength > 0
+    ? focalLength
+    : undefined
+}
+
+/**
+ * Derives the complete camera info from a solved camera. FOV is measured
+ * across the imported image bounds, so a cropped screenshot reports its own
+ * effective FOV rather than the original viewport's FOV.
+ */
+export function cameraInfoMetrics(
+  scene: SceneGeometry,
+  imageSize: { width: number; height: number },
+  anchorFaceId: string | null,
+): CameraInfoMetrics | undefined {
+  if (
+    scene.projection?.kind !== 'camera' ||
+    !Number.isFinite(imageSize.width) ||
+    !Number.isFinite(imageSize.height) ||
+    imageSize.width <= 0 ||
+    imageSize.height <= 0
+  ) {
+    return undefined
+  }
+
+  const matrix = scene.projection.matrix
+  const camera = cameraCenter(scene)
+  const left = cameraRayForImagePoint(matrix, { x: 0, y: imageSize.height / 2 })
+  const right = cameraRayForImagePoint(matrix, {
+    x: imageSize.width,
+    y: imageSize.height / 2,
+  })
+  const top = cameraRayForImagePoint(matrix, { x: imageSize.width / 2, y: 0 })
+  const bottom = cameraRayForImagePoint(matrix, {
+    x: imageSize.width / 2,
+    y: imageSize.height,
+  })
+  const centerRay = cameraRayForImagePoint(matrix, {
+    x: imageSize.width / 2,
+    y: imageSize.height / 2,
+  })
+  if (!camera || !left || !right || !top || !bottom) return undefined
+
+  const horizontalFovDegrees = angleBetween3(left, right)
+  const verticalFovDegrees = angleBetween3(top, bottom)
+  if (horizontalFovDegrees === undefined || verticalFovDegrees === undefined) {
+    return undefined
+  }
+
+  // The camera matrix can have either homogeneous-depth sign. Orient the
+  // centre ray toward a real calibration point before exposing it as a view
+  // direction for yaw and pitch.
+  const reference = scene.observations.find((observation) => {
+    const depth =
+      matrix[8] * observation.lattice.x +
+      matrix[9] * observation.lattice.y +
+      matrix[10] * observation.lattice.z +
+      matrix[11]
+    return Number.isFinite(depth) && Math.abs(depth) > EPSILON
+  })
+  const referenceDepth = reference
+    ? matrix[8] * reference.lattice.x +
+      matrix[9] * reference.lattice.y +
+      matrix[10] * reference.lattice.z +
+      matrix[11]
+    : undefined
+
+  const focalLengthX = focalLengthForFov(imageSize.width, horizontalFovDegrees)
+  const focalLengthY = focalLengthForFov(imageSize.height, verticalFovDegrees)
+  if (focalLengthX === undefined || focalLengthY === undefined) return undefined
+
+  const orientedCenterRay =
+    centerRay && referenceDepth !== undefined
+      ? referenceDepth > 0
+        ? centerRay
+        : negate3(centerRay)
+      : undefined
+  const mappingComplete = isAxisMappingComplete(
+    scene.axisMapping,
+    sceneLatticeParity(scene),
+  )
+  const eyePosition = mappingComplete
+    ? mappedAnchorOffset(scene, anchorFaceId, camera)
+    : undefined
+  const worldRay =
+    mappingComplete && orientedCenterRay
+      ? mappedVector(scene.axisMapping, orientedCenterRay)
+      : undefined
+
+  return {
+    cameraCenter: camera,
+    centerRay: orientedCenterRay,
+    horizontalFovDegrees,
+    verticalFovDegrees,
+    focalLengthX,
+    focalLengthY,
+    eyePosition,
+    feetPosition: eyePosition
+      ? { ...eyePosition, y: eyePosition.y - 1.62 }
+      : undefined,
+    yawDegrees: worldRay
+      ? (Math.atan2(worldRay.x, -worldRay.z) * 180) / Math.PI
+      : undefined,
+    pitchDegrees: worldRay
+      ? (-Math.asin(Math.max(-1, Math.min(1, worldRay.y))) * 180) / Math.PI
+      : undefined,
+  }
+}
+
 const MIN_CAMERA_FACING_COSINE = 0.02
 
 function normalFacingPoint(

@@ -29,6 +29,7 @@ import {
   validateForExport,
 } from '../domain/exportConfig'
 import {
+  cameraInfoMetrics,
   faceHasWorldOrientation,
   faceForLocalNormal,
   faceDisplayName,
@@ -161,6 +162,55 @@ function InfoTip({ label, children }: { label: string; children: ReactNode }) {
       <Info size={14} aria-hidden="true" />
       <div className="info-tip-content" role="tooltip">{children}</div>
     </div>
+  )
+}
+
+function CameraInfo() {
+  const document = useEditorStore((state) => state.document)
+  const { scene } = document
+  const metrics = useMemo(
+    () => cameraInfoMetrics(scene, document.image, document.anchorFaceId),
+    [document.anchorFaceId, document.image, scene],
+  )
+  const formatNumber = (value: number | undefined, digits = 1) =>
+    value !== undefined && Number.isFinite(value) ? value.toFixed(digits) : '-----'
+  const formatDegrees = (value: number | undefined) =>
+    value !== undefined && Number.isFinite(value)
+      ? `${formatNumber(value)}°`
+      : '-----'
+  const formatCoordinate = (value: { x: number; y: number; z: number } | undefined) =>
+    value
+      ? `${formatNumber(value.x, 3)}, ${formatNumber(value.y, 3)}, ${formatNumber(value.z, 3)}`
+      : '-----'
+  const CameraInfoRow = ({ label, value }: { label: string; value: string }) => (
+    <div className="camera-info-row">
+      <span>{label}</span>
+      <strong className={value === '-----' ? 'unavailable' : undefined}>{value}</strong>
+    </div>
+  )
+
+  return (
+    <details className="camera-info">
+      <summary>Camera info</summary>
+      <div className="camera-info-list">
+        <CameraInfoRow label="Vertical FOV" value={formatDegrees(metrics?.verticalFovDegrees)} />
+        <CameraInfoRow label="Horizontal FOV" value={formatDegrees(metrics?.horizontalFovDegrees)} />
+        <CameraInfoRow
+          label="Effective focal length"
+          value={metrics
+            ? `${formatNumber(metrics.focalLengthX)} × ${formatNumber(metrics.focalLengthY)} px`
+            : '-----'}
+        />
+        <CameraInfoRow label="Eye position" value={formatCoordinate(metrics?.eyePosition)} />
+        <CameraInfoRow label="Feet position (Standing)" value={formatCoordinate(metrics?.feetPosition)} />
+        <CameraInfoRow
+          label="Yaw and pitch"
+          value={metrics?.yawDegrees === undefined || metrics.pitchDegrees === undefined
+            ? '-----'
+            : `(North -z) ${formatNumber(metrics.yawDegrees)}, ${formatNumber(metrics.pitchDegrees)}`}
+        />
+      </div>
+    </details>
   )
 }
 
@@ -459,6 +509,7 @@ function GeometryInspector() {
         </button>
       </div>
       </section>
+      <CameraInfo />
     </>
   )
 }
