@@ -1,14 +1,17 @@
 import {
+  ArrowLeft,
   BoxSelect,
   Download,
   FolderOpen,
   Grid3X3,
   ImagePlus,
+  Info,
   Keyboard,
   X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EditorStep } from '../domain/types'
+import type { AppPath } from '../domain/appRoutes'
 import type { ProjectSummary } from '../storage/db'
 import { useEditorStore } from '../store/editorStore'
 
@@ -26,18 +29,23 @@ const steps: Array<{
 
 interface TopBarProps {
   activeProjectId: string | null
+  currentPath?: AppPath
   projects: ProjectSummary[]
+  onNavigate?: (path: AppPath) => void
   onOpenImage: () => void
   onOpenProjects: () => void
 }
 
 export function TopBar({
   activeProjectId,
+  currentPath = '/',
   projects,
+  onNavigate = () => undefined,
   onOpenImage,
   onOpenProjects,
 }: TopBarProps) {
   const [keybindingsOpen, setKeybindingsOpen] = useState(false)
+  const [infoMenuOpen, setInfoMenuOpen] = useState(false)
   const step = useEditorStore((state) => state.step)
   const setStep = useEditorStore((state) => state.setStep)
   const activeProject = projects.find((project) => project.id === activeProjectId)
@@ -51,30 +59,85 @@ export function TopBar({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [keybindingsOpen])
 
+  const navigate = (path: AppPath) => {
+    setInfoMenuOpen(false)
+    onNavigate(path)
+  }
+
   return (
-    <header className="topbar">
-      <div className="brand">
-        <img className="brand-mark" src="/favicon.svg" alt="" aria-hidden="true" />
-        <div>
-          <strong>WebCoordsFinder</strong>
-          <span>Coordinates Cracking Studio</span>
-        </div>
-      </div>
-      <nav className="workflow" aria-label="Project workflow">
-        {steps.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            className={step === id ? 'workflow-step active' : 'workflow-step'}
-            onClick={() => setStep(id)}
-            type="button"
-            disabled={!activeProjectId}
-          >
-            <Icon size={15} />
-            <span>{label}</span>
+    <header className={currentPath === '/' ? 'topbar' : 'topbar info-topbar'}>
+      <div className="topbar-brand-area">
+        <button className="brand" type="button" onClick={() => navigate('/')}>
+          <img className="brand-mark" src="/favicon.svg" alt="" aria-hidden="true" />
+          <div>
+            <strong>WebCoordsFinder</strong>
+            <span>Coordinates Cracking Studio</span>
+          </div>
+        </button>
+        {currentPath === '/' ? (
+          <div className="info-menu">
+            <button
+              className="topbar-info"
+              type="button"
+              aria-label="Information pages"
+              aria-haspopup="menu"
+              aria-expanded={infoMenuOpen}
+              onClick={() => setInfoMenuOpen((open) => !open)}
+            >
+              <Info size={15} />
+              <span>Info</span>
+            </button>
+            {infoMenuOpen && (
+              <div className="info-menu-popup" role="menu" aria-label="Information pages">
+                <button type="button" role="menuitem" onClick={() => navigate('/info/what-is-this')}>What is this?</button>
+                <button type="button" role="menuitem" onClick={() => navigate('/info/how-to-use')}>How to use</button>
+                <button type="button" role="menuitem" onClick={() => navigate('/info/faq')}>FAQ</button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button className="topbar-back-to-editor" type="button" onClick={() => navigate('/')}>
+            <ArrowLeft size={15} />
+            Back to editor
           </button>
-        ))}
-      </nav>
-      <div className="keybindings-menu topbar-keybindings-slot">
+        )}
+      </div>
+      {currentPath === '/' ? (
+        <nav className="workflow" aria-label="Project workflow">
+          {steps.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={step === id ? 'workflow-step active' : 'workflow-step'}
+              onClick={() => setStep(id)}
+              type="button"
+              disabled={!activeProjectId}
+            >
+              <Icon size={15} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      ) : (
+        <nav className="site-navigation" aria-label="Site navigation">
+          {[
+            ['/info/what-is-this', 'What is this'],
+            ['/info/how-to-use', 'How to use'],
+            ['/info/faq', 'FAQ'],
+          ].map(([path, label]) => (
+            <button
+              key={path}
+              className={currentPath === path ? 'site-navigation-link active' : 'site-navigation-link'}
+              type="button"
+              onClick={() => navigate(path as AppPath)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+      {currentPath === '/' && (
+        <div className="topbar-utility-actions">
+          <div className="keybindings-menu topbar-keybindings-slot">
           <button
             className="icon-button topbar-keybindings"
             type="button"
@@ -124,8 +187,10 @@ export function TopBar({
               </div>
             </section>
           )}
-      </div>
-      <div className="topbar-actions">
+          </div>
+        </div>
+      )}
+      {currentPath === '/' && <div className="topbar-actions">
         <button
           className="primary-button compact topbar-open-image"
           type="button"
@@ -146,7 +211,7 @@ export function TopBar({
             <strong>{activeProject?.name ?? 'No project open'}</strong>
           </span>
         </button>
-      </div>
+      </div>}
     </header>
   )
 }

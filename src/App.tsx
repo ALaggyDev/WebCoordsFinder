@@ -20,6 +20,8 @@ import {
 } from './components/ProjectDialog'
 import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
+import { InfoPage } from './components/InfoPages'
+import { appPathFromLocation, type AppPath } from './domain/appRoutes'
 import {
   exampleProjects,
   loadExampleProject,
@@ -131,6 +133,9 @@ function App() {
   const [pendingDeleteProjectId, setPendingDeleteProjectId] =
     useState<string | null>(null)
   const [toast, setToast] = useState<ToastState>()
+  const [currentPath, setCurrentPath] = useState<AppPath>(() =>
+    appPathFromLocation(window.location.pathname),
+  )
   const document = useEditorStore((state) => state.document)
   const selectedEvidenceIds = useEditorStore((state) => state.selectedEvidenceIds)
   const loadDocument = useEditorStore((state) => state.loadDocument)
@@ -154,6 +159,12 @@ function App() {
   const notify = (message: string, kind: ToastKind = 'info') => {
     setToast({ message, kind })
   }
+
+  useEffect(() => {
+    const updatePath = () => setCurrentPath(appPathFromLocation(window.location.pathname))
+    window.addEventListener('popstate', updatePath)
+    return () => window.removeEventListener('popstate', updatePath)
+  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -305,6 +316,7 @@ function App() {
   )
 
   useEffect(() => {
+    if (currentPath !== '/') return
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
       // Preserve native selection and editing shortcuts inside form controls.
@@ -390,6 +402,7 @@ function App() {
     startHorizontalOrientation,
     startUpOrientation,
     undo,
+    currentPath,
   ])
 
   const openImagePicker = () => {
@@ -781,15 +794,23 @@ function App() {
     setProjectDialogOpen(true)
   }
 
+  const navigate = (path: AppPath) => {
+    if (path === currentPath) return
+    window.history.pushState({}, '', path)
+    setCurrentPath(path)
+  }
+
   return (
     <div className="app">
       <TopBar
         activeProjectId={activeProjectId}
+        currentPath={currentPath}
         projects={projects}
+        onNavigate={navigate}
         onOpenImage={openImagePicker}
         onOpenProjects={() => openProjectDialog('projects')}
       />
-      <main className={activeProjectId ? 'workspace' : 'workspace no-project'}>
+      {currentPath === '/' ? <main className={activeProjectId ? 'workspace' : 'workspace no-project'}>
         {hydrated && activeProjectId ? (
           <>
             <ToolRail />
@@ -856,7 +877,7 @@ function App() {
             </aside>
           </>
         )}
-      </main>
+      </main> : <InfoPage path={currentPath} onNavigate={navigate} />}
       <input
         ref={imageInputRef}
         className="visually-hidden"

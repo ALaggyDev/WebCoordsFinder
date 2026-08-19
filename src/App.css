@@ -12,7 +12,7 @@
 .topbar {
   min-width: 0;
   display: grid;
-  grid-template-columns: 238px minmax(470px, 1fr) auto auto;
+  grid-template-columns: auto minmax(320px, 1fr) auto auto;
   align-items: center;
   border-bottom: 1px solid var(--border);
   background: rgba(13, 19, 23, 0.96);
@@ -20,13 +20,24 @@
   z-index: 20;
 }
 
+.topbar-brand-area {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--border-soft);
+}
+
 .brand {
   height: 100%;
-  padding: 0 16px;
+  padding: 0 14px 0 16px;
   display: flex;
   align-items: center;
   gap: 11px;
-  border-right: 1px solid var(--border-soft);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
 }
 
 .brand-mark {
@@ -45,6 +56,44 @@
 .brand strong {
   font-size: 14px;
   letter-spacing: -0.01em;
+}
+
+.topbar-info {
+  position: relative;
+  height: 100%;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.topbar-info:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.topbar-info.active {
+  color: var(--accent);
+}
+
+.topbar-info.active::after {
+  content: '';
+  position: absolute;
+  right: 11px;
+  bottom: -1px;
+  left: 11px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.brand:hover strong {
+  color: var(--accent);
 }
 
 .brand span {
@@ -102,6 +151,279 @@
   align-items: center;
   gap: 8px;
   border-left: 1px solid var(--border-soft);
+}
+
+.topbar-utility-actions {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--border-soft);
+}
+
+.info-menu {
+  position: relative;
+  height: 100%;
+  display: flex;
+}
+
+.topbar-info[aria-expanded='true'] {
+  color: var(--accent);
+  background: rgba(83, 230, 165, 0.05);
+}
+
+.topbar-back-to-editor {
+  height: 100%;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.topbar-back-to-editor:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.info-menu-popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 190px;
+  padding: 5px;
+  background: rgba(13, 20, 24, 0.98);
+  border: 1px solid #3a4a52;
+  border-radius: 9px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(16px);
+}
+
+.info-menu-popup button {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.info-menu-popup button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.site-navigation {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.site-navigation-link {
+  position: relative;
+  padding: 0 15px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.site-navigation-link:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.site-navigation-link.active {
+  color: var(--accent);
+}
+
+.site-navigation-link.active::after {
+  content: '';
+  position: absolute;
+  right: 15px;
+  bottom: -1px;
+  left: 15px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+/* Calm reading surface used by the small set of non-editor information pages. */
+.info-page {
+  min-height: 0;
+  padding: 54px 28px 72px;
+  overflow-y: auto;
+}
+
+.info-page-content {
+  width: min(800px, 100%);
+  margin: 0 auto;
+}
+
+.info-page h1 {
+  margin: 0;
+  color: #eff5f7;
+  font-size: 38px;
+  letter-spacing: -0.04em;
+}
+
+.info-page-body {
+  margin-top: 30px;
+}
+
+.info-page-body > p {
+  max-width: 720px;
+  margin: 0 0 15px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.info-section,
+.info-steps > li,
+.info-faq-list details {
+  background: rgba(17, 24, 29, 0.78);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.info-section {
+  padding: 20px 22px;
+}
+
+.info-section + .info-section {
+  margin-top: 10px;
+}
+
+.info-section h2,
+.info-steps h2 {
+  margin: 0;
+  color: #dfe8eb;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.info-section p,
+.info-steps p,
+.info-faq-list p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.info-video-placeholder {
+  min-height: 160px;
+  margin-top: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  background: #0a1013;
+  border: 1px dashed #3b4a51;
+  border-radius: 7px;
+  font: 12px var(--mono);
+}
+
+.info-steps {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  list-style: none;
+}
+
+.info-steps > li {
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 13px;
+}
+
+.info-steps > li > span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: #07140e;
+  background: var(--accent);
+  border-radius: 50%;
+  font: 700 12px var(--mono);
+}
+
+.info-faq-list {
+  display: grid;
+  gap: 8px;
+}
+
+.info-faq-list details {
+  overflow: hidden;
+}
+
+.info-faq-list summary {
+  padding: 16px 42px 16px 18px;
+  position: relative;
+  color: #dce6e9;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.info-faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.info-faq-list summary::after {
+  content: '+';
+  position: absolute;
+  top: 13px;
+  right: 17px;
+  color: var(--accent);
+  font: 20px var(--mono);
+}
+
+.info-faq-list details[open] summary {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.info-faq-list details[open] summary::after {
+  content: '−';
+}
+
+.info-faq-list details:hover summary {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.info-faq-list p {
+  padding: 0 18px 16px;
+}
+
+.info-faq-list ul {
+  margin: -2px 18px 16px 36px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-todo {
+  margin-top: 20px;
+  color: var(--faint);
+  font: 12px var(--mono);
+}
+
+.info-back-button {
+  margin-top: 28px;
 }
 
 .project-menu-trigger {

@@ -113,4 +113,39 @@ describe('top bar project actions', () => {
     expect(screen.getByText('Delete white calibration point')).toBeInTheDocument()
     expect(screen.getAllByText('Ctrl')).not.toHaveLength(0)
   })
+
+  it('opens the information menu and navigates to a page', () => {
+    const onNavigate = vi.fn()
+    render(
+      <TopBar
+        activeProjectId="project-a"
+        projects={projects}
+        onNavigate={onNavigate}
+        onOpenImage={vi.fn()}
+        onOpenProjects={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Information pages' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'How to use' }))
+
+    expect(onNavigate).toHaveBeenCalledWith('/info/how-to-use')
+  })
+
+  it('shows site navigation instead of editor controls on an information page', () => {
+    render(
+      <TopBar
+        activeProjectId="project-a"
+        currentPath="/info/faq"
+        projects={projects}
+        onOpenImage={vi.fn()}
+        onOpenProjects={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Back to editor' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'FAQ' })).toHaveClass('active')
+    expect(screen.queryByRole('button', { name: 'Open image' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Keybindings' })).not.toBeInTheDocument()
+  })
 })

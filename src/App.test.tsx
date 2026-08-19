@@ -87,6 +87,7 @@ function summaryFor(
 }
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/')
   vi.clearAllMocks()
   storageMocks.clearAllData.mockResolvedValue(undefined)
   storageMocks.deleteProject.mockResolvedValue(undefined)
@@ -124,6 +125,15 @@ afterEach(() => {
 })
 
 describe('face keyboard shortcuts', () => {
+  it('renders the selected information page from its clean URL', () => {
+    window.history.replaceState({}, '', '/info/what-is-this')
+
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'What is this?' })).toBeInTheDocument()
+    expect(screen.getByText(/Some Minecraft blocks pick a texture rotation/i)).toBeInTheDocument()
+  })
+
   it('shows the start menu instead of opening the demo for a fresh visitor', async () => {
     useEditorStore.setState({ document: createEmptyDocument(), step: 'grid' })
 
