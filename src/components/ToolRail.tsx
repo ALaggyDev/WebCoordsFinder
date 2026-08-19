@@ -3,9 +3,11 @@ import {
   Compass,
   Crosshair,
   Eraser,
+  Github,
   Move3d,
   Redo2,
   Undo2,
+  Youtube,
 } from 'lucide-react'
 import type { EditorTool } from '../domain/types'
 import {
@@ -120,6 +122,26 @@ export function ToolRail() {
         >
           <Redo2 size={19} />
         </button>
+        <a
+          className="tool-button social-link"
+          href="https://TODO"
+          target="_blank"
+          rel="noreferrer"
+          title="YouTube"
+          aria-label="Open YouTube"
+        >
+          <Youtube size={19} />
+        </a>
+        <a
+          className="tool-button social-link"
+          href="https://github.com/ALaggyDev/WebCoordsFinder"
+          target="_blank"
+          rel="noreferrer"
+          title="WebCoordsFinder on GitHub"
+          aria-label="Open Github"
+        >
+          <Github size={19} />
+        </a>
       </div>
     </aside>
   )

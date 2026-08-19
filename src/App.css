@@ -720,6 +720,15 @@ kbd {
   border-color: rgba(83, 230, 165, 0.28);
 }
 
+.tool-button.social-link {
+  color: #a9a9a9;
+  text-decoration: none;
+}
+
+.tool-button.social-link:hover {
+  color: #f2f2f2;
+}
+
 .tool-button > span {
   position: absolute;
   right: 2px;
