@@ -9,6 +9,8 @@ Check my video on YouTube: [HERE](TODO)!
 Link:
 - TODO...
 
+If you want to include WebCoordsFinder in your own video/project, please credit me and my project as a gesture of kindness. Thank you!
+
 ## Development
 
 ```sh
