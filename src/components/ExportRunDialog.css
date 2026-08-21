@@ -44,7 +44,7 @@ body.export-run-dialog-open {
 .export-run-section-label {
   display: block;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -80,7 +80,7 @@ body.export-run-dialog-open {
   gap: 6px;
   border: 1px solid;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .export-run-status.ready {
@@ -127,7 +127,7 @@ body.export-run-dialog-open {
 }
 
 .export-run-metrics span {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .export-run-metrics strong {
@@ -138,7 +138,7 @@ body.export-run-dialog-open {
 }
 
 .export-run-metrics small {
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .export-run-section {
@@ -175,7 +175,7 @@ body.export-run-dialog-open {
   align-items: center;
   gap: 7px;
   color: var(--accent);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .runtime-estimate strong {
@@ -184,7 +184,7 @@ body.export-run-dialog-open {
 }
 
 .runtime-estimate small {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .export-run-validation {
@@ -219,12 +219,12 @@ body.export-run-dialog-open {
 }
 
 .run-target-heading span {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .run-target p {
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -264,7 +264,7 @@ body.export-run-dialog-open {
   align-items: center;
   gap: 6px;
   color: var(--accent) !important;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .web-search-phase.paused,
@@ -317,12 +317,12 @@ body.export-run-dialog-open {
 }
 
 .web-search-stats span {
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .web-search-stats strong {
   overflow: hidden;
-  font: 600 10px var(--mono);
+  font: 600 11px var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -347,7 +347,7 @@ body.export-run-dialog-open {
   align-items: flex-start;
   gap: 6px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -366,7 +366,7 @@ body.export-run-dialog-open {
   background: none;
   border: 0;
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .web-search-clear:hover {
@@ -381,13 +381,13 @@ body.export-run-dialog-open {
 }
 
 .web-search-results-heading strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .web-search-results-heading span,
 .web-search-results > small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .web-search-results-scroll {
@@ -400,7 +400,7 @@ body.export-run-dialog-open {
 .web-search-results table {
   width: 100%;
   border-collapse: collapse;
-  font: 9px var(--mono);
+  font: 11px var(--mono);
 }
 
 .web-search-results th,
@@ -415,7 +415,7 @@ body.export-run-dialog-open {
   top: 0;
   color: var(--muted);
   background: #0b1115;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -427,7 +427,7 @@ body.export-run-dialog-open {
 .coordsfinder-links {
   display: flex;
   gap: 12px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .coordsfinder-links a {
@@ -454,7 +454,7 @@ body.export-run-dialog-open {
   padding-top: 10px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .export-run-config-preview pre {
@@ -466,7 +466,7 @@ body.export-run-dialog-open {
   background: #080d10;
   border: 1px solid var(--border);
   border-radius: 7px;
-  font: 8px/1.55 var(--mono);
+  font: 11px/1.55 var(--mono);
   white-space: pre;
 }
 
@@ -474,6 +474,10 @@ body.export-run-dialog-open {
   min-height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.export-inspector .inspector-heading span {
+  font-size: 11px;
 }
 
 .export-inspector-footer {
@@ -485,14 +489,14 @@ body.export-run-dialog-open {
     linear-gradient(to bottom, rgba(15, 22, 26, 0), var(--surface) 18px);
 }
 
-.field-help {
+.export-inspector .field-help {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
-.advanced-settings > .field-help {
+.export-inspector .advanced-settings > .field-help {
   margin: 0 0 10px;
 }
 
