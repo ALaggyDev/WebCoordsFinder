@@ -775,6 +775,22 @@ export function ExportRunDialog({
                 Download the exact configuration for your local CoordsFinder
                 executable.
               </p>
+              <div className="coordsfinder-links">
+                <a
+                  href="https://github.com/ALaggyDev/CoordsFinder"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  CoordsFinder
+                </a>
+                <a
+                  href="https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Colab Notebook
+                </a>
+              </div>
               <div className="coordsfinder-actions">
                 <button
                   className="primary-button"

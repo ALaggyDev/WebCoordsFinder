@@ -223,7 +223,6 @@ body.export-run-dialog-open {
 }
 
 .run-target p {
-  min-height: 34px;
   margin: 0;
   font-size: 10px;
   line-height: 1.55;
@@ -425,6 +424,16 @@ body.export-run-dialog-open {
 }
 
 /* Native CoordsFinder handoff and shared inspector helpers. */
+.coordsfinder-links {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+}
+
+.coordsfinder-links a {
+  color: var(--accent);
+}
+
 .coordsfinder-actions {
   margin-top: 14px;
   display: grid;
