@@ -124,11 +124,11 @@ export function ToolRail() {
         </button>
         <a
           className="tool-button social-link"
-          href="https://TODO"
+          href="https://www.youtube.com/watch?v=xgd15Bl2v9o"
           target="_blank"
           rel="noreferrer"
           title="YouTube"
-          aria-label="Open YouTube"
+          aria-label="Open YouTube Video"
         >
           <Youtube size={19} />
         </a>

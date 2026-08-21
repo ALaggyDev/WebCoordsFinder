@@ -4,10 +4,14 @@ WebCoordsFinder is an online web editor for Minecraft texture rotation cracking!
 
 With WebCoordsFinder, you can trivally find the coordinates of any screenshot in under 10 minutes.
 
-Check my video on YouTube: [HERE](TODO)!
+Check out my video on YouTube!
 
-Link:
-- TODO...
+Links:
+- [Youtube Video](https://www.youtube.com/watch?v=xgd15Bl2v9o)
+- [CoordsFinder](https://github.com/ALaggyDev/CoordsFinder)
+- [Colab Notebook](https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing)
+
+If you like this project, please star it on Github and share it with your friends!
 
 If you want to include WebCoordsFinder in your own video/project, please credit me and my project as a gesture of kindness. Thank you!
 
