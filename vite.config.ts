@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import mdx from '@mdx-js/rollup'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -6,7 +7,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 // scanner WASM used after the application has been installed.
 export default defineConfig({
   plugins: [
-    react(),
+    // Compile the bundled information pages from MDX before React transforms
+    // their generated JSX. The content is never fetched or parsed at runtime.
+    { enforce: 'pre', ...mdx() },
+    react({ include: /\.(?:js|jsx|ts|tsx|mdx)$/ }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],

@@ -280,146 +280,17 @@
   margin-top: 30px;
 }
 
-.info-page-body > p {
-  max-width: 720px;
-  margin: 0 0 15px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.65;
+.info-video {
+  aspect-ratio: 16 / 9;
+  margin-top: 28px;
 }
 
-.info-section,
-.info-steps > li,
-.info-faq-list details {
-  background: rgba(17, 24, 29, 0.78);
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-}
-
-.info-section {
-  padding: 20px 22px;
-}
-
-.info-section + .info-section {
-  margin-top: 10px;
-}
-
-.info-section h2,
-.info-steps h2 {
-  margin: 0;
-  color: #dfe8eb;
-  font-size: 17px;
-  letter-spacing: -0.015em;
-}
-
-.info-section p,
-.info-steps p,
-.info-faq-list p {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.info-video-placeholder {
-  min-height: 160px;
-  margin-top: 14px;
-  display: grid;
-  place-items: center;
-  color: var(--faint);
-  background: #0a1013;
-  border: 1px dashed #3b4a51;
-  border-radius: 7px;
-  font: 12px var(--mono);
-}
-
-.info-steps {
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-  list-style: none;
-}
-
-.info-steps > li {
-  padding: 18px 20px;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 13px;
-}
-
-.info-steps > li > span {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  color: #07140e;
-  background: var(--accent);
-  border-radius: 50%;
-  font: 700 12px var(--mono);
-}
-
-.info-faq-list {
-  display: grid;
-  gap: 8px;
-}
-
-.info-faq-list details {
-  overflow: hidden;
-}
-
-.info-faq-list summary {
-  padding: 16px 42px 16px 18px;
-  position: relative;
-  color: #dce6e9;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  list-style: none;
-}
-
-.info-faq-list summary::-webkit-details-marker {
-  display: none;
-}
-
-.info-faq-list summary::after {
-  content: '+';
-  position: absolute;
-  top: 13px;
-  right: 17px;
-  color: var(--accent);
-  font: 20px var(--mono);
-}
-
-.info-faq-list details[open] summary {
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.info-faq-list details[open] summary::after {
-  content: '−';
-}
-
-.info-faq-list details:hover summary {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.018);
-}
-
-.info-faq-list p {
-  padding: 0 18px 16px;
-}
-
-.info-faq-list ul {
-  margin: -2px 18px 16px 36px;
-  padding: 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.info-todo {
-  margin-top: 20px;
-  color: var(--faint);
-  font: 12px var(--mono);
+.info-video iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  border-radius: 8px;
 }
 
 .info-back-button {

@@ -1,0 +1,49 @@
+# FAQ
+
+## Which blocks have texture rotations?
+
+Here's a list of blocks that have "texture rotations", as of Minecraft 1.21.11. Note that I may have missed some blocks, and not all have been tested.
+
+- Grass block
+- Rooted dirt
+- Dirt
+- Dirt path
+- Stone and infested stone, with side face variants
+- Deepslate and infested deepslate, with side face variants
+- Bedrock, with side face variants
+- Sculk, with side face variants
+- Podzol
+- Mycelium
+- Sand
+- Red sand
+- All 16 colors of concrete powder
+- Lily pad
+- Sea pickle?
+- Turtle egg?
+- Netherrack (not supported yet, since it has 16 variants)
+
+Flower random offsets are not part of the texture rotation algorithm (block variant model), but are instead hard-coded into the game. I will be looking into it in the future.
+
+## What makes a useful screenshot?
+
+Clear, unedited screenshots with many visible faces work best. More independent faces usually give the search more useful evidence.
+
+## Can I come back to a project later?
+
+Yes. Projects are saved in this browser, and you can also export a portable project bundle to keep a copy elsewhere.
+
+## Should I use the built-in scanner or export a CoordsFinder config?
+
+The built-in browser scanner is convenient for smaller searches, but is slower. Exporting is better when you want to use the faster CoordsFinder CPU or CUDA scanner.
+
+## I don't have an Nvidia GPU and the CPU scan takes so long. What should I do?
+
+Google Colab offers a Nvidia Tesla T4 GPU for free! You can use the <a href="https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing" target="_blank" rel="noreferrer">notebook</a> here.
+
+## What is the difference between WebCoordsFinder and CoordsFinder?
+
+WebCoordsFinder is a web-based app. It allows users to upload a screenshot, draw the grid, mark the texture rotations, and either perform the scan on the app or download a config file to use in CoordsFinder. It is a convenient way to generate a config file without having to painstakingly mark and write it by hand.
+
+CoordsFinder is a command-line tool that performs the actual brute-force search. It supports CUDA and is much faster than the built-in WebCoordsFinder scanner.
+
+In short: start with WebCoordsFinder, then either use the built-in scanner or CoordsFinder.
