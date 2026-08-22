@@ -7,7 +7,7 @@ With WebCoordsFinder, you can trivally find the coordinates of any screenshot in
 Check out my video on YouTube!
 
 Links:
-- [Youtube Video](https://www.youtube.com/watch?v=xgd15Bl2v9o)
+- [Youtube Video](https://www.youtube.com/watch?v=gXTN9DD_Cp0)
 - [CoordsFinder](https://github.com/ALaggyDev/CoordsFinder)
 - [Colab Notebook](https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing)
 
