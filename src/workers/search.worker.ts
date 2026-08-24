@@ -1,4 +1,9 @@
-import wasmUrl from '../wasm/coords_search.wasm?url'
+import genericWasmUrl from '../wasm/coords_search.wasm?url&no-inline'
+import sodium1ExactWasmUrl from '../wasm/coords_search_sodium_1_exact.wasm?url&no-inline'
+import sodium2ExactWasmUrl from '../wasm/coords_search_sodium_2_exact.wasm?url&no-inline'
+import vanilla1ExactWasmUrl from '../wasm/coords_search_vanilla_1_exact.wasm?url&no-inline'
+import vanilla2ExactWasmUrl from '../wasm/coords_search_vanilla_2_exact.wasm?url&no-inline'
+import vanilla3ExactWasmUrl from '../wasm/coords_search_vanilla_3_exact.wasm?url&no-inline'
 import {
   MAX_WEB_SEARCH_RESULTS,
   type WebSearchOrdinalResult,
@@ -52,7 +57,14 @@ const maximumBatchSize = 2_000_000
 const targetBatchMilliseconds = 25
 const progressIntervalMilliseconds = 100
 
-let exportsPromise: Promise<SearchExports> | undefined
+const exactWasmUrls = [
+  vanilla1ExactWasmUrl,
+  vanilla2ExactWasmUrl,
+  vanilla3ExactWasmUrl,
+  sodium1ExactWasmUrl,
+  sodium2ExactWasmUrl,
+]
+const exportsPromises = new Map<string, Promise<SearchExports>>()
 let activeRequestId: string | undefined
 let searchExports: SearchExports | undefined
 let pauseRequested = false
@@ -70,7 +82,14 @@ let shardEnd = 0n
 const batchChannel = new MessageChannel()
 batchChannel.port1.onmessage = () => runBatch()
 
-async function loadSearchExports(): Promise<SearchExports> {
+function scannerUrl(mode: number, maxBadBlocks: number): string {
+  return maxBadBlocks === 0
+    ? exactWasmUrls[mode] ?? genericWasmUrl
+    : genericWasmUrl
+}
+
+async function loadSearchExports(wasmUrl: string): Promise<SearchExports> {
+  let exportsPromise = exportsPromises.get(wasmUrl)
   if (!exportsPromise) {
     exportsPromise = (async () => {
       const response = await fetch(wasmUrl)
@@ -90,6 +109,7 @@ async function loadSearchExports(): Promise<SearchExports> {
       }
       return instance.exports as SearchExports
     })()
+    exportsPromises.set(wasmUrl, exportsPromise)
   }
   return exportsPromise
 }
@@ -211,10 +231,12 @@ async function startSearch(
   shardEnd = command.shard.end
 
   try {
-    const module = await loadSearchExports()
+    const request = command.request
+    const module = await loadSearchExports(
+      scannerUrl(request.mode, request.maxBadBlocks),
+    )
     if (activeRequestId !== command.requestId) return
     searchExports = module
-    const request = command.request
     const configureError = module.search_configure(
       request.mode,
       request.scanOrder,
