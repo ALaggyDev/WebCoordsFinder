@@ -113,9 +113,15 @@ const phaseLabels: Record<WebSearchPhase, string> = {
 
 function formatRate(rate: number): string {
   if (!Number.isFinite(rate) || rate <= 0) return 'Measuring...'
+  const compact = rate >= 1_000_000
   return `${new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: rate < 100 ? 1 : 0,
-    notation: rate >= 1_000_000 ? 'compact' : 'standard',
+    notation: compact ? 'compact' : 'standard',
+    // Compact units otherwise round every billions-per-second rate to a bare
+    // "1B", which cannot be told apart from 1.9B. Three significant figures
+    // keeps each unit readable: 41.4M, 632M, 1.03B.
+    ...(compact
+      ? { maximumSignificantDigits: 3 }
+      : { maximumFractionDigits: rate < 100 ? 1 : 0 }),
   }).format(rate)}/sec`
 }
 
