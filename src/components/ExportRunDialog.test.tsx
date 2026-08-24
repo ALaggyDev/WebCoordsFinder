@@ -1,6 +1,7 @@
 // Export/Run tests pin modal workflow, search readiness, and checkpoint
 // restoration without starting the real background scanner.
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,24 +11,70 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateCoordsFinderConfig } from '../domain/exportConfig'
 import {
+  WEB_SEARCH_ENGINE_VERSION,
   createWebSearchCheckpoint,
   createWebSearchRequest,
+  maximumSearchWorkerCount,
+  recommendedSearchWorkerCount,
   webSearchRequestKey,
 } from '../domain/webSearch'
+import {
+  SEARCH_WORKER_CALIBRATION_CACHE_VERSION,
+  writeSearchWorkerCalibration,
+  type SearchWorkerCalibration,
+} from '../domain/searchWorkerCalibration'
 import { blockCoordinateForFace } from '../domain/geometry'
 import type { FaceEvidence } from '../domain/types'
 import { useEditorStore } from '../store/editorStore'
 import { createTestDocument } from '../test/createTestDocument'
 import { Inspector } from './Inspector'
 
+const { calibrateSearchWorkerCountMock } = vi.hoisted(() => ({
+  calibrateSearchWorkerCountMock: vi.fn(),
+}))
+
+vi.mock('../domain/searchWorkerCalibration', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../domain/searchWorkerCalibration')>()
+  return {
+    ...actual,
+    calibrateSearchWorkerCount: calibrateSearchWorkerCountMock,
+  }
+})
+
 beforeEach(() => {
+  calibrateSearchWorkerCountMock.mockReset()
+  localStorage.clear()
+  const maximumWorkerCount = maximumSearchWorkerCount(
+    navigator.hardwareConcurrency,
+  )
+  const workerCount = recommendedSearchWorkerCount(
+    navigator.hardwareConcurrency,
+  )
+  writeSearchWorkerCalibration(localStorage, {
+    cacheVersion: SEARCH_WORKER_CALIBRATION_CACHE_VERSION,
+    engineVersion: WEB_SEARCH_ENGINE_VERSION,
+    maximumWorkerCount,
+    workerCount,
+    calibratedAt: Date.now(),
+    trials: [
+      {
+        workerCount,
+        checksPerSecond: 100,
+        maximumMainThreadLagMilliseconds: 1,
+      },
+    ],
+  })
   useEditorStore.setState({
     document: createTestDocument(),
     step: 'export',
   })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 class MockSearchWorker {
   onerror: (() => void) | null = null
@@ -210,7 +257,121 @@ describe('Export / Run workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
 
     expect(screen.getByText('Loading scanner')).toBeInTheDocument()
-    vi.unstubAllGlobals()
+  })
+
+  it('keeps config-only dialog use idle until web search is requested', () => {
+    localStorage.clear()
+    const workerConstructor = vi.fn()
+    vi.stubGlobal('Worker', workerConstructor)
+    const document = documentWithSavedSearch()
+    document.scanner.webSearch = null
+    useEditorStore.setState({ document, step: 'export' })
+
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+
+    expect(
+      screen.getByRole('button', { name: 'Calibrate & run web search' }),
+    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Download config' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeEnabled()
+    expect(workerConstructor).not.toHaveBeenCalled()
+  })
+
+  it('uses a manual worker selection without calibrating first', () => {
+    localStorage.clear()
+    const worker = new MockSearchWorker()
+    const workerConstructor = vi.fn(function MockWorkerConstructor() {
+      return worker
+    })
+    vi.stubGlobal('Worker', workerConstructor)
+    const document = documentWithSavedSearch()
+    document.scanner.webSearch = null
+    useEditorStore.setState({ document, step: 'export' })
+
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.change(screen.getByLabelText('Search workers'), {
+      target: { value: '2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run web search' }))
+
+    expect(workerConstructor).toHaveBeenCalledOnce()
+    expect(worker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'start', workerCount: 2 }),
+    )
+  })
+
+  it('does not start a search when the dialog closes during calibration', async () => {
+    localStorage.clear()
+    let resolveCalibration!: (calibration: SearchWorkerCalibration) => void
+    calibrateSearchWorkerCountMock.mockReturnValueOnce(
+      new Promise<SearchWorkerCalibration>((resolve) => {
+        resolveCalibration = resolve
+      }),
+    )
+    const workerConstructor = vi.fn()
+    vi.stubGlobal('Worker', workerConstructor)
+    const document = documentWithSavedSearch()
+    document.scanner.webSearch = null
+    useEditorStore.setState({ document, step: 'export' })
+
+    render(
+      <Inspector
+        busy={false}
+        onAutoFill={vi.fn()}
+        onOpenImage={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Calibrate & run web search' }),
+    )
+    const calibrationSignal = calibrateSearchWorkerCountMock.mock.calls[0]?.[2]
+      ?.signal as AbortSignal
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close Export / Run' }),
+    )
+
+    expect(calibrationSignal.aborted).toBe(true)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveCalibration({
+        cacheVersion: SEARCH_WORKER_CALIBRATION_CACHE_VERSION,
+        engineVersion: WEB_SEARCH_ENGINE_VERSION,
+        maximumWorkerCount: maximumSearchWorkerCount(
+          navigator.hardwareConcurrency,
+        ),
+        workerCount: 1,
+        calibratedAt: Date.now(),
+        trials: [
+          {
+            workerCount: 1,
+            checksPerSecond: 100,
+            maximumMainThreadLagMilliseconds: 1,
+          },
+        ],
+      })
+    })
+
+    expect(workerConstructor).not.toHaveBeenCalled()
   })
 
   it('copies the generated CoordsFinder configuration', async () => {
