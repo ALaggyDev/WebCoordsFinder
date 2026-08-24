@@ -28,6 +28,117 @@ class MockShardWorker {
   }
 }
 
+const vanilla3Request = {
+  mode: 2,
+  scanOrder: 0,
+  directions: [0, 90] as const,
+  xStart: -2,
+  xEnd: 2,
+  yStart: 0,
+  yEnd: 5,
+  zStart: -2,
+  zEnd: 2,
+  maxBadBlocks: 0,
+  constraints: [
+    { x: 1, y: 0, z: -1, rotation: 2, visibleMask: 3 as const },
+    { x: -2, y: 1, z: 1, rotation: 0, visibleMask: 1 as const },
+  ],
+}
+
+describe('search pool generated kernel handoff', () => {
+  beforeEach(() => {
+    MockShardWorker.instances = []
+    vi.resetModules()
+    vi.stubGlobal('Worker', MockShardWorker)
+    Object.defineProperty(globalThis.navigator, 'hardwareConcurrency', {
+      configurable: true,
+      value: 4,
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('delivers one compiled kernel to every shard worker', async () => {
+    vi.spyOn(globalThis, 'postMessage').mockImplementation(() => undefined)
+    await import('./search.pool.worker')
+
+    const start: WebSearchWorkerCommand = {
+      type: 'start',
+      requestId: 'generated',
+      workerCount: 3,
+      request: { ...vanilla3Request, directions: [...vanilla3Request.directions] },
+    }
+    window.onmessage?.call(window, new MessageEvent('message', { data: start }))
+
+    expect(MockShardWorker.instances).toHaveLength(3)
+    const kernels = MockShardWorker.instances.map((worker) => {
+      const command = worker.commands[0]
+      if (command.type !== 'start') throw new Error('expected a start command')
+      return command.kernel
+    })
+    kernels.forEach((kernel) => {
+      expect(kernel?.module).toBeInstanceOf(WebAssembly.Module)
+      expect(typeof kernel?.signature).toBe('bigint')
+    })
+    // One compilation is shared by the whole pool.
+    expect(new Set(kernels.map((kernel) => kernel?.module)).size).toBe(1)
+    expect(new Set(kernels.map((kernel) => kernel?.signature)).size).toBe(1)
+  })
+
+  it('starts without a kernel for unsupported requests', async () => {
+    vi.spyOn(globalThis, 'postMessage').mockImplementation(() => undefined)
+    await import('./search.pool.worker')
+
+    for (const [index, request] of [
+      { ...vanilla3Request, mode: 0, directions: [0] },
+      { ...vanilla3Request, maxBadBlocks: 2, directions: [0] },
+      { ...vanilla3Request, constraints: [], directions: [0] },
+    ].entries()) {
+      MockShardWorker.instances = []
+      const start: WebSearchWorkerCommand = {
+        type: 'start',
+        requestId: `unsupported-${index}`,
+        workerCount: 1,
+        request: request as WebSearchWorkerCommand extends { request: infer R }
+          ? R
+          : never,
+      }
+      window.onmessage?.call(window, new MessageEvent('message', { data: start }))
+      const command = MockShardWorker.instances[0].commands[0]
+      expect(command.type).toBe('start')
+      if (command.type !== 'start') return
+      expect(command.kernel).toBeUndefined()
+    }
+  })
+
+  it('falls back to the checked-in scanner when compilation fails', async () => {
+    vi.spyOn(globalThis, 'postMessage').mockImplementation(() => undefined)
+    vi.spyOn(WebAssembly, 'Module').mockImplementation(() => {
+      throw new Error('simulated kernel compilation failure')
+    })
+    await import('./search.pool.worker')
+
+    const start: WebSearchWorkerCommand = {
+      type: 'start',
+      requestId: 'compile-failure',
+      workerCount: 2,
+      request: { ...vanilla3Request, directions: [...vanilla3Request.directions] },
+    }
+    window.onmessage?.call(window, new MessageEvent('message', { data: start }))
+
+    expect(MockShardWorker.instances).toHaveLength(2)
+    MockShardWorker.instances.forEach((worker) => {
+      const command = worker.commands[0]
+      expect(command.type).toBe('start')
+      if (command.type !== 'start') return
+      expect(command.kernel).toBeUndefined()
+    })
+  })
+})
+
 describe('search pool worker coordinator', () => {
   beforeEach(() => {
     MockShardWorker.instances = []
