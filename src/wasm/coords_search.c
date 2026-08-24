@@ -28,6 +28,18 @@ enum {
     MAX_BATCH_RESULTS = 1024
 };
 
+#ifdef SEARCH_FIXED_MODE
+#define ACTIVE_SEARCH_MODE SEARCH_FIXED_MODE
+#else
+#define ACTIVE_SEARCH_MODE search_mode
+#endif
+
+#ifdef SEARCH_FIXED_MAX_BAD_BLOCKS
+#define ACTIVE_MAX_BAD_BLOCKS SEARCH_FIXED_MAX_BAD_BLOCKS
+#else
+#define ACTIVE_MAX_BAD_BLOCKS search_max_bad_blocks
+#endif
+
 typedef struct {
     int8_t x;
     int8_t y;
@@ -78,18 +90,10 @@ static const uint64_t JAVA_MASK = (1ull << 48) - 1ull;
 static const uint64_t SODIUM_PHI = 0x9E3779B97F4A7C15ull;
 
 /* Explicit shifts and wrapping helpers make Java/C overflow parity visible. */
-static uint64_t unsigned_shift_right(uint64_t value, uint32_t distance)
+__attribute__((always_inline))
+static inline uint64_t unsigned_shift_right(uint64_t value, uint32_t distance)
 {
     return value >> distance;
-}
-
-static int64_t signed_shift_right(uint64_t value, uint32_t distance)
-{
-    uint64_t shifted = value >> distance;
-    if ((value & (1ull << 63)) != 0) {
-        shifted |= (~0ull) << (64 - distance);
-    }
-    return (int64_t)shifted;
 }
 
 static uint64_t rotate_left_64(uint64_t value, uint32_t distance)
@@ -97,7 +101,8 @@ static uint64_t rotate_left_64(uint64_t value, uint32_t distance)
     return (value << distance) | (value >> (64 - distance));
 }
 
-static int32_t wrap_add_i32(int32_t lhs, int32_t rhs)
+__attribute__((always_inline))
+static inline int32_t wrap_add_i32(int32_t lhs, int32_t rhs)
 {
     return (int32_t)((uint32_t)lhs + (uint32_t)rhs);
 }
@@ -134,7 +139,8 @@ static uint64_t stafford_mix_13(uint64_t value)
     return value ^ unsigned_shift_right(value, 31);
 }
 
-static uint64_t coordinate_random_raw(int32_t x, int32_t y, int32_t z)
+__attribute__((always_inline))
+static inline uint64_t coordinate_random_raw(int32_t x, int32_t y, int32_t z)
 {
     /*
      * CoordsFinder intentionally performs the x multiplication as a wrapped
@@ -153,9 +159,11 @@ static int32_t coordinate_random_legacy(int32_t x, int32_t y, int32_t z)
     return low >> 16;
 }
 
-static uint64_t coordinate_random(int32_t x, int32_t y, int32_t z)
+__attribute__((always_inline))
+static inline uint64_t coordinate_random(int32_t x, int32_t y, int32_t z)
 {
-    return (uint64_t)signed_shift_right(coordinate_random_raw(x, y, z), 16);
+    /* Clang lowers this target-specific signed shift to wasm's i64.shr_s. */
+    return (uint64_t)((int64_t)coordinate_random_raw(x, y, z) >> 16);
 }
 
 static int32_t random_vanilla_2(uint64_t seed)
@@ -163,29 +171,6 @@ static int32_t random_vanilla_2(uint64_t seed)
     seed = (seed ^ JAVA_MULTIPLIER) & JAVA_MASK;
     uint64_t mixed = seed * 0xBB20B4600A69ull + 0x40942DE6BAull;
     return (int32_t)(uint32_t)unsigned_shift_right(mixed, 16);
-}
-
-static uint32_t legacy_next_bits(uint64_t* seed, uint32_t bits)
-{
-    *seed = (*seed * JAVA_MULTIPLIER + 11ull) & JAVA_MASK;
-    return (uint32_t)unsigned_shift_right(*seed, 48 - bits);
-}
-
-static uint32_t legacy_next_int(uint64_t seed, uint32_t bound)
-{
-    seed = (seed ^ JAVA_MULTIPLIER) & JAVA_MASK;
-
-    if ((bound & (0u - bound)) == bound) {
-        return (uint32_t)(((uint64_t)bound * legacy_next_bits(&seed, 31)) >> 31);
-    }
-
-    uint32_t bits = legacy_next_bits(&seed, 31);
-    uint32_t value = bits % bound;
-    while ((int64_t)bits - value + (bound - 1u) < 0) {
-        bits = legacy_next_bits(&seed, 31);
-        value = bits % bound;
-    }
-    return value;
 }
 
 static int32_t random_sodium_1(uint64_t seed)
@@ -212,7 +197,8 @@ static int32_t random_sodium_2(uint64_t seed)
     return (int32_t)(uint32_t)(rotate_left_64(low + high, 17) + low);
 }
 
-static uint32_t texture_variant(
+__attribute__((always_inline))
+static inline uint32_t texture_variant(
     int32_t mode,
     int32_t x,
     int32_t y,
@@ -225,8 +211,13 @@ static uint32_t texture_variant(
         return positive_modulo(
             random_vanilla_2(coordinate_random(x, y, z)),
             4);
-    case MODE_VANILLA_3:
-        return legacy_next_int(coordinate_random(x, y, z), 4);
+    case MODE_VANILLA_3: {
+        /* nextInt(4) is the top two bits returned by Java Random.next(31). */
+        uint64_t seed =
+            (coordinate_random(x, y, z) ^ JAVA_MULTIPLIER) & JAVA_MASK;
+        seed = (seed * JAVA_MULTIPLIER + 11ull) & JAVA_MASK;
+        return (uint32_t)unsigned_shift_right(seed, 46);
+    }
     case MODE_SODIUM_1:
         return positive_modulo(
             random_sodium_1(coordinate_random(x, y, z)),
@@ -330,15 +321,9 @@ static void set_spiral_xz_cursor(uint64_t index)
     cursor_z = (int32_t)(center_z - radius);
 }
 
-/* Linear scans run X -> Z -> direction -> Y, with Y innermost. */
-static void advance_cursor(void)
+/* Advance after completing the innermost Y range. */
+static void advance_outer_cursor(void)
 {
-    if (cursor_y != search_y_end) {
-        cursor_y += 1;
-        return;
-    }
-    cursor_y = search_y_start;
-
     if (search_scan_order == SCAN_ORDER_SPIRAL) {
         if (cursor_direction + 1 < search_direction_count) {
             cursor_direction += 1;
@@ -388,9 +373,15 @@ int32_t search_configure(
 {
     /* Numeric error codes keep the JS/WASM ABI independent of linear memory. */
     if (mode < MODE_VANILLA_1 || mode > MODE_SODIUM_2) return 1;
+#ifdef SEARCH_FIXED_MODE
+    if (mode != SEARCH_FIXED_MODE) return 1;
+#endif
     if (scan_order != SCAN_ORDER_LINEAR && scan_order != SCAN_ORDER_SPIRAL) return 7;
     if (x_start > x_end || y_start > y_end || z_start > z_end) return 2;
     if (max_bad_blocks < 0) return 3;
+#ifdef SEARCH_FIXED_MAX_BAD_BLOCKS
+    if (max_bad_blocks != SEARCH_FIXED_MAX_BAD_BLOCKS) return 3;
+#endif
     if (filter_count < 1 || filter_count > MAX_FILTERS) return 4;
     if (direction_count < 1 || direction_count > MAX_DIRECTIONS) return 6;
 
@@ -559,7 +550,7 @@ int32_t search_restore(uint64_t processed, uint64_t matches)
         set_spiral_xz_cursor(cursor_xz_index);
     }
     else {
-        /* advance_cursor visits Y before direction within each X/Z point. */
+        /* Traversal visits Y before direction within each X/Z point. */
         uint64_t positions_per_xz =
             y_size * (uint64_t)search_direction_count;
         uint64_t xz_index = processed / positions_per_xz;
@@ -582,46 +573,108 @@ EXPORT("search_scan_batch")
 uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
 {
     uint32_t scanned = 0;
+    uint64_t processed = processed_positions;
+    uint64_t matches = matching_positions;
     batch_result_count = 0;
     if (capture_limit > MAX_BATCH_RESULTS) capture_limit = MAX_BATCH_RESULTS;
 
     while (!search_finished && scanned < max_positions) {
-        int32_t bad_blocks = 0;
+        int32_t x = cursor_x;
+        int32_t y = cursor_y;
+        int32_t z = cursor_z;
+        int32_t direction = cursor_direction;
+        Filter* filters = directional_filters[direction];
 
-        for (int32_t index = 0; index < search_filter_count; index += 1) {
-            Filter filter = directional_filters[cursor_direction][index];
-            int32_t x = wrap_add_i32(cursor_x, filter.x);
-            int32_t y = wrap_add_i32(cursor_y, filter.y);
-            int32_t z = wrap_add_i32(cursor_z, filter.z);
-            uint32_t visible_variant =
-                texture_variant(search_mode, x, y, z) & filter.visible_mask;
+        while (1) {
+#if defined(SEARCH_FIXED_MAX_BAD_BLOCKS) && SEARCH_FIXED_MAX_BAD_BLOCKS == 0
+            int32_t matches_position = 1;
+            for (int32_t index = 0; index < search_filter_count; index += 1) {
+                Filter filter = filters[index];
+                int32_t filter_x = wrap_add_i32(x, filter.x);
+                int32_t filter_y = wrap_add_i32(y, filter.y);
+                int32_t filter_z = wrap_add_i32(z, filter.z);
+                uint32_t visible_variant =
+                    texture_variant(
+                        ACTIVE_SEARCH_MODE,
+                        filter_x,
+                        filter_y,
+                        filter_z) &
+                    filter.visible_mask;
+                if (visible_variant != filter.rotation) {
+                    matches_position = 0;
+                    break;
+                }
+            }
 
-            if (visible_variant != filter.rotation) {
-                bad_blocks += 1;
-                if (bad_blocks > search_max_bad_blocks) break;
+            if (matches_position) {
+                matches += 1;
+                if (batch_result_count < capture_limit) {
+                    SearchResult* result = &batch_results[batch_result_count];
+                    result->ordinal = processed;
+                    result->x = x;
+                    result->y = y;
+                    result->z = z;
+                    result->bad_blocks = 0;
+                    result->direction = directions[direction];
+                    batch_result_count += 1;
+                }
+            }
+#else
+            int32_t bad_blocks = 0;
+
+            for (int32_t index = 0; index < search_filter_count; index += 1) {
+                Filter filter = filters[index];
+                int32_t filter_x = wrap_add_i32(x, filter.x);
+                int32_t filter_y = wrap_add_i32(y, filter.y);
+                int32_t filter_z = wrap_add_i32(z, filter.z);
+                uint32_t visible_variant =
+                    texture_variant(
+                        ACTIVE_SEARCH_MODE,
+                        filter_x,
+                        filter_y,
+                        filter_z) &
+                    filter.visible_mask;
+
+                if (visible_variant != filter.rotation) {
+                    bad_blocks += 1;
+                    if (bad_blocks > ACTIVE_MAX_BAD_BLOCKS) break;
+                }
+            }
+
+            if (bad_blocks <= ACTIVE_MAX_BAD_BLOCKS) {
+                matches += 1;
+                /* Count every match exactly even after the UI capture cap fills. */
+                if (batch_result_count < capture_limit) {
+                    SearchResult* result = &batch_results[batch_result_count];
+                    result->ordinal = processed;
+                    result->x = x;
+                    result->y = y;
+                    result->z = z;
+                    result->bad_blocks = (uint16_t)bad_blocks;
+                    result->direction = directions[direction];
+                    batch_result_count += 1;
+                }
+            }
+#endif
+
+            processed += 1;
+            scanned += 1;
+
+            if (y == search_y_end) {
+                cursor_y = search_y_start;
+                advance_outer_cursor();
+                break;
+            }
+            y += 1;
+            if (scanned == max_positions) {
+                cursor_y = y;
+                break;
             }
         }
-
-        if (bad_blocks <= search_max_bad_blocks) {
-            matching_positions += 1;
-            /* Count every match exactly even after the UI capture cap fills. */
-            if (batch_result_count < capture_limit) {
-                SearchResult* result = &batch_results[batch_result_count];
-                result->ordinal = processed_positions;
-                result->x = cursor_x;
-                result->y = cursor_y;
-                result->z = cursor_z;
-                result->bad_blocks = (uint16_t)bad_blocks;
-                result->direction = directions[cursor_direction];
-                batch_result_count += 1;
-            }
-        }
-
-        processed_positions += 1;
-        scanned += 1;
-        advance_cursor();
     }
 
+    processed_positions = processed;
+    matching_positions = matches;
     return scanned;
 }
 
