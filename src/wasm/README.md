@@ -27,7 +27,20 @@ and identical to a monolithic scan even when later shards report first. The
 project stores ordinals, counters, and cursors as decimal strings, so a reload
 can resume exactly without losing integer precision in JSON.
 
-All six checked-in binaries are built with Zig 0.15.1's Clang driver:
+Vanilla-3 zero-error searches can go one step further. The coordinator
+generates a request-specific kernel locally (`src/domain/searchKernel.ts`),
+compiles it once, and structured-clones the `WebAssembly.Module` to every shard
+worker. `coords_search_vanilla_3_host.wasm` imports that kernel as
+`wcf.scan_run` and keeps this file's traversal, cursor, ordinal, capture, and
+checkpoint bookkeeping, so the exported scanner ABI is identical. The kernel
+evaluates up to `GENERATED_RUN_CHUNK` contiguous Y positions at a fixed
+X/Z/direction and returns a match bitmask; its filter offsets, expected
+rotations, visible masks, and filter count are emitted as constants inside an
+unrolled early-rejection chain. Generation, validation, compilation, transfer,
+signature verification, or instantiation failing all fall back silently to
+`coords_search_vanilla_3_exact.wasm`.
+
+All seven checked-in binaries are built with Zig 0.15.1's Clang driver:
 
 ```sh
 npm run build:wasm

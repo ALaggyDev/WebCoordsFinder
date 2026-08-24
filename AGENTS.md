@@ -227,7 +227,10 @@ Texture algorithms are chosen directly by the user:
 - Sodium 4.9 and later: use the matching Vanilla algorithm
 
 The local web scanner is a freestanding C-to-WASM port of CoordsFinder's
-texture sampling and brute-force loop. `src/workers/search.worker.ts` owns one
+texture sampling and brute-force loop. Vanilla-3 zero-error searches
+additionally generate a request-specific WASM kernel in the browser, compiled
+once by the coordinator and shared with every worker; any failure falls back to
+the checked-in exact module. See `src/wasm/README.md`. `src/workers/search.worker.ts` owns one
 scanner instance and runs short adaptive batches so pause and stop commands
 remain responsive. It is single-threaded and caps retained result rows at
 1,000; total match counts remain exact. Treat the native scanner parity tests
@@ -260,6 +263,9 @@ This is a React 19 + TypeScript + Vite application:
   native configuration generation.
 - `src/domain/webSearch.ts`, `src/workers/search.worker.ts`, and `src/wasm/` —
   browser-search request/checkpoint contracts, worker control, and WASM source.
+- `src/domain/searchKernel.ts` — local, offline, CSP-safe generation of the
+  request-specific Vanilla-3 scanner kernel, its deterministic identity, and
+  its eligibility and safe-size limits.
 - `src/storage/db.ts` — Dexie/IndexedDB project and image persistence.
 - `src/domain/projectBundle.ts` — zipped `.wcf` bundles with schema validation.
 - `src/domain/examples.ts` and `public/examples/` — bundled portable example
