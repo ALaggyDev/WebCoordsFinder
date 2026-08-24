@@ -1,9 +1,9 @@
 import wasmUrl from '../wasm/coords_search.wasm?url'
 import {
   MAX_WEB_SEARCH_RESULTS,
-  type WebSearchResult,
-  type WebSearchWorkerCommand,
-  type WebSearchWorkerState,
+  type WebSearchOrdinalResult,
+  type WebSearchShardWorkerCommand,
+  type WebSearchShardWorkerState,
 } from '../domain/webSearch'
 import type { SearchDirection } from '../domain/types'
 
@@ -39,6 +39,7 @@ interface SearchExports extends WebAssembly.Exports {
   search_get_total: () => bigint
   search_get_match_count: () => bigint
   search_get_result_count: () => number
+  search_get_result_ordinal: (index: number) => bigint
   search_get_result_x: (index: number) => number
   search_get_result_y: (index: number) => number
   search_get_result_z: (index: number) => number
@@ -60,6 +61,14 @@ let capturedResults = 0
 let batchSize = 16_384
 let checksPerSecond = 0
 let lastProgressAt = 0
+let shardId = 0
+let shardStart = 0n
+let shardEnd = 0n
+
+// MessageChannel queues a task without the 4 ms clamp applied to deeply nested
+// setTimeout calls, while still yielding between synchronous WASM batches.
+const batchChannel = new MessageChannel()
+batchChannel.port1.onmessage = () => runBatch()
 
 async function loadSearchExports(): Promise<SearchExports> {
   if (!exportsPromise) {
@@ -85,9 +94,10 @@ async function loadSearchExports(): Promise<SearchExports> {
   return exportsPromise
 }
 
-function collectResults(module: SearchExports): WebSearchResult[] {
+function collectResults(module: SearchExports): WebSearchOrdinalResult[] {
   const count = module.search_get_result_count()
   const results = Array.from({ length: count }, (_, index) => ({
+    ordinal: module.search_get_result_ordinal(index),
     x: module.search_get_result_x(index),
     y: module.search_get_result_y(index),
     z: module.search_get_result_z(index),
@@ -99,17 +109,17 @@ function collectResults(module: SearchExports): WebSearchResult[] {
 }
 
 function postState(
-  phase: WebSearchWorkerState['phase'],
-  results: WebSearchResult[] = [],
+  phase: WebSearchShardWorkerState['phase'],
+  results: WebSearchOrdinalResult[] = [],
   error?: string,
 ) {
   if (!activeRequestId || !searchExports) return
-  const message: WebSearchWorkerState = {
+  const message: WebSearchShardWorkerState = {
     type: 'state',
     requestId: activeRequestId,
+    shardId,
     phase,
-    processed: searchExports.search_get_processed(),
-    total: searchExports.search_get_total(),
+    next: searchExports.search_get_processed(),
     matchCount: searchExports.search_get_match_count(),
     checksPerSecond,
     results,
@@ -124,7 +134,7 @@ function finishSearch(phase: 'stopped' | 'completed') {
 }
 
 function scheduleBatch() {
-  setTimeout(runBatch, 0)
+  batchChannel.port2.postMessage(undefined)
 }
 
 function runBatch() {
@@ -141,7 +151,11 @@ function runBatch() {
     Math.max(0, MAX_WEB_SEARCH_RESULTS - capturedResults),
   )
   const startedAt = performance.now()
-  const scanned = module.search_scan_batch(batchSize, captureLimit)
+  const remaining = shardEnd - module.search_get_processed()
+  const boundedBatchSize = Number(
+    remaining < BigInt(batchSize) ? remaining : BigInt(batchSize),
+  )
+  const scanned = module.search_scan_batch(boundedBatchSize, captureLimit)
   const elapsed = Math.max(0.01, performance.now() - startedAt)
   const instantaneousRate = (scanned * 1_000) / elapsed
   // Smooth the displayed rate and adapt work chunks toward short tasks so
@@ -165,13 +179,14 @@ function runBatch() {
     // throttled to avoid flooding React with worker events.
     results.length > 0 ||
     now - lastProgressAt >= progressIntervalMilliseconds ||
-    module.search_is_finished()
+    module.search_is_finished() ||
+    module.search_get_processed() >= shardEnd
   ) {
     postState('running', results)
     lastProgressAt = now
   }
 
-  if (module.search_is_finished()) {
+  if (module.search_is_finished() || module.search_get_processed() >= shardEnd) {
     finishSearch('completed')
     return
   }
@@ -179,15 +194,21 @@ function runBatch() {
 }
 
 async function startSearch(
-  command: Extract<WebSearchWorkerCommand, { type: 'start' }>,
+  command: Extract<WebSearchShardWorkerCommand, { type: 'start' }>,
 ) {
   activeRequestId = command.requestId
   pauseRequested = false
   stopRequested = false
-  capturedResults = command.checkpoint?.capturedResults ?? 0
+  // Every shard retains at most its first 1,000 matches in this run. That is
+  // sufficient for the coordinator to derive the global first 1,000; after a
+  // resume, previously retained lower ordinals are seeded by the checkpoint.
+  capturedResults = 0
   batchSize = 16_384
   checksPerSecond = 0
   lastProgressAt = 0
+  shardId = command.shard.id
+  shardStart = command.shard.start
+  shardEnd = command.shard.end
 
   try {
     const module = await loadSearchExports()
@@ -235,19 +256,19 @@ async function startSearch(
       }
     })
 
-    if (command.checkpoint) {
-      // The C scanner reconstructs its cursor from exact processed and match
-      // counters; captured result rows remain owned by the UI checkpoint.
-      const restoreError = module.search_restore(
-        command.checkpoint.processed,
-        command.checkpoint.matchCount,
-      )
-      if (restoreError !== 0) {
-        throw new Error(`WASM scanner rejected the saved checkpoint (${restoreError}).`)
-      }
+    const next = command.checkpoint?.next ?? shardStart
+    const matchCount = command.checkpoint?.matchCount ?? 0n
+    if (next < shardStart || next > shardEnd) {
+      throw new Error('The saved shard cursor is outside its ordinal range.')
+    }
+    // The C scanner maps the absolute ordinal back to the exact linear or
+    // spiral cursor. Each instance keeps only its shard-local match counter.
+    const restoreError = module.search_restore(next, matchCount)
+    if (restoreError !== 0) {
+      throw new Error(`WASM scanner rejected the saved checkpoint (${restoreError}).`)
     }
 
-    if (module.search_is_finished()) {
+    if (module.search_is_finished() || module.search_get_processed() >= shardEnd) {
       postState('completed')
       activeRequestId = undefined
       return
@@ -260,13 +281,13 @@ async function startSearch(
        * Loading failed before an instance existed, so construct an error
        * message directly rather than asking postState for scanner counters.
        */
-      const message: WebSearchWorkerState = {
+      const message: WebSearchShardWorkerState = {
         type: 'state',
         requestId: command.requestId,
+        shardId,
         phase: 'error',
-        processed: 0n,
-        total: 0n,
-        matchCount: 0n,
+        next: command.checkpoint?.next ?? shardStart,
+        matchCount: command.checkpoint?.matchCount ?? 0n,
         checksPerSecond: 0,
         results: [],
         error: error instanceof Error ? error.message : 'Web search failed.',
@@ -283,7 +304,7 @@ async function startSearch(
   }
 }
 
-self.onmessage = (event: MessageEvent<WebSearchWorkerCommand>) => {
+self.onmessage = (event: MessageEvent<WebSearchShardWorkerCommand>) => {
   const command = event.data
   if (command.type === 'start') {
     void startSearch(command)

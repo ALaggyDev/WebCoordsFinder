@@ -7,12 +7,13 @@ import type {
   TextureAlgorithm,
   WebSearchCheckpoint,
   WebSearchResult,
+  WebSearchShardCheckpoint,
 } from './types'
 
 // The web-search protocol keeps exact counters as BigInt in memory and as
 // decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 3
+export const WEB_SEARCH_ENGINE_VERSION = 5
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -49,6 +50,165 @@ export interface WebSearchRequest {
   constraints: WebSearchConstraint[]
 }
 
+export interface WebSearchOrdinalShard {
+  id: number
+  start: bigint
+  end: bigint
+}
+
+export interface WebSearchShardProgress extends WebSearchOrdinalShard {
+  next: bigint
+  matchCount: bigint
+}
+
+export interface WebSearchOrdinalResult extends Omit<WebSearchResult, 'scanOrdinal'> {
+  ordinal: bigint
+}
+
+export function recommendedSearchWorkerCount(
+  hardwareConcurrency: number | undefined,
+): number {
+  const logicalProcessors = Number.isFinite(hardwareConcurrency)
+    ? Math.floor(hardwareConcurrency ?? 2)
+    : 2
+  return Math.min(8, Math.max(1, logicalProcessors - 1))
+}
+
+export function maximumSearchWorkerCount(
+  hardwareConcurrency: number | undefined,
+): number {
+  const logicalProcessors = Number.isFinite(hardwareConcurrency)
+    ? Math.floor(hardwareConcurrency ?? 2)
+    : 2
+  return Math.min(32, Math.max(1, logicalProcessors - 1))
+}
+
+export function splitOrdinalRange(
+  total: bigint,
+  requestedWorkerCount: number,
+): WebSearchOrdinalShard[] {
+  if (total < 0n) throw new Error('Search volume cannot be negative.')
+  if (!Number.isInteger(requestedWorkerCount) || requestedWorkerCount < 1) {
+    throw new Error('Search worker count must be a positive integer.')
+  }
+  if (total === 0n) return []
+  const workerCount = Number(
+    total < BigInt(requestedWorkerCount)
+      ? total
+      : BigInt(requestedWorkerCount),
+  )
+  const quotient = total / BigInt(workerCount)
+  const remainder = total % BigInt(workerCount)
+  let next = 0n
+  return Array.from({ length: workerCount }, (_, id) => {
+    const length = quotient + (BigInt(id) < remainder ? 1n : 0n)
+    const shard = { id, start: next, end: next + length }
+    next = shard.end
+    return shard
+  })
+}
+
+export function validateSearchShardProgress(
+  total: bigint,
+  processed: bigint,
+  matchCount: bigint,
+  saved: WebSearchShardProgress[],
+): WebSearchShardProgress[] {
+  if (saved.length === 0) {
+    throw new Error('The saved search checkpoint has no worker shards.')
+  }
+  let expectedStart = 0n
+  let aggregateProcessed = 0n
+  let aggregateMatches = 0n
+  saved.forEach((shard, index) => {
+    if (
+      shard.id !== index ||
+      shard.start !== expectedStart ||
+      shard.end <= shard.start ||
+      shard.next < shard.start ||
+      shard.next > shard.end ||
+      shard.matchCount < 0n ||
+      shard.matchCount > shard.next - shard.start
+    ) {
+      throw new Error('The saved search shard layout is invalid.')
+    }
+    expectedStart = shard.end
+    aggregateProcessed += shard.next - shard.start
+    aggregateMatches += shard.matchCount
+  })
+  if (
+    expectedStart !== total ||
+    aggregateProcessed !== processed ||
+    aggregateMatches !== matchCount
+  ) {
+    throw new Error('The saved search shard totals are inconsistent.')
+  }
+  return saved
+}
+
+export function mergeOrdinalSearchResults(
+  retained: WebSearchOrdinalResult[],
+  incoming: WebSearchOrdinalResult[],
+  limit = MAX_WEB_SEARCH_RESULTS,
+): WebSearchOrdinalResult[] {
+  if (!Number.isInteger(limit) || limit < 0) {
+    throw new Error('Search result limit must be a non-negative integer.')
+  }
+  const byOrdinal = new Map<bigint, WebSearchOrdinalResult>()
+  retained.forEach((result) => byOrdinal.set(result.ordinal, result))
+  incoming.forEach((result) => byOrdinal.set(result.ordinal, result))
+  return [...byOrdinal.values()]
+    .sort((left, right) =>
+      left.ordinal < right.ordinal ? -1 : left.ordinal > right.ordinal ? 1 : 0,
+    )
+    .slice(0, limit)
+}
+
+export function persistedOrdinalResults(
+  results: WebSearchOrdinalResult[],
+): WebSearchResult[] {
+  return results.map(({ ordinal, ...result }) => ({
+    ...result,
+    scanOrdinal: ordinal.toString(),
+  }))
+}
+
+export function restoreOrdinalResults(
+  results: WebSearchResult[],
+  total: bigint,
+): WebSearchOrdinalResult[] {
+  const restored = results.map(({ scanOrdinal, ...result }) => {
+    if (scanOrdinal === undefined) {
+      throw new Error('The saved search results do not contain scan ordinals.')
+    }
+    const ordinal = BigInt(scanOrdinal)
+    if (ordinal < 0n || ordinal >= total) {
+      throw new Error('A saved search result has an invalid scan ordinal.')
+    }
+    return { ...result, ordinal }
+  })
+  const merged = mergeOrdinalSearchResults([], restored)
+  if (merged.length !== restored.length) {
+    throw new Error('The saved search results contain duplicate scan ordinals.')
+  }
+  return merged
+}
+
+export function validateRetainedResultProgress(
+  results: WebSearchOrdinalResult[],
+  shards: WebSearchShardProgress[],
+): void {
+  results.forEach((result) => {
+    const shard = shards.find(
+      (candidate) =>
+        result.ordinal >= candidate.start && result.ordinal < candidate.end,
+    )
+    if (!shard || result.ordinal >= shard.next) {
+      throw new Error('A saved search result is ahead of its shard cursor.')
+    }
+  })
+}
+
 export type WebSearchPhase =
   | 'idle'
   | 'loading'
@@ -65,10 +225,12 @@ export type WebSearchWorkerCommand =
       type: 'start'
       requestId: string
       request: WebSearchRequest
+      workerCount?: number
       checkpoint?: {
         processed: bigint
         matchCount: bigint
-        capturedResults: number
+        results: WebSearchResult[]
+        shards?: WebSearchShardProgress[]
       }
     }
   | { type: 'pause'; requestId: string }
@@ -83,8 +245,62 @@ export interface WebSearchWorkerState {
   total: bigint
   matchCount: bigint
   checksPerSecond: number
-  results: WebSearchResult[]
+  // Omitted when the deterministic retained set has not changed since the
+  // previous publication. This keeps high-frequency counter updates small.
+  results?: WebSearchResult[]
+  shards: WebSearchShardProgress[]
   error?: string
+}
+
+export type WebSearchShardWorkerCommand =
+  | {
+      type: 'start'
+      requestId: string
+      request: WebSearchRequest
+      shard: WebSearchOrdinalShard
+      checkpoint?: {
+        next: bigint
+        matchCount: bigint
+      }
+    }
+  | { type: 'pause'; requestId: string }
+  | { type: 'resume'; requestId: string }
+  | { type: 'stop'; requestId: string }
+
+export interface WebSearchShardWorkerState {
+  type: 'state'
+  requestId: string
+  shardId: number
+  phase: 'running' | 'paused' | 'stopped' | 'completed' | 'error'
+  next: bigint
+  matchCount: bigint
+  checksPerSecond: number
+  results: WebSearchOrdinalResult[]
+  error?: string
+}
+
+export function aggregateSearchPoolPhase(
+  phases: WebSearchShardWorkerState['phase'][],
+  pauseRequested: boolean,
+  stopRequested: boolean,
+): WebSearchWorkerState['phase'] {
+  if (phases.some((phase) => phase === 'error')) return 'error'
+  if (phases.length > 0 && phases.every((phase) => phase === 'completed')) {
+    return 'completed'
+  }
+  if (
+    stopRequested &&
+    phases.every((phase) => phase === 'stopped' || phase === 'completed')
+  ) {
+    return 'stopped'
+  }
+  if (
+    pauseRequested &&
+    phases.every((phase) => phase === 'paused' || phase === 'completed')
+  ) {
+    return 'paused'
+  }
+  return 'running'
 }
 
 const int32Minimum = -2_147_483_648
@@ -140,13 +356,17 @@ export function createWebSearchRequest(
     zStart,
     zEnd,
     maxBadBlocks,
-    constraints: confirmedUniqueEvidence(document).map((entry) => ({
-      x: entry.coordinate.x,
-      y: entry.coordinate.y,
-      z: entry.coordinate.z,
-      rotation: entry.selectedVariant!,
-      visibleMask: entry.stateCount === 2 ? 1 : 3,
-    })),
+    constraints: confirmedUniqueEvidence(document)
+      .map((entry) => ({
+        x: entry.coordinate.x,
+        y: entry.coordinate.y,
+        z: entry.coordinate.z,
+        rotation: entry.selectedVariant!,
+        visibleMask: entry.stateCount === 2 ? 1 as const : 3 as const,
+      }))
+      // Four-state evidence rejects random coordinates more often, reducing
+      // average hot-loop work without changing accepted candidates or errors.
+      .sort((left, right) => right.visibleMask - left.visibleMask),
   }
 }
 
@@ -171,6 +391,7 @@ export interface WebSearchViewState {
   matchCount: bigint
   checksPerSecond: number
   results: WebSearchResult[]
+  shards?: WebSearchShardProgress[]
   error?: string
 }
 
@@ -187,6 +408,13 @@ export function restoreWebSearchCheckpoint(
   checkpoint: WebSearchCheckpoint | null | undefined,
 ): WebSearchViewState {
   if (!checkpoint) return initialWebSearchState
+  const shards = checkpoint.shards?.map((shard, id) => ({
+    id,
+    start: BigInt(shard.start),
+    end: BigInt(shard.end),
+    next: BigInt(shard.next),
+    matchCount: BigInt(shard.matchCount),
+  }))
   return {
     // A worker cannot survive a reload, so an in-flight persisted search
     // reopens as paused and requires an explicit resume.
@@ -196,6 +424,7 @@ export function restoreWebSearchCheckpoint(
     matchCount: BigInt(checkpoint.matchCount),
     checksPerSecond: checkpoint.checksPerSecond,
     results: checkpoint.results,
+    ...(shards ? { shards } : {}),
     error: checkpoint.error,
   }
 }
@@ -225,6 +454,18 @@ export function createWebSearchCheckpoint(
       ? state.checksPerSecond
       : 0,
     results: state.results,
+    ...(state.shards
+      ? {
+          shards: state.shards.map(
+            (shard): WebSearchShardCheckpoint => ({
+              start: shard.start.toString(),
+              end: shard.end.toString(),
+              next: shard.next.toString(),
+              matchCount: shard.matchCount.toString(),
+            }),
+          ),
+        }
+      : {}),
     error: state.error,
     updatedAt,
   }

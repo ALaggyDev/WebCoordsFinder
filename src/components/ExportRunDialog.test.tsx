@@ -70,7 +70,19 @@ function documentWithSavedSearch() {
       total: 10n,
       matchCount: 2n,
       checksPerSecond: 100,
-      results: [{ x: 3, y: 0, z: 0, badBlocks: 0, direction: 0 }],
+      results: [
+        {
+          x: 3,
+          y: 0,
+          z: 0,
+          badBlocks: 0,
+          direction: 0,
+          scanOrdinal: '3',
+        },
+      ],
+      shards: [
+        { id: 0, start: 0n, end: 10n, next: 4n, matchCount: 2n },
+      ],
     },
     1234,
   )

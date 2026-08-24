@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
@@ -33,13 +33,15 @@ import {
   minimumBitsForPrecision,
   type SearchRuntime,
 } from '../domain/searchEstimates'
-import type { EditorDocument } from '../domain/types'
+import type { EditorDocument, WebSearchResult } from '../domain/types'
 import {
   createWebSearchCheckpoint,
   createWebSearchRequest,
   formatSearchCount,
   initialWebSearchState,
   MAX_WEB_SEARCH_RESULTS,
+  maximumSearchWorkerCount,
+  recommendedSearchWorkerCount,
   restoreWebSearchCheckpoint,
   searchProgressPercent,
   webSearchRequestKey,
@@ -75,7 +77,7 @@ const runtimeDetails: Record<
 > = {
   web: {
     label: 'Web',
-    detail: '~150M positions/sec',
+    detail: 'Parallel WASM worker pool',
     icon: Globe2,
   },
   cpu: {
@@ -119,6 +121,59 @@ function formatRate(rate: number): string {
 
 const checkpointIntervalMilliseconds = 1_500
 
+const SearchResultTable = memo(function SearchResultTable({
+  results,
+  hasMore,
+}: {
+  results: WebSearchResult[]
+  hasMore: boolean
+}) {
+  return (
+    <div className="web-search-results">
+      <div className="web-search-results-heading">
+        <strong>Candidate coordinates</strong>
+        <span>
+          Showing {results.length.toLocaleString()}
+          {hasMore && ' earliest'} match{results.length === 1 ? '' : 'es'}
+        </span>
+      </div>
+      <div className="web-search-results-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>X</th>
+              <th>Y</th>
+              <th>Z</th>
+              <th>Direction</th>
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((result) => (
+              <tr
+                key={`${result.x}:${result.y}:${result.z}:${result.direction}`}
+              >
+                <td>{result.x}</td>
+                <td>{result.y}</td>
+                <td>{result.z}</td>
+                <td>{result.direction}°</td>
+                <td>{result.badBlocks}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasMore && (
+        <small>
+          Result display is capped at the first{' '}
+          {MAX_WEB_SEARCH_RESULTS.toLocaleString()} coordinates; the total match
+          count remains exact.
+        </small>
+      )}
+    </div>
+  )
+})
+
 export function ExportRunDialog({
   document,
   open,
@@ -135,6 +190,12 @@ export function ExportRunDialog({
   const [webSearch, setWebSearch] = useState(() =>
     restoreWebSearchCheckpoint(savedCheckpoint),
   )
+  const maximumWorkerCount = maximumSearchWorkerCount(
+    globalThis.navigator.hardwareConcurrency,
+  )
+  const [workerCount, setWorkerCount] = useState(() =>
+    recommendedSearchWorkerCount(globalThis.navigator.hardwareConcurrency),
+  )
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
   )
@@ -145,7 +206,6 @@ export function ExportRunDialog({
   const lastCheckpointUpdateRef = useRef(0)
   const validation = useMemo(() => validateForExport(document), [document])
   const config = useMemo(() => generateCoordsFinderConfig(document), [document])
-  const estimates = useMemo(() => estimateSearchTimes(document), [document])
   const searchVolume = useMemo(() => estimateSearchVolume(document), [document])
   const estimatedHits = useMemo(() => estimateHitCount(document), [document])
   const hitPrecision = useMemo(() => estimateHitPrecision(document), [document])
@@ -162,6 +222,15 @@ export function ExportRunDialog({
       return undefined
     }
   }, [document])
+  const estimates = useMemo(
+    () => estimateSearchTimes(
+      document,
+      requestKeyRef.current === currentSearch?.requestKey
+        ? webSearch.checksPerSecond
+        : undefined,
+    ),
+    [currentSearch?.requestKey, document, webSearch.checksPerSecond],
+  )
 
   useEffect(() => {
     setCopyStatus('idle')
@@ -202,7 +271,9 @@ export function ExportRunDialog({
       currentSearch &&
       !checkpointIsStale &&
       webSearch.processed < webSearch.total &&
-      (webSearch.phase === 'paused' || webSearch.phase === 'stopped'),
+      (webSearch.phase === 'paused' ||
+        webSearch.phase === 'stopped' ||
+        webSearch.phase === 'error'),
   )
 
   const terminateWorker = useCallback(() => {
@@ -243,7 +314,7 @@ export function ExportRunDialog({
       const previous = webSearchRef.current
       terminateWorker()
       const worker = new Worker(
-        new URL('../workers/search.worker.ts', import.meta.url),
+        new URL('../workers/search.pool.worker.ts', import.meta.url),
         { type: 'module' },
       )
       const requestId = globalThis.crypto.randomUUID()
@@ -276,15 +347,11 @@ export function ExportRunDialog({
           total: message.total,
           matchCount: message.matchCount,
           checksPerSecond: message.checksPerSecond,
-          results:
-            message.results.length === 0
-              ? current.results
-              // Keep display/storage bounded while the worker's exact total
-              // match counter continues beyond the captured rows.
-              : [...current.results, ...message.results].slice(
-                  0,
-                  MAX_WEB_SEARCH_RESULTS,
-                ),
+          // A supplied snapshot is complete and ordinal-sorted, allowing lower
+          // matches to displace faster later shards. Counter-only progress
+          // publications retain the same array identity and avoid table work.
+          results: message.results ?? current.results,
+          shards: message.shards,
           error: message.error,
         }
         const terminal =
@@ -327,9 +394,11 @@ export function ExportRunDialog({
           ? {
               processed: previous.processed,
               matchCount: previous.matchCount,
-              capturedResults: previous.results.length,
+              results: previous.results,
+              shards: previous.shards,
             }
           : undefined,
+        workerCount,
       }
       worker.postMessage(command)
     } catch (error) {
@@ -504,7 +573,11 @@ export function ExportRunDialog({
                       <Icon size={17} />
                       <span>{details.label}</span>
                     </div>
-                    <strong>{formatSearchTime(estimate.seconds)}</strong>
+                    <strong>
+                      {estimate.seconds === undefined
+                        ? 'Measured at runtime'
+                        : formatSearchTime(estimate.seconds)}
+                    </strong>
                     <small>{details.detail}</small>
                   </article>
                 )
@@ -540,10 +613,28 @@ export function ExportRunDialog({
                 </div>
               </div>
               <p>
-                Single-threaded WASM scans in a background worker without
-                uploading project data. Progress and matches autosave with the
-                project; the search continues when this dialog is closed.
+                A local WASM worker pool scans without uploading project data.
+                Progress and matches autosave with the project; the search
+                continues when this dialog is closed.
               </p>
+
+              <label className="field web-search-worker-count">
+                <span>Search workers</span>
+                <select
+                  aria-label="Search workers"
+                  disabled={workerIsAttached}
+                  value={workerCount}
+                  onChange={(event) => setWorkerCount(Number(event.target.value))}
+                >
+                  {Array.from({ length: maximumWorkerCount }, (_, index) => index + 1)
+                    .map((count) => (
+                      <option key={count} value={count}>
+                        {count}{count === recommendedSearchWorkerCount(globalThis.navigator.hardwareConcurrency) ? ' (recommended)' : ''}
+                      </option>
+                    ))}
+                </select>
+                <small>Reserve fewer cores for other work or increase throughput on larger CPUs.</small>
+              </label>
 
               {checkpointIsStale && webSearch.phase !== 'idle' && (
                 <div className="validation warning">
@@ -704,52 +795,12 @@ export function ExportRunDialog({
               )}
 
               {webSearch.results.length > 0 && (
-                <div className="web-search-results">
-                  <div className="web-search-results-heading">
-                    <strong>Candidate coordinates</strong>
-                    <span>
-                      Showing {webSearch.results.length.toLocaleString()}
-                      {webSearch.matchCount >
-                        BigInt(webSearch.results.length) && ' earliest'}{' '}
-                      match
-                      {webSearch.results.length === 1 ? '' : 'es'}
-                    </span>
-                  </div>
-                  <div className="web-search-results-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>X</th>
-                          <th>Y</th>
-                          <th>Z</th>
-                          <th>Direction</th>
-                          <th>Errors</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {webSearch.results.map((result) => (
-                          <tr
-                            key={`${result.x}:${result.y}:${result.z}:${result.direction}`}
-                          >
-                            <td>{result.x}</td>
-                            <td>{result.y}</td>
-                            <td>{result.z}</td>
-                            <td>{result.direction}°</td>
-                            <td>{result.badBlocks}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {webSearch.matchCount >
-                    BigInt(MAX_WEB_SEARCH_RESULTS) && (
-                    <small>
-                      Result display is capped at the first{' '}
-                      {MAX_WEB_SEARCH_RESULTS.toLocaleString()} coordinates;
-                      the total match count remains exact.
-                    </small>
-                  )}
-                </div>
+                <SearchResultTable
+                  results={webSearch.results}
+                  hasMore={
+                    webSearch.matchCount > BigInt(webSearch.results.length)
+                  }
+                />
               )}
 
               {!workerIsAttached && webSearch.phase !== 'idle' && (
