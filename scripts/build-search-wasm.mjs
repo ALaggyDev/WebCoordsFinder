@@ -32,6 +32,9 @@ const builds = [
   { output: 'coords_search_vanilla_3_exact.wasm', mode: 2 },
   { output: 'coords_search_sodium_1_exact.wasm', mode: 3 },
   { output: 'coords_search_sodium_2_exact.wasm', mode: 4 },
+  // Host for locally generated request-specific kernels. It keeps the shared
+  // traversal, cursor, and result bookkeeping and imports the hot Y run.
+  { output: 'coords_search_vanilla_3_host.wasm', mode: 2, generatedRun: true },
 ]
 
 for (const build of builds) {
@@ -40,6 +43,7 @@ for (const build of builds) {
     : [
         `-DSEARCH_FIXED_MODE=${build.mode}`,
         '-DSEARCH_FIXED_MAX_BAD_BLOCKS=0',
+        ...(build.generatedRun ? ['-DSEARCH_GENERATED_RUN=1'] : []),
       ]
   const result = spawnSync(
     zig,

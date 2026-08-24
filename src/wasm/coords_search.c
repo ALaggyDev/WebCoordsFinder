@@ -40,6 +40,26 @@ enum {
 #define ACTIVE_MAX_BAD_BLOCKS search_max_bad_blocks
 #endif
 
+#ifdef SEARCH_GENERATED_RUN
+/*
+ * Host build for locally generated request-specific kernels. The imported
+ * function evaluates one contiguous run of at most GENERATED_RUN_CHUNK Y
+ * positions at a fixed X/Z/direction and returns a match bitmask, so the
+ * filter set, texture mode, and tolerance become constants inside the
+ * generated module while cursor, ordinal, and result bookkeeping stay in this
+ * compiled, already verified traversal.
+ */
+enum { GENERATED_RUN_CHUNK = 64 };
+
+__attribute__((import_module("wcf"), import_name("scan_run")))
+extern uint64_t generated_scan_run(
+    int32_t x,
+    int32_t z,
+    int32_t y,
+    int32_t count,
+    int32_t direction_index);
+#endif
+
 typedef struct {
     int8_t x;
     int8_t y;
@@ -569,6 +589,67 @@ int32_t search_restore(uint64_t processed, uint64_t matches)
     return 0;
 }
 
+#ifdef SEARCH_GENERATED_RUN
+EXPORT("search_scan_batch")
+uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
+{
+    uint32_t scanned = 0;
+    uint64_t processed = processed_positions;
+    uint64_t matches = matching_positions;
+    batch_result_count = 0;
+    if (capture_limit > MAX_BATCH_RESULTS) capture_limit = MAX_BATCH_RESULTS;
+
+    while (!search_finished && scanned < max_positions) {
+        int32_t x = cursor_x;
+        int32_t y = cursor_y;
+        int32_t z = cursor_z;
+        int32_t direction = cursor_direction;
+
+        /* Y bounds span the whole int32 range, so measure the run in int64. */
+        int64_t run_remaining = (int64_t)search_y_end - (int64_t)y + 1;
+        int64_t count = run_remaining;
+        if (count > GENERATED_RUN_CHUNK) count = GENERATED_RUN_CHUNK;
+        if (count > (int64_t)(max_positions - scanned)) {
+            count = (int64_t)(max_positions - scanned);
+        }
+
+        uint64_t mask =
+            generated_scan_run(x, z, y, (int32_t)count, direction);
+
+        while (mask) {
+            uint32_t bit = (uint32_t)__builtin_ctzll(mask);
+            mask &= mask - 1ull;
+            matches += 1;
+            /* Count every match exactly even after the UI capture cap fills. */
+            if (batch_result_count < capture_limit) {
+                SearchResult* result = &batch_results[batch_result_count];
+                result->ordinal = processed + bit;
+                result->x = x;
+                result->y = y + (int32_t)bit;
+                result->z = z;
+                result->bad_blocks = 0;
+                result->direction = directions[direction];
+                batch_result_count += 1;
+            }
+        }
+
+        processed += (uint64_t)count;
+        scanned += (uint32_t)count;
+
+        if (count == run_remaining) {
+            cursor_y = search_y_start;
+            advance_outer_cursor();
+        }
+        else {
+            cursor_y = y + (int32_t)count;
+        }
+    }
+
+    processed_positions = processed;
+    matching_positions = matches;
+    return scanned;
+}
+#else
 EXPORT("search_scan_batch")
 uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
 {
@@ -677,6 +758,7 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
     matching_positions = matches;
     return scanned;
 }
+#endif
 
 EXPORT("search_is_finished")
 int32_t search_is_finished(void)
