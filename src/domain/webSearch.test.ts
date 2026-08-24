@@ -60,6 +60,7 @@ interface TestSearchExports extends WebAssembly.Exports {
   search_get_result_x: (index: number) => number
   search_get_result_y: (index: number) => number
   search_get_result_z: (index: number) => number
+  search_get_result_bad_blocks: (index: number) => number
   search_get_result_direction: (index: number) => number
 }
 
@@ -251,6 +252,135 @@ describe('web search configuration', () => {
 })
 
 describe('checked-in web search WASM', () => {
+  it('keeps every exact-mode module byte-for-byte compatible with the generic scanner results', async () => {
+    const genericBinary = await readFile('src/wasm/coords_search.wasm')
+    const exactBinaries = await Promise.all(
+      [
+        'vanilla_1',
+        'vanilla_2',
+        'vanilla_3',
+        'sodium_1',
+        'sodium_2',
+      ].map((name) =>
+        readFile(`src/wasm/coords_search_${name}_exact.wasm`),
+      ),
+    )
+    const configure = (
+      module: TestSearchExports,
+      mode: number,
+      scanOrder: number,
+    ) => {
+      expect(
+        module.search_configure(mode, scanOrder, -3, 3, 0, 1, -2, 2, 0, 3, 2),
+      ).toBe(0)
+      expect(module.search_set_direction(0, 0)).toBe(0)
+      expect(module.search_set_direction(1, 1)).toBe(0)
+      expect(module.search_set_filter(0, 1, 0, -1, 2, 3)).toBe(0)
+      expect(module.search_set_filter(1, -2, 1, 1, 0, 3)).toBe(0)
+      expect(module.search_set_filter(2, 0, -1, 2, 1, 1)).toBe(0)
+    }
+    const collect = (module: TestSearchExports) =>
+      Array.from({ length: module.search_get_result_count() }, (_, index) =>
+        [
+          module.search_get_result_ordinal(index),
+          module.search_get_result_x(index),
+          module.search_get_result_y(index),
+          module.search_get_result_z(index),
+          module.search_get_result_bad_blocks(index),
+          module.search_get_result_direction(index),
+        ].join(','),
+      )
+
+    for (const scanOrder of [0, 1]) {
+      for (let mode = 0; mode < exactBinaries.length; mode += 1) {
+        const generic = (await WebAssembly.instantiate(genericBinary)).instance
+          .exports as TestSearchExports
+        const exact = (await WebAssembly.instantiate(exactBinaries[mode])).instance
+          .exports as TestSearchExports
+        expect(
+          exact.search_configure(
+            (mode + 1) % exactBinaries.length,
+            scanOrder,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+          ),
+        ).toBe(1)
+        expect(
+          exact.search_configure(
+            mode,
+            scanOrder,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+          ),
+        ).toBe(3)
+        configure(generic, mode, scanOrder)
+        configure(exact, mode, scanOrder)
+        expect(generic.search_scan_batch(140, 140)).toBe(140)
+        expect(exact.search_scan_batch(140, 140)).toBe(140)
+        expect(exact.search_get_match_count()).toBe(
+          generic.search_get_match_count(),
+        )
+        expect(collect(exact)).toEqual(collect(generic))
+      }
+    }
+  })
+
+  it('matches native nonzero-tolerance vectors for every texture mode', async () => {
+    const binary = await readFile('src/wasm/coords_search.wasm')
+    const expected = [
+      [
+        '-2,1,-1,1', '-1,0,0,1', '0,1,0,1', '0,1,1,1', '1,0,0,1',
+        '1,0,1,1', '1,1,1,1', '2,1,-1,1', '2,1,0,1', '2,0,1,1',
+        '2,1,1,1',
+      ],
+      ['-1,0,0,1', '-1,1,1,1', '1,1,-1,1', '1,1,0,1'],
+      [
+        '-2,1,0,1', '-1,0,-1,0', '-1,0,0,1', '-1,1,1,1', '0,0,0,1',
+        '0,1,1,1', '2,0,-1,1', '2,1,-1,1', '2,0,1,1', '2,1,1,1',
+      ],
+      [
+        '-1,0,-1,1', '0,0,-1,1', '0,1,1,1', '1,0,1,1', '2,1,0,1',
+        '2,0,1,1',
+      ],
+      ['-2,0,0,1', '-2,1,0,1', '0,0,0,1', '0,1,0,1', '1,0,1,0'],
+    ]
+
+    for (let mode = 0; mode < expected.length; mode += 1) {
+      const module = (await WebAssembly.instantiate(binary)).instance
+        .exports as TestSearchExports
+      expect(module.search_configure(mode, 0, -2, 2, 0, 1, -1, 1, 1, 3, 1)).toBe(0)
+      expect(module.search_set_direction(0, 0)).toBe(0)
+      expect(module.search_set_filter(0, 1, 0, -1, 2, 3)).toBe(0)
+      expect(module.search_set_filter(1, -1, 1, 0, 1, 3)).toBe(0)
+      expect(module.search_set_filter(2, 0, -1, 1, 0, 1)).toBe(0)
+      expect(module.search_scan_batch(30, 30)).toBe(30)
+      expect(
+        Array.from({ length: module.search_get_result_count() }, (_, index) =>
+          [
+            module.search_get_result_x(index),
+            module.search_get_result_y(index),
+            module.search_get_result_z(index),
+            module.search_get_result_bad_blocks(index),
+          ].join(','),
+        ),
+      ).toEqual(expected[mode])
+    }
+  })
+
   it('matches monolithic coordinates and counts across resumable ordinal shards', async () => {
     const binary = await readFile('src/wasm/coords_search.wasm')
     const total = 140n
