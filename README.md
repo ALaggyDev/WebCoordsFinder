@@ -38,7 +38,7 @@ npm run build
 - Manual and batch face labeling with perspective-correct crops, bundled vanilla reference textures, and grass-tint controls for supported blocks.
 - Reviewable automatic variant proposals, scored in a background worker; only confirmed evidence is used for searching or export.
 - Search configuration for Vanilla and Sodium texture algorithms, inclusive bounds, quarter-turn directions, error tolerance, and scanner tile settings.
-- Run a compatible single-threaded CoordsFinder search locally in a background WebAssembly worker, with pause, stop, saved progress, and resumable results.
+- Run a compatible parallel CoordsFinder search locally in a WebAssembly worker pool, with pause, stop, exact shard checkpoints, and resumable results.
 - Download or copy an exact `coordsfinder.conf` for the native CoordsFinder CPU/CUDA scanner.
 - Manage multiple local projects, import/export portable `.wcf` bundles, and start from bundled example projects.
 - Installable offline PWA with bundled reference textures and scanner assets.

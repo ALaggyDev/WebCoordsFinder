@@ -1,25 +1,29 @@
 # CoordsFinder web search module
 
-`coords_search.c` is a freestanding, single-threaded WebAssembly port of the
-texture samplers and brute-force loop in the native CUDA CoordsFinder project.
-The checked-in `coords_search.wasm` is loaded only by the local search worker.
+`coords_search.c` is a freestanding WebAssembly port of the texture samplers
+and brute-force loop in the native CUDA CoordsFinder project. Each local search
+worker owns one independent scanner instance; the pool assigns each instance a
+disjoint half-open range of the global scan ordinal space.
 
-The worker calls the scanner in short batches. That batching is what lets it
-cooperatively process pause and stop messages without WebAssembly threads or
-shared memory.
+The worker calls the scanner in short batches and queues the next batch through
+`MessageChannel`, avoiding nested-timer clamping while still cooperatively
+processing pause and stop messages without WebAssembly threads or shared
+memory.
 
-`search_restore` reconstructs the next X/Y/Z cursor from the saved 64-bit
-processed-position count, including the active compass-direction pass. Each
+`search_restore` reconstructs the next X/Y/Z cursor from a saved 64-bit
+absolute ordinal, including the active compass-direction pass. Each
 direction rotates the filter's X/Z offsets and advances four-state variants by
 one per quarter-turn; folded two-state side variants remain unchanged. The
-project stores that count, the total match count, and the first 1,000 matches as
-decimal strings, so a reload can resume exactly without losing integer
-precision in JSON.
+Every captured match includes its absolute ordinal. The coordinator merges
+worker results by that ordinal, so the retained first 1,000 are deterministic
+and identical to a monolithic scan even when later shards report first. The
+project stores ordinals, counters, and cursors as decimal strings, so a reload
+can resume exactly without losing integer precision in JSON.
 
-The current binary was built with Clang 19:
+The current binary was built with Zig 0.15.1's Clang driver:
 
 ```sh
-clang --target=wasm32 -O3 -nostdlib \
+zig cc -target wasm32-freestanding -O3 -nostdlib \
   -Wl,--no-entry -Wl,--strip-all \
   -o coords_search.wasm coords_search.c
 ```
