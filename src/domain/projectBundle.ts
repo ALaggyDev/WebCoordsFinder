@@ -41,7 +41,12 @@ const projectSchema = z
           ),
         webSearch: z
           .object({
-            engineVersion: z.union([z.literal(2), z.literal(3)]),
+            engineVersion: z.union([
+              z.literal(2),
+              z.literal(3),
+              z.literal(4),
+              z.literal(5),
+            ]),
             requestKey: z.string(),
             phase: z.enum([
               'running',
@@ -61,8 +66,19 @@ const projectSchema = z
                 z: z.number().int(),
                 badBlocks: z.number().int().nonnegative(),
                 direction: searchDirectionSchema,
+                scanOrdinal: z.string().regex(/^\d+$/).optional(),
               }),
             ),
+            shards: z
+              .array(
+                z.object({
+                  start: z.string().regex(/^\d+$/),
+                  end: z.string().regex(/^\d+$/),
+                  next: z.string().regex(/^\d+$/),
+                  matchCount: z.string().regex(/^\d+$/),
+                }),
+              )
+              .optional(),
             error: z.string().optional(),
             updatedAt: z.number(),
           })

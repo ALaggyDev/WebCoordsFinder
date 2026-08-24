@@ -215,6 +215,17 @@ export interface WebSearchResult {
   z: number
   badBlocks: number
   direction: SearchDirection
+  // Engine 5 records the absolute scan ordinal so the parallel coordinator can
+  // retain the same first 1,000 matches as a monolithic scan.
+  scanOrdinal?: string
+}
+
+export interface WebSearchShardCheckpoint {
+  // Ranges are half-open absolute ordinals in the configured scan order.
+  start: string
+  end: string
+  next: string
+  matchCount: string
 }
 
 export type PersistedWebSearchPhase =
@@ -225,7 +236,7 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 2 | 3
+  engineVersion: 2 | 3 | 4 | 5
   // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase
@@ -234,6 +245,9 @@ export interface WebSearchCheckpoint {
   matchCount: string
   checksPerSecond: number
   results: WebSearchResult[]
+  // Version 4 persists each independent cursor. Aggregate progress alone is
+  // insufficient to resume a pool whose workers advance at different rates.
+  shards?: WebSearchShardCheckpoint[]
   error?: string
   updatedAt: number
 }

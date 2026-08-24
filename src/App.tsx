@@ -22,6 +22,11 @@ import { ToolRail } from './components/ToolRail'
 import { TopBar } from './components/TopBar'
 import { InfoPage } from './components/InfoPages'
 import { appPathFromLocation, type AppPath } from './domain/appRoutes'
+import type {
+  AutoAnalyzeJob,
+  AutoAnalyzeRequest,
+  AutoAnalyzeResponse,
+} from './domain/analysisProtocol'
 import {
   exampleProjects,
   loadExampleProject,
@@ -35,16 +40,12 @@ import {
   worldAlignedFaceQuad,
 } from './domain/geometry'
 import {
-  imageToPixels,
-  warpQuad,
-} from './domain/imageAnalysis'
-import {
   buildProjectBundle,
   downloadBlob,
   readProjectBundle,
 } from './domain/projectBundle'
 import { blockProfileMap, referenceTextureForFace } from './domain/references'
-import type { CandidateScore, EditorDocument } from './domain/types'
+import type { EditorDocument } from './domain/types'
 import {
   clearAllData,
   deleteProject,
@@ -73,12 +74,6 @@ type ToastKind = 'success' | 'warning' | 'info'
 interface ToastState {
   message: string
   kind: ToastKind
-}
-
-interface WorkerResponse {
-  requestId: string
-  scores: CandidateScore[]
-  confidence: number
 }
 
 function restoreStoredDocument(saved: StoredProject) {
@@ -645,21 +640,10 @@ function App() {
 
     setBusy(true)
     try {
-      // Image extraction stays on the main thread for DOM canvas access. The
-      // CPU-heavy transform scoring runs in a short-lived worker.
       const worker = new Worker(new URL('./workers/analyze.worker.ts', import.meta.url), {
         type: 'module',
       })
-      const pending = new Map<
-        string,
-        (response: WorkerResponse) => void
-      >()
-      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        pending.get(event.data.requestId)?.(event.data)
-        pending.delete(event.data.requestId)
-      }
-
-      const jobs = analyzable.map(async (entry) => {
+      const jobs: AutoAnalyzeJob[] = analyzable.flatMap((entry) => {
         const meshFace = state.document.scene.faces.find(
           (item) => item.id === entry.faceId,
         )
@@ -674,35 +658,43 @@ function App() {
         const quad = meshFace
           ? worldAlignedFaceQuad(state.document.scene, meshFace)
           : undefined
-        if (!meshFace || !profile || !referenceUrl || !quad) return null
-        const [sample, reference] = await Promise.all([
-          // Both paths use the same square resolution before gradient scoring.
-          warpQuad(state.document.image.src, quad, 96),
-          imageToPixels(referenceUrl, 96, entry.blockSettings?.grassTint),
-        ])
-        const requestId = crypto.randomUUID()
-        const result = new Promise<WorkerResponse>((resolve) => {
-          pending.set(requestId, resolve)
-        })
-        worker.postMessage({
-          requestId,
-          sample: sample.data,
-          reference: reference.data,
-          size: 96,
+        if (!meshFace || !profile || !referenceUrl || !quad) return []
+        return [{
+          evidenceId: entry.id,
+          quad,
+          referenceUrl,
+          grassTint: entry.blockSettings?.grassTint,
           transforms: profile.transforms,
           stateCount: entry.stateCount,
-        })
-        const response = await result
-        return {
-          evidenceId: entry.id,
-          scores: response.scores,
-          confidence: response.confidence,
-        }
+        }]
       })
-      const results = (await Promise.all(jobs)).filter(
-        (result): result is NonNullable<typeof result> => result !== null,
-      )
-      worker.terminate()
+      const requestId = crypto.randomUUID()
+      const request: AutoAnalyzeRequest = {
+        type: 'analyze',
+        requestId,
+        sourceUrl: new URL(
+          state.document.image.src,
+          globalThis.location.href,
+        ).href,
+        size: 96,
+        jobs,
+      }
+      let response: AutoAnalyzeResponse
+      try {
+        response = await new Promise<AutoAnalyzeResponse>((resolve, reject) => {
+          worker.onmessage = (event: MessageEvent<AutoAnalyzeResponse>) => {
+            if (event.data.requestId === requestId) resolve(event.data)
+          }
+          worker.onerror = () => reject(new Error('Auto Analyze worker failed.'))
+          worker.postMessage(request)
+        })
+      } finally {
+        worker.terminate()
+      }
+      if (response.type === 'error') {
+        throw new Error(response.error ?? 'Automatic analysis failed.')
+      }
+      const results = response.results
       applyAnalysisResults(results)
       setFaceTab('review')
       notify(

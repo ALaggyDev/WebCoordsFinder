@@ -12,8 +12,8 @@ import {
   minimumBitsForPrecision,
 } from './searchEstimates'
 
-describe('placeholder search estimates', () => {
-  it('orders web, CPU, and CUDA estimates by placeholder throughput', () => {
+describe('search estimates', () => {
+  it('waits for measured browser throughput and keeps native placeholders', () => {
     const estimates = estimateSearchTimes(createTestDocument())
 
     expect(estimates.map((estimate) => estimate.runtime)).toEqual([
@@ -21,8 +21,11 @@ describe('placeholder search estimates', () => {
       'cpu',
       'cuda',
     ])
-    expect(estimates[0].seconds).toBeGreaterThan(estimates[1].seconds)
-    expect(estimates[1].seconds).toBeGreaterThan(estimates[2].seconds)
+    expect(estimates[0].seconds).toBeUndefined()
+    expect(estimates[1].seconds).toBeGreaterThan(estimates[2].seconds!)
+
+    const measured = estimateSearchTimes(createTestDocument(), 500_000_000)
+    expect(measured[0].seconds).toBeDefined()
   })
 
   it('formats durations into compact readable units', () => {

@@ -1,4 +1,12 @@
-#include <stdint.h>
+/* Keep the freestanding build independent of a target sysroot. */
+typedef signed char int8_t;
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef int int32_t;
+typedef unsigned int uint32_t;
+typedef long long int64_t;
+typedef unsigned long long uint64_t;
+#define UINT64_MAX (~(uint64_t)0)
 
 /*
  * Freestanding, allocation-free scanner compiled to WebAssembly. Its integer
@@ -29,6 +37,7 @@ typedef struct {
 } Filter;
 
 typedef struct {
+    uint64_t ordinal;
     int32_t x;
     int32_t y;
     int32_t z;
@@ -321,7 +330,7 @@ static void set_spiral_xz_cursor(uint64_t index)
     cursor_z = (int32_t)(center_z - radius);
 }
 
-/* Linear scans run X -> Z -> Y -> direction. */
+/* Linear scans run X -> Z -> direction -> Y, with Y innermost. */
 static void advance_cursor(void)
 {
     if (cursor_y != search_y_end) {
@@ -550,13 +559,16 @@ int32_t search_restore(uint64_t processed, uint64_t matches)
         set_spiral_xz_cursor(cursor_xz_index);
     }
     else {
-        cursor_direction = (int32_t)(processed % (uint64_t)search_direction_count);
-        uint64_t positional_processed = processed / (uint64_t)search_direction_count;
-        uint64_t zy_size = z_size * y_size;
-        uint64_t x_index = positional_processed / zy_size;
-        uint64_t within_x = positional_processed % zy_size;
-        uint64_t z_index = within_x / y_size;
-        uint64_t y_index = within_x % y_size;
+        /* advance_cursor visits Y before direction within each X/Z point. */
+        uint64_t positions_per_xz =
+            y_size * (uint64_t)search_direction_count;
+        uint64_t xz_index = processed / positions_per_xz;
+        uint64_t within_xz = processed % positions_per_xz;
+        uint64_t x_index = xz_index / z_size;
+        uint64_t z_index = xz_index % z_size;
+
+        cursor_direction = (int32_t)(within_xz / y_size);
+        uint64_t y_index = within_xz % y_size;
 
         cursor_x = (int32_t)((int64_t)search_x_start + (int64_t)x_index);
         cursor_y = (int32_t)((int64_t)search_y_start + (int64_t)y_index);
@@ -595,6 +607,7 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
             /* Count every match exactly even after the UI capture cap fills. */
             if (batch_result_count < capture_limit) {
                 SearchResult* result = &batch_results[batch_result_count];
+                result->ordinal = processed_positions;
                 result->x = cursor_x;
                 result->y = cursor_y;
                 result->z = cursor_z;
@@ -640,6 +653,12 @@ EXPORT("search_get_result_count")
 uint32_t search_get_result_count(void)
 {
     return batch_result_count;
+}
+
+EXPORT("search_get_result_ordinal")
+uint64_t search_get_result_ordinal(uint32_t index)
+{
+    return index < batch_result_count ? batch_results[index].ordinal : 0;
 }
 
 EXPORT("search_get_result_x")

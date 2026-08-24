@@ -7,11 +7,13 @@ export type SearchRuntime = 'web' | 'cpu' | 'cuda'
 
 export interface SearchTimeEstimate {
   runtime: SearchRuntime
-  seconds: number
+  seconds?: number
 }
 
-const PLACEHOLDER_CHECKS_PER_SECOND: Record<SearchRuntime, number> = {
-  web: 150_000_000,
+const PLACEHOLDER_CHECKS_PER_SECOND: Record<
+  Exclude<SearchRuntime, 'web'>,
+  number
+> = {
   cpu: 1_000_000_000,
   cuda: 70_000_000_000,
 }
@@ -56,15 +58,26 @@ export function estimateSearchVolume(document: EditorDocument): number {
 
 export function estimateSearchTimes(
   document: EditorDocument,
+  measuredWebChecksPerSecond?: number,
 ): SearchTimeEstimate[] {
   const volume = estimateSearchVolume(document)
   const toleranceFactor = 1 + document.scanner.errorTolerance
   const work = volume * toleranceFactor
 
-  return (['web', 'cpu', 'cuda'] as const).map((runtime) => ({
-    runtime,
-    seconds: work / PLACEHOLDER_CHECKS_PER_SECOND[runtime],
-  }))
+  return [
+    {
+      runtime: 'web' as const,
+      // Browser throughput depends on the selected pool size and the user's
+      // CPU. Do not present a fabricated estimate before measuring it.
+      ...(measuredWebChecksPerSecond && measuredWebChecksPerSecond > 0
+        ? { seconds: volume / measuredWebChecksPerSecond }
+        : {}),
+    },
+    ...(['cpu', 'cuda'] as const).map((runtime) => ({
+      runtime,
+      seconds: work / PLACEHOLDER_CHECKS_PER_SECOND[runtime],
+    })),
+  ]
 }
 
 export function estimateHitCount(document: EditorDocument): number {

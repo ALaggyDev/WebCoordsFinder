@@ -1,4 +1,5 @@
 import type {
+  CandidateScore,
   CandidateTransform,
   GrassTintSettings,
   Point2,
@@ -15,9 +16,9 @@ const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
 const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
 
-type RgbColor = { red: number; green: number; blue: number }
+export type RgbColor = { red: number; green: number; blue: number }
 
-function isGrassTexture(source: string): boolean {
+export function isGrassTexture(source: string): boolean {
   return ['/grass.png', '/grass_block_top.png', '/grass_side.png', '/lily_pad.png'].some((name) =>
     source.endsWith(name),
   )
@@ -63,7 +64,7 @@ async function grassTintColor(
   return { red: pixel[0], green: pixel[1], blue: pixel[2] }
 }
 
-function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {
+export function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {
   for (let offset = 0; offset < imageData.data.length; offset += 4) {
     const shade = imageData.data[offset]
     imageData.data[offset] = Math.round((shade * tint.red) / 255)
@@ -164,6 +165,14 @@ export async function warpQuad(
     sourceCanvas.width,
     sourceCanvas.height,
   )
+  return warpQuadPixels(sourcePixels, quad, size)
+}
+
+export function warpQuadPixels(
+  sourcePixels: ImageData,
+  quad: [Point2, Point2, Point2, Point2],
+  size = 96,
+): ImageData {
   const transform = computeHomography(
     [
       { x: 0, y: 0 },
@@ -277,11 +286,27 @@ export function normalizedGradientScore(
   reference: Uint8ClampedArray,
   size: number,
 ): number {
+  return normalizedGradientVectorScore(
+    normalizedGradientVector(sample, size),
+    normalizedGradientVector(reference, size),
+  )
+}
+
+export interface NormalizedGradientVector {
+  values: Float64Array
+  mean: number
+  centeredEnergy: number
+}
+
+export function normalizedGradientVector(
+  pixels: Uint8ClampedArray,
+  size: number,
+): NormalizedGradientVector {
   // Ignore crop borders where homography and screenshot background artifacts
   // dominate, then compare gradients so lighting shifts matter less.
   const border = Math.max(2, Math.round(size * 0.08))
-  const sampleValues: number[] = []
-  const referenceValues: number[] = []
+  const innerSize = Math.max(0, size - border * 2)
+  const values = new Float64Array(innerSize * innerSize * 2)
   const grayscale = (pixels: Uint8ClampedArray, x: number, y: number) => {
     const offset = (y * size + x) * 4
     return (
@@ -291,33 +316,59 @@ export function normalizedGradientScore(
     )
   }
 
+  let index = 0
   for (let y = border; y < size - border; y += 1) {
     for (let x = border; x < size - border; x += 1) {
-      const sgx = grayscale(sample, x + 1, y) - grayscale(sample, x - 1, y)
-      const sgy = grayscale(sample, x, y + 1) - grayscale(sample, x, y - 1)
-      const rgx = grayscale(reference, x + 1, y) - grayscale(reference, x - 1, y)
-      const rgy = grayscale(reference, x, y + 1) - grayscale(reference, x, y - 1)
-      sampleValues.push(sgx, sgy)
-      referenceValues.push(rgx, rgy)
+      values[index] =
+        grayscale(pixels, x + 1, y) - grayscale(pixels, x - 1, y)
+      values[index + 1] =
+        grayscale(pixels, x, y + 1) - grayscale(pixels, x, y - 1)
+      index += 2
     }
   }
 
-  const sampleMean =
-    sampleValues.reduce((sum, value) => sum + value, 0) / sampleValues.length
-  const referenceMean =
-    referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length
-  let numerator = 0
-  let sampleEnergy = 0
-  let referenceEnergy = 0
-  sampleValues.forEach((value, index) => {
-    const sampleCentered = value - sampleMean
-    const referenceCentered = referenceValues[index] - referenceMean
-    numerator += sampleCentered * referenceCentered
-    sampleEnergy += sampleCentered ** 2
-    referenceEnergy += referenceCentered ** 2
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+  let centeredEnergy = 0
+  values.forEach((value) => {
+    centeredEnergy += (value - mean) ** 2
   })
-  const denominator = Math.sqrt(sampleEnergy * referenceEnergy)
+  return { values, mean, centeredEnergy }
+}
+
+export function normalizedGradientVectorScore(
+  sample: NormalizedGradientVector,
+  reference: NormalizedGradientVector,
+): number {
+  if (sample.values.length !== reference.values.length) return 0
+  let numerator = 0
+  sample.values.forEach((value, index) => {
+    numerator +=
+      (value - sample.mean) * (reference.values[index] - reference.mean)
+  })
+  const denominator = Math.sqrt(
+    sample.centeredEnergy * reference.centeredEnergy,
+  )
   // Constant images have no directional information and cannot be matched.
   if (denominator < 1e-8) return 0
   return Math.max(-1, Math.min(1, numerator / denominator))
+}
+
+export function scoreNormalizedGradientCandidates(
+  sample: NormalizedGradientVector,
+  references: NormalizedGradientVector[],
+  stateCount: 2 | 4,
+): { scores: CandidateScore[]; confidence: number } {
+  const uniqueScores = new Map<number, number>()
+  references.forEach((reference, index) => {
+    const variant = stateCount === 2 ? index % 2 : index
+    const score = normalizedGradientVectorScore(sample, reference)
+    uniqueScores.set(variant, Math.max(score, uniqueScores.get(variant) ?? -1))
+  })
+  const scores = [...uniqueScores.entries()]
+    .map(([variant, score]) => ({ variant, score }))
+    .sort((left, right) => right.score - left.score)
+  return {
+    scores,
+    confidence: scores.length > 1 ? scores[0].score - scores[1].score : 0,
+  }
 }
