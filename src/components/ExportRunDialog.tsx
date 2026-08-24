@@ -51,6 +51,12 @@ import {
   type WebSearchWorkerCommand,
   type WebSearchWorkerState,
 } from '../domain/webSearch'
+import {
+  calibrateSearchWorkerCount,
+  readSearchWorkerCalibration,
+  writeSearchWorkerCalibration,
+  type SearchWorkerCalibration,
+} from '../domain/searchWorkerCalibration'
 import { useEditorStore } from '../store/editorStore'
 import './ExportRunDialog.css'
 
@@ -65,6 +71,20 @@ interface ExportRunDialogProps {
   open: boolean
   onClose: () => void
   onDownload: () => void
+}
+
+type WorkerCalibrationStatus =
+  | 'idle'
+  | 'calibrating'
+  | 'ready'
+  | 'manual'
+  | 'failed'
+
+interface WorkerPreferenceState {
+  workerCount: number
+  calibration: SearchWorkerCalibration | null
+  status: WorkerCalibrationStatus
+  trial: { current: number; total: number } | null
 }
 
 const runtimeDetails: Record<
@@ -193,9 +213,29 @@ export function ExportRunDialog({
   const maximumWorkerCount = maximumSearchWorkerCount(
     globalThis.navigator.hardwareConcurrency,
   )
-  const [workerCount, setWorkerCount] = useState(() =>
-    recommendedSearchWorkerCount(globalThis.navigator.hardwareConcurrency),
-  )
+  const [workerPreference, setWorkerPreference] =
+    useState<WorkerPreferenceState>(() => {
+      const calibration = readSearchWorkerCalibration(
+        globalThis.localStorage,
+        globalThis.navigator.hardwareConcurrency,
+      )
+      return {
+        workerCount:
+          calibration?.workerCount ??
+          recommendedSearchWorkerCount(globalThis.navigator.hardwareConcurrency),
+        calibration,
+        status: calibration ? 'ready' : 'idle',
+        trial: null,
+      }
+    })
+  const workerCount = workerPreference.workerCount
+  const calibrationAbortRef = useRef<AbortController | null>(null)
+  const closeDialog = useCallback(() => {
+    // Abort synchronously so a calibration cannot finish and launch a search
+    // in the gap before React commits the closed state and runs its effects.
+    calibrationAbortRef.current?.abort()
+    onClose()
+  }, [onClose])
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
   )
@@ -276,6 +316,13 @@ export function ExportRunDialog({
         webSearch.phase === 'error'),
   )
 
+  const searchNeedsCalibration = Boolean(
+    currentSearch &&
+      maximumWorkerCount > 1 &&
+      !workerPreference.calibration &&
+      workerPreference.status === 'idle',
+  )
+
   const terminateWorker = useCallback(() => {
     workerRef.current?.terminate()
     workerRef.current = null
@@ -306,7 +353,10 @@ export function ExportRunDialog({
     [setWebSearchCheckpoint],
   )
 
-  const startWebSearch = (resume: boolean) => {
+  const startWebSearch = (
+    resume: boolean,
+    selectedWorkerCount = workerCount,
+  ) => {
     try {
       const search = currentSearch
       if (!search) throw new Error('The search configuration is not ready.')
@@ -398,7 +448,7 @@ export function ExportRunDialog({
               shards: previous.shards,
             }
           : undefined,
-        workerCount,
+        workerCount: selectedWorkerCount,
       }
       worker.postMessage(command)
     } catch (error) {
@@ -411,6 +461,70 @@ export function ExportRunDialog({
       applyWebSearchState(next)
       persistWebSearchState(next, true)
     }
+  }
+
+  const calibrateAndStartWebSearch = async () => {
+    const search = currentSearch
+    if (!search || calibrationAbortRef.current) return
+
+    const controller = new AbortController()
+    calibrationAbortRef.current = controller
+    setWorkerPreference((current) => ({
+      ...current,
+      status: 'calibrating',
+      trial: null,
+    }))
+    try {
+      const calibration = await calibrateSearchWorkerCount(
+        search.request,
+        globalThis.navigator.hardwareConcurrency,
+        {
+          signal: controller.signal,
+          onTrialStart: (_workerCount, index, total) => {
+            setWorkerPreference((current) => ({
+              ...current,
+              trial: { current: index + 1, total },
+            }))
+          },
+        },
+      )
+      if (controller.signal.aborted) return
+      writeSearchWorkerCalibration(globalThis.localStorage, calibration)
+      setWorkerPreference({
+        workerCount: calibration.workerCount,
+        calibration,
+        status: 'ready',
+        trial: null,
+      })
+      startWebSearch(false, calibration.workerCount)
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setWorkerPreference((current) => ({
+          ...current,
+          status: current.calibration ? 'ready' : 'idle',
+          trial: null,
+        }))
+        return
+      }
+      console.warn('Unable to calibrate the search worker pool.', error)
+      setWorkerPreference((current) => ({
+        ...current,
+        status: 'failed',
+        trial: null,
+      }))
+    } finally {
+      if (calibrationAbortRef.current === controller) {
+        calibrationAbortRef.current = null
+      }
+    }
+  }
+
+  const requestWebSearch = (resume: boolean) => {
+    if (resume || !searchNeedsCalibration) {
+      startWebSearch(resume)
+      return
+    }
+    void calibrateAndStartWebSearch()
   }
 
   const sendWorkerCommand = (
@@ -450,7 +564,7 @@ export function ExportRunDialog({
     if (!open) return
     const previouslyFocused = globalThis.document.activeElement
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeDialog()
     }
     globalThis.document.addEventListener('keydown', onKeyDown)
     globalThis.document.body.classList.add('export-run-dialog-open')
@@ -462,7 +576,7 @@ export function ExportRunDialog({
       globalThis.document.body.classList.remove('export-run-dialog-open')
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus()
     }
-  }, [onClose, open])
+  }, [closeDialog, open])
 
   useEffect(() => {
     if (savedCheckpoint?.phase === 'running') {
@@ -470,7 +584,14 @@ export function ExportRunDialog({
     }
   }, [persistWebSearchState, savedCheckpoint?.phase])
 
-  useEffect(() => () => terminateWorker(), [terminateWorker])
+  useEffect(() => {
+    if (!open) calibrationAbortRef.current?.abort()
+  }, [open])
+
+  useEffect(() => () => {
+    calibrationAbortRef.current?.abort()
+    terminateWorker()
+  }, [terminateWorker])
 
   if (!open) return null
 
@@ -478,7 +599,7 @@ export function ExportRunDialog({
     <div
       className="export-run-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) closeDialog()
       }}
     >
       <section
@@ -495,7 +616,7 @@ export function ExportRunDialog({
           <button
             aria-label="Close Export / Run"
             className="icon-button"
-            onClick={onClose}
+            onClick={closeDialog}
             ref={closeButtonRef}
             type="button"
           >
@@ -626,18 +747,52 @@ export function ExportRunDialog({
                 <span>Search workers</span>
                 <select
                   aria-label="Search workers"
-                  disabled={workerIsAttached}
+                  disabled={
+                    workerIsAttached || workerPreference.status === 'calibrating'
+                  }
                   value={workerCount}
-                  onChange={(event) => setWorkerCount(Number(event.target.value))}
+                  onChange={(event) => {
+                    const nextWorkerCount = Number(event.target.value)
+                    setWorkerPreference((current) => ({
+                      ...current,
+                      workerCount: nextWorkerCount,
+                      status: 'manual',
+                      trial: null,
+                    }))
+                  }}
                 >
                   {Array.from({ length: maximumWorkerCount }, (_, index) => index + 1)
                     .map((count) => (
                       <option key={count} value={count}>
-                        {count}{count === recommendedSearchWorkerCount(globalThis.navigator.hardwareConcurrency) ? ' (recommended)' : ''}
+                        {count}
+                        {count === workerPreference.calibration?.workerCount
+                          ? ' (auto)'
+                          : !workerPreference.calibration &&
+                              count === recommendedSearchWorkerCount(
+                                globalThis.navigator.hardwareConcurrency,
+                              )
+                            ? ' (default)'
+                            : ''}
                       </option>
                     ))}
                 </select>
-                <small>Reserve fewer cores for other work or increase throughput on larger CPUs.</small>
+                <small>
+                  {workerPreference.status === 'calibrating'
+                    ? `Calibrating this device${
+                        workerPreference.trial
+                          ? ` (${workerPreference.trial.current}/${workerPreference.trial.total})`
+                          : ''
+                      }...`
+                    : workerPreference.status === 'manual'
+                      ? `Using ${workerCount} workers manually; automatic calibration will be skipped.`
+                      : workerPreference.calibration
+                      ? `Auto-selected ${workerPreference.calibration.workerCount}; choose another count to override it.`
+                      : workerPreference.status === 'failed'
+                        ? 'Calibration was unavailable; choose a worker count manually if needed.'
+                        : maximumWorkerCount === 1
+                          ? 'One search worker is available on this device.'
+                          : 'Reserve fewer cores for other work or increase throughput on larger CPUs.'}
+                </small>
               </label>
 
               {checkpointIsStale && webSearch.phase !== 'idle' && (
@@ -652,17 +807,22 @@ export function ExportRunDialog({
                 <div className="web-search-start-actions">
                   <button
                     className="primary-button"
-                    onClick={() => startWebSearch(true)}
+                    disabled={workerPreference.status === 'calibrating'}
+                    onClick={() => requestWebSearch(true)}
                     type="button"
                   >
                     <Play size={16} /> Resume saved search
                   </button>
                   <button
                     className="secondary-button"
-                    onClick={() => startWebSearch(false)}
+                    disabled={workerPreference.status === 'calibrating'}
+                    onClick={() => requestWebSearch(false)}
                     type="button"
                   >
-                    <RotateCcw size={15} /> Start over
+                      <RotateCcw size={15} />{' '}
+                      {searchNeedsCalibration
+                        ? 'Calibrate & start over'
+                        : 'Start over'}
                   </button>
                 </div>
               )}
@@ -670,13 +830,18 @@ export function ExportRunDialog({
               {!workerIsAttached && !canResumeSavedSearch && (
                 <button
                   className="primary-button full"
-                  disabled={!currentSearch}
-                  onClick={() => startWebSearch(false)}
+                  disabled={
+                    !currentSearch || workerPreference.status === 'calibrating'
+                  }
+                  onClick={() => requestWebSearch(false)}
                   type="button"
                 >
                   {webSearch.phase === 'idle' ? (
                     <>
-                      <Play size={16} /> Run web search
+                      <Play size={16} />{' '}
+                      {searchNeedsCalibration
+                        ? 'Calibrate & run web search'
+                        : 'Run web search'}
                     </>
                   ) : (
                     <>
