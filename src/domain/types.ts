@@ -236,7 +236,7 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 2 | 3 | 4 | 5
+  engineVersion: 2 | 3 | 4 | 5 | 6
   // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase

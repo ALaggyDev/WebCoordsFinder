@@ -1,4 +1,5 @@
 import { confirmedUniqueEvidence, validateForExport } from './exportConfig'
+import { searchKernelIdentity } from './searchKernel'
 import type {
   EditorDocument,
   PersistedWebSearchPhase,
@@ -13,7 +14,7 @@ import type {
 // The web-search protocol keeps exact counters as BigInt in memory and as
 // decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 5
+export const WEB_SEARCH_ENGINE_VERSION = 6
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -252,12 +253,23 @@ export interface WebSearchWorkerState {
   error?: string
 }
 
+/**
+ * A compiled request-specific kernel produced by the coordinator. The module is
+ * structured-cloned to every shard worker, which re-verifies its signature
+ * before instantiating it against the checked-in host scanner.
+ */
+export interface WebSearchKernelHandoff {
+  module: WebAssembly.Module
+  signature: bigint
+}
+
 export type WebSearchShardWorkerCommand =
   | {
       type: 'start'
       requestId: string
       request: WebSearchRequest
       shard: WebSearchOrdinalShard
+      kernel?: WebSearchKernelHandoff
       checkpoint?: {
         next: bigint
         matchCount: bigint
@@ -372,7 +384,13 @@ export function createWebSearchRequest(
 
 export function webSearchRequestKey(request: WebSearchRequest): string {
   // Any input or engine-semantic change invalidates checkpoint resumption.
-  return JSON.stringify([WEB_SEARCH_ENGINE_VERSION, request])
+  // The generated-kernel identity is included so a checkpoint can never resume
+  // against differently generated scanner code.
+  return JSON.stringify([
+    WEB_SEARCH_ENGINE_VERSION,
+    request,
+    searchKernelIdentity(request),
+  ])
 }
 
 export function webSearchRequestVolume(request: WebSearchRequest): bigint {
