@@ -1,3 +1,4 @@
+import { generateSearchKernel } from '../domain/searchKernel'
 import {
   MAX_WEB_SEARCH_RESULTS,
   aggregateSearchPoolPhase,
@@ -11,6 +12,7 @@ import {
   validateRetainedResultProgress,
   type WebSearchOrdinalResult,
   type WebSearchShardProgress,
+  type WebSearchKernelHandoff,
   type WebSearchShardWorkerCommand,
   type WebSearchShardWorkerState,
   type WebSearchWorkerCommand,
@@ -25,6 +27,40 @@ interface ActiveShard extends WebSearchShardProgress {
 }
 
 const publicationIntervalMilliseconds = 100
+// A search reuses one identity; a handful of entries covers switching between
+// recent requests without retaining compiled code for the whole session.
+const maximumCachedKernels = 4
+
+const compiledKernels = new Map<string, WebSearchKernelHandoff>()
+
+/**
+ * Generates and compiles the request-specific scanner kernel once per search.
+ * Every failure is silent: shard workers then load the checked-in exact module.
+ * `WebAssembly.Module` construction is synchronous inside a worker, so the
+ * start command stays free of a compilation race with pause/stop.
+ */
+function prepareSearchKernel(
+  request: Extract<WebSearchWorkerCommand, { type: 'start' }>['request'],
+): WebSearchKernelHandoff | undefined {
+  try {
+    const kernel = generateSearchKernel(request)
+    if (!kernel) return undefined
+    const cached = compiledKernels.get(kernel.identity)
+    if (cached) return cached
+    const handoff: WebSearchKernelHandoff = {
+      module: new WebAssembly.Module(kernel.bytes),
+      signature: kernel.signature,
+    }
+    if (compiledKernels.size >= maximumCachedKernels) {
+      const oldest = compiledKernels.keys().next()
+      if (!oldest.done) compiledKernels.delete(oldest.value)
+    }
+    compiledKernels.set(kernel.identity, handoff)
+    return handoff
+  } catch {
+    return undefined
+  }
+}
 
 let activeRequestId: string | undefined
 let shards: ActiveShard[] = []
@@ -171,6 +207,7 @@ function startShard(
   requestId: string,
   request: Extract<WebSearchWorkerCommand, { type: 'start' }>['request'],
   progress: WebSearchShardProgress,
+  kernel: WebSearchKernelHandoff | undefined,
 ): ActiveShard {
   const worker = new Worker(new URL('./search.worker.ts', import.meta.url), {
     type: 'module',
@@ -234,7 +271,14 @@ function startShard(
       matchCount: progress.matchCount,
     },
   }
-  worker.postMessage(command)
+  try {
+    worker.postMessage(kernel ? { ...command, kernel } : command)
+  } catch {
+    // Structured-cloning a compiled module is an optimization, not a
+    // requirement. A transfer failure must start the shard on the checked-in
+    // scanner rather than failing the whole search.
+    worker.postMessage(command)
+  }
   return active
 }
 
@@ -280,11 +324,13 @@ function startSearch(
           workerCount,
         ).map((shard) => ({ ...shard, next: shard.start, matchCount: 0n }))
     validateRetainedResultProgress(retainedResults, progress)
+    const kernel = prepareSearchKernel(command.request)
     progress.forEach((shard) => {
       shards.push(startShard(
         command.requestId,
         command.request,
         shard,
+        kernel,
       ))
     })
   } catch (error) {

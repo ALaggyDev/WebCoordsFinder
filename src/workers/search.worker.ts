@@ -4,8 +4,11 @@ import sodium2ExactWasmUrl from '../wasm/coords_search_sodium_2_exact.wasm?url&n
 import vanilla1ExactWasmUrl from '../wasm/coords_search_vanilla_1_exact.wasm?url&no-inline'
 import vanilla2ExactWasmUrl from '../wasm/coords_search_vanilla_2_exact.wasm?url&no-inline'
 import vanilla3ExactWasmUrl from '../wasm/coords_search_vanilla_3_exact.wasm?url&no-inline'
+import vanilla3HostWasmUrl from '../wasm/coords_search_vanilla_3_host.wasm?url&no-inline'
+import { searchKernelPlan } from '../domain/searchKernel'
 import {
   MAX_WEB_SEARCH_RESULTS,
+  type WebSearchKernelHandoff,
   type WebSearchOrdinalResult,
   type WebSearchShardWorkerCommand,
   type WebSearchShardWorkerState,
@@ -65,6 +68,8 @@ const exactWasmUrls = [
   sodium2ExactWasmUrl,
 ]
 const exportsPromises = new Map<string, Promise<SearchExports>>()
+const modulePromises = new Map<string, Promise<WebAssembly.Module>>()
+let generatedExports: { signature: bigint; exports: SearchExports } | undefined
 let activeRequestId: string | undefined
 let searchExports: SearchExports | undefined
 let pauseRequested = false
@@ -112,6 +117,59 @@ async function loadSearchExports(wasmUrl: string): Promise<SearchExports> {
     exportsPromises.set(wasmUrl, exportsPromise)
   }
   return exportsPromise
+}
+
+async function loadModule(wasmUrl: string): Promise<WebAssembly.Module> {
+  let modulePromise = modulePromises.get(wasmUrl)
+  if (!modulePromise) {
+    modulePromise = (async () => {
+      const response = await fetch(wasmUrl)
+      if (!response.ok) {
+        throw new Error(`Unable to load web scanner (${response.status}).`)
+      }
+      try {
+        return await WebAssembly.compileStreaming(response.clone())
+      } catch {
+        return await WebAssembly.compile(await response.arrayBuffer())
+      }
+    })()
+    modulePromises.set(wasmUrl, modulePromise)
+  }
+  return modulePromise
+}
+
+/**
+ * Instantiates the coordinator's request-specific kernel against the checked-in
+ * host scanner. The kernel's own signature is re-derived from this worker's copy
+ * of the request, so a mismatched or stale module can never scan silently.
+ */
+async function loadGeneratedExports(
+  request: Extract<WebSearchShardWorkerCommand, { type: 'start' }>['request'],
+  kernel: WebSearchKernelHandoff,
+): Promise<SearchExports> {
+  const expected = searchKernelPlan(request)?.signature
+  if (expected === undefined || expected !== kernel.signature) {
+    throw new Error('The generated scanner kernel does not match this request.')
+  }
+  if (generatedExports?.signature === kernel.signature) {
+    return generatedExports.exports
+  }
+  const kernelInstance = await WebAssembly.instantiate(kernel.module, {})
+  const scanRun = kernelInstance.exports.scan_run
+  const reportSignature = kernelInstance.exports.wcf_signature
+  if (typeof scanRun !== 'function' || typeof reportSignature !== 'function') {
+    throw new Error('The generated scanner kernel is missing its exports.')
+  }
+  if (BigInt.asUintN(64, (reportSignature as () => bigint)()) !== expected) {
+    throw new Error('The generated scanner kernel failed its signature check.')
+  }
+  const host = await loadModule(vanilla3HostWasmUrl)
+  const instance = await WebAssembly.instantiate(host, {
+    wcf: { scan_run: scanRun },
+  })
+  const exports = instance.exports as SearchExports
+  generatedExports = { signature: kernel.signature, exports }
+  return exports
 }
 
 function collectResults(module: SearchExports): WebSearchOrdinalResult[] {
@@ -232,9 +290,22 @@ async function startSearch(
 
   try {
     const request = command.request
-    const module = await loadSearchExports(
-      scannerUrl(request.mode, request.maxBadBlocks),
-    )
+    // A generated kernel is an optimization only: any generation, transfer,
+    // signature, or instantiation failure silently uses the checked-in module.
+    let module: SearchExports | undefined
+    if (command.kernel) {
+      try {
+        module = await loadGeneratedExports(request, command.kernel)
+      } catch {
+        module = undefined
+      }
+      if (activeRequestId !== command.requestId) return
+    }
+    if (!module) {
+      module = await loadSearchExports(
+        scannerUrl(request.mode, request.maxBadBlocks),
+      )
+    }
     if (activeRequestId !== command.requestId) return
     searchExports = module
     const configureError = module.search_configure(
