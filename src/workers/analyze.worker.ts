@@ -1,42 +1,158 @@
+import type {
+  AutoAnalyzeJob,
+  AutoAnalyzeRequest,
+  AutoAnalyzeResponse,
+} from '../domain/analysisProtocol'
 import {
-  normalizedGradientScore,
+  applyGrassTint,
+  grassColorMapCoordinates,
+  isGrassTexture,
+  normalizedGradientVector,
+  scoreNormalizedGradientCandidates,
   transformPixels,
+  warpQuadPixels,
+  type NormalizedGradientVector,
+  type RgbColor,
 } from '../domain/imageAnalysis'
-import type { CandidateTransform } from '../domain/types'
+import { defaultGrassTintSettings } from '../domain/types'
 
-// Pixel scoring runs off the main thread; the caller owns image decoding and
-// perspective unwarping so this worker receives only typed pixel buffers.
-interface AnalyzeRequest {
-  requestId: string
-  sample: Uint8ClampedArray
-  reference: Uint8ClampedArray
-  size: number
-  transforms: CandidateTransform[]
-  stateCount: 2 | 4
+const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
+const referencePixelsCache = new Map<string, Promise<ImageData>>()
+const referenceGradientCache = new Map<
+  string,
+  Promise<NormalizedGradientVector>
+>()
+let grassColorMapPromise: Promise<ImageData> | undefined
+
+async function decodedPixels(source: string, size?: number): Promise<ImageData> {
+  const response = await fetch(source)
+  if (!response.ok) {
+    throw new Error(`Unable to load analysis image (${response.status}).`)
+  }
+  const bitmap = await createImageBitmap(await response.blob())
+  try {
+    const width = size ?? bitmap.width
+    const height = size ?? bitmap.height
+    const canvas = new OffscreenCanvas(width, height)
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Off-thread image extraction is unavailable.')
+    context.imageSmoothingEnabled = size === undefined
+    context.drawImage(bitmap, 0, 0, width, height)
+    return context.getImageData(0, 0, width, height)
+  } finally {
+    bitmap.close()
+  }
 }
 
-self.onmessage = (event: MessageEvent<AnalyzeRequest>) => {
-  const { requestId, sample, reference, size, transforms, stateCount } = event.data
-  const rawScores = transforms.map((transform, variant) => ({
-    // Side faces expose two visible states even when the model registry lists
-    // four transforms, so equivalent transforms collapse modulo two.
-    variant: stateCount === 2 ? variant % 2 : variant,
-    score: normalizedGradientScore(
-      sample,
-      transformPixels(reference, size, transform),
+async function grassTintColor(
+  settings = defaultGrassTintSettings,
+): Promise<RgbColor> {
+  grassColorMapPromise ??= decodedPixels(grassColorMapSource)
+  const colorMap = await grassColorMapPromise
+  const [x, y] = grassColorMapCoordinates(
+    settings,
+    colorMap.width,
+    colorMap.height,
+  )
+  const offset = (y * colorMap.width + x) * 4
+  return {
+    red: colorMap.data[offset],
+    green: colorMap.data[offset + 1],
+    blue: colorMap.data[offset + 2],
+  }
+}
+
+function referenceCacheKey(job: AutoAnalyzeJob, size: number): string {
+  const tint = job.grassTint ?? defaultGrassTintSettings
+  return `${job.referenceUrl}:${size}:${tint.temperature}:${tint.downfall}`
+}
+
+function referencePixels(job: AutoAnalyzeJob, size: number): Promise<ImageData> {
+  const key = referenceCacheKey(job, size)
+  const cached = referencePixelsCache.get(key)
+  if (cached) return cached
+  const promise = decodedPixels(job.referenceUrl, size).then(async (pixels) => {
+    if (!isGrassTexture(job.referenceUrl)) return pixels
+    const copy = new ImageData(
+      new Uint8ClampedArray(pixels.data),
+      pixels.width,
+      pixels.height,
+    )
+    return applyGrassTint(copy, await grassTintColor(job.grassTint))
+  })
+  referencePixelsCache.set(key, promise)
+  return promise
+}
+
+function referenceGradient(
+  job: AutoAnalyzeJob,
+  size: number,
+  transformIndex: number,
+): Promise<NormalizedGradientVector> {
+  const transform = job.transforms[transformIndex]
+  const key = `${referenceCacheKey(job, size)}:${transform}`
+  const cached = referenceGradientCache.get(key)
+  if (cached) return cached
+  const promise = referencePixels(job, size).then((pixels) =>
+    normalizedGradientVector(
+      transformPixels(pixels.data, size, transform),
       size,
     ),
-  }))
-  const uniqueScores = new Map<number, number>()
-  rawScores.forEach(({ variant, score }) => {
-    uniqueScores.set(variant, Math.max(score, uniqueScores.get(variant) ?? -1))
-  })
-  const scores = [...uniqueScores.entries()]
-    .map(([variant, score]) => ({ variant, score }))
-    .sort((a, b) => b.score - a.score)
-  // Confidence is a separation margin, not the absolute similarity score.
-  const confidence = scores.length > 1 ? scores[0].score - scores[1].score : 0
-  self.postMessage({ requestId, scores, confidence })
+  )
+  referenceGradientCache.set(key, promise)
+  return promise
+}
+
+async function analyzeJob(
+  sourcePixels: ImageData,
+  job: AutoAnalyzeJob,
+  size: number,
+) {
+  const sample = normalizedGradientVector(
+    warpQuadPixels(sourcePixels, job.quad, size).data,
+    size,
+  )
+  const references = await Promise.all(
+    job.transforms.map((_, index) => referenceGradient(job, size, index)),
+  )
+  const { scores, confidence } = scoreNormalizedGradientCandidates(
+    sample,
+    references,
+    job.stateCount,
+  )
+  return {
+    evidenceId: job.evidenceId,
+    scores,
+    confidence,
+  }
+}
+
+self.onmessage = async (event: MessageEvent<AutoAnalyzeRequest>) => {
+  const request = event.data
+  if (request.type !== 'analyze') return
+  try {
+    // The full screenshot is decoded, drawn, and read exactly once per batch.
+    const sourcePixels = await decodedPixels(request.sourceUrl)
+    const results = []
+    for (const job of request.jobs) {
+      results.push(await analyzeJob(sourcePixels, job, request.size))
+    }
+    const response: AutoAnalyzeResponse = {
+      type: 'result',
+      requestId: request.requestId,
+      results,
+    }
+    self.postMessage(response)
+  } catch (error) {
+    const response: AutoAnalyzeResponse = {
+      type: 'error',
+      requestId: request.requestId,
+      results: [],
+      error:
+        error instanceof Error ? error.message : 'Automatic analysis failed.',
+    }
+    self.postMessage(response)
+  }
 }
 
 export {}
