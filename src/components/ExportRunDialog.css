@@ -228,6 +228,16 @@ body.export-run-dialog-open {
   line-height: 1.55;
 }
 
+.web-search-worker-count {
+  gap: 5px;
+}
+
+.web-search-worker-count > small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 /* Resumable browser-search progress, controls, and bounded result table. */
 .web-search-progress {
   padding-top: 10px;
