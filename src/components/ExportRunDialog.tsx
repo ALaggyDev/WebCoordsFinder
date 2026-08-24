@@ -468,7 +468,11 @@ export function ExportRunDialog({
             <div>
               <span>Information</span>
               <strong>{constraintBits(document)} bits</strong>
-              <small>{minimumBitsFor80Percent} bits needed for 80%</small>
+              <small>
+                {minimumBitsFor80Percent === undefined
+                  ? 'Unknown bits needed for 80%'
+                  : `${minimumBitsFor80Percent} bits needed for 80%`}
+              </small>
             </div>
             <div>
               <span>Search positions</span>

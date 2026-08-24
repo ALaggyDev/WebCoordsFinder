@@ -16,6 +16,36 @@ const PLACEHOLDER_CHECKS_PER_SECOND: Record<SearchRuntime, number> = {
   cuda: 70_000_000_000,
 }
 
+const LOG_FOUR_STATE_MATCH = Math.log(1 / 4)
+const LOG_FOUR_STATE_MISMATCH = Math.log(3 / 4)
+
+function logAdd(left: number, right: number): number {
+  const largest = Math.max(left, right)
+  return largest + Math.log(Math.exp(left - largest) + Math.exp(right - largest))
+}
+
+function logFourStatePassProbability(
+  constraints: number,
+  tolerance: number,
+): number {
+  if (tolerance >= constraints) return 0
+
+  // Start with zero mismatches, then build each following binomial term from
+  // the previous one. Keeping the calculation in log space avoids underflow
+  // for the small probabilities that make a filter useful.
+  let logTerm = constraints * LOG_FOUR_STATE_MATCH
+  let logProbability = logTerm
+  for (let mismatches = 1; mismatches <= tolerance; mismatches += 1) {
+    logTerm +=
+      Math.log(constraints - mismatches + 1) -
+      Math.log(mismatches) +
+      LOG_FOUR_STATE_MISMATCH -
+      LOG_FOUR_STATE_MATCH
+    logProbability = logAdd(logProbability, logTerm)
+  }
+  return logProbability
+}
+
 export function estimateSearchVolume(document: EditorDocument): number {
   const { bounds, directions } = document.scanner
   const width = Math.max(0, bounds.xEnd - bounds.xStart + 1)
@@ -82,12 +112,34 @@ export function estimateHitPrecision(document: EditorDocument): number {
 export function minimumBitsForPrecision(
   document: EditorDocument,
   targetPrecision: number,
-): number {
+): number | undefined {
   const volume = estimateSearchVolume(document)
   const estimatedCount = (1 - targetPrecision) / targetPrecision
   if (volume <= 1 || estimatedCount === 0) return 0
-  // With ideal independent evidence, b bits leave volume / 2^b candidates.
-  return Math.max(0, Math.ceil(Math.log2(volume / estimatedCount)))
+  if (!Number.isFinite(volume) || estimatedCount <= 0) return undefined
+
+  const tolerance = Math.max(0, document.scanner.errorTolerance)
+  if (tolerance === 0) {
+    // Preserve the strict-match estimate: each independent bit halves the
+    // candidate count.
+    return Math.max(0, Math.ceil(Math.log2(volume / estimatedCount)))
+  }
+
+  const logMaximumPassProbability = Math.log(estimatedCount / volume)
+  // A candidate cannot pass until it has more observations than the allowed
+  // mismatch count. Starting there avoids re-evaluating certainty cases.
+  for (let constraints = tolerance + 1; constraints <= Number.MAX_SAFE_INTEGER; constraints += 1) {
+    if (
+      logFourStatePassProbability(constraints, tolerance) <=
+      logMaximumPassProbability
+    ) {
+      return constraints * 2
+    }
+  }
+
+  // This protects the UI if inputs exceed the range JavaScript can count
+  // exactly; export validation remains responsible for scanner row limits.
+  return undefined
 }
 
 export function formatEstimatedCount(value: number): string {

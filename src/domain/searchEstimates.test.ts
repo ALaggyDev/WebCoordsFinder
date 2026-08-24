@@ -9,6 +9,7 @@ import {
   estimateSearchTimes,
   formatEstimatedCount,
   formatSearchTime,
+  minimumBitsForPrecision,
 } from './searchEstimates'
 
 describe('placeholder search estimates', () => {
@@ -70,5 +71,57 @@ describe('placeholder search estimates', () => {
 
     expect(estimateHitCount(document)).toBeGreaterThan(strictHits)
     expect(estimateHitPrecision(document)).toBeLessThan(strictPrecision)
+  })
+
+  it('keeps the strict information target when error tolerance is zero', () => {
+    const document = createTestDocument()
+    document.scanner.bounds = {
+      xStart: 0,
+      xEnd: 15,
+      yStart: 0,
+      yEnd: 0,
+      zStart: 0,
+      zEnd: 0,
+    }
+
+    expect(minimumBitsForPrecision(document, 0.8)).toBe(6)
+  })
+
+  it('requires more four-state information when mismatches are tolerated', () => {
+    const document = createTestDocument()
+    document.scanner.bounds = {
+      xStart: 0,
+      xEnd: 15,
+      yStart: 0,
+      yEnd: 0,
+      zStart: 0,
+      zEnd: 0,
+    }
+    const strictBits = minimumBitsForPrecision(document, 0.8)
+    document.scanner.errorTolerance = 1
+
+    expect(minimumBitsForPrecision(document, 0.8)).toBe(10)
+    expect(minimumBitsForPrecision(document, 0.8)).toBeGreaterThan(strictBits!)
+  })
+
+  it('never lowers the target as error tolerance rises', () => {
+    const document = createTestDocument()
+    document.scanner.bounds = {
+      xStart: 0,
+      xEnd: 63,
+      yStart: 0,
+      yEnd: 0,
+      zStart: 0,
+      zEnd: 0,
+    }
+    const strictBits = minimumBitsForPrecision(document, 0.8)!
+    document.scanner.errorTolerance = 1
+    const oneMismatchBits = minimumBitsForPrecision(document, 0.8)!
+    document.scanner.errorTolerance = 2
+
+    expect(oneMismatchBits).toBeGreaterThanOrEqual(strictBits)
+    expect(minimumBitsForPrecision(document, 0.8)).toBeGreaterThanOrEqual(
+      oneMismatchBits,
+    )
   })
 })
