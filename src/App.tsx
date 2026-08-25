@@ -3,11 +3,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Crosshair,
+  FolderOpen,
   ImagePlus,
   Info,
   LoaderCircle,
   ShieldCheck,
-  Sparkles,
   X,
 } from 'lucide-react'
 import './App.css'
@@ -822,11 +822,10 @@ function App() {
                     <div className="project-start-mark" aria-hidden="true">
                       <Crosshair size={23} />
                     </div>
-                    <span className="project-start-eyebrow">Local workspace</span>
                     <h1>Start a project</h1>
                     <p>
-                      Open a Minecraft screenshot, or explore the editor with
-                      the bundled example.
+                      Choose a Minecraft screenshot to begin, or open one of
+                      the example projects.
                     </p>
                     <button
                       className="primary-button project-start-action"
@@ -841,12 +840,12 @@ function App() {
                       type="button"
                       onClick={() => openProjectDialog('examples')}
                     >
-                      <Sparkles size={17} />
+                      <FolderOpen size={17} />
                       Browse examples
                     </button>
                     <small>
                       <ShieldCheck size={13} />
-                      Images and projects stay on this device.
+                      Nothing is uploaded. Projects stay in this browser.
                     </small>
                   </>
                 ) : (
@@ -862,8 +861,7 @@ function App() {
                 <Crosshair size={28} />
                 <h3>No project open</h3>
                 <p>
-                  Create a project from the canvas, or open a saved project
-                  from the Project menu.
+                  Open a screenshot or choose a saved project.
                 </p>
               </div>
             </aside>
