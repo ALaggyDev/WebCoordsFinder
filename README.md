@@ -45,4 +45,11 @@ npm run build
 
 ## Contributing
 
-Contributions are welcome! Feel free to submit issues or pull requests!
+TLDR: The project creator (which is me, Laggy) is a person who **learns to code** well before the era of AIs. As such, he cares about code quality and code elegance well more than the "new-gen AI coders".
+
+AI-generated PRs are allowed, with the following requirements:
+- Please review the code and write the PR description yourself (as a **human**). You should understand your code and are responsible for your code.
+- Keep the code change minimal and scoped as much as possible.
+- Avoid optimizations that make the code hard or impossible to read.
+- "Premature optimization is the root of all evil." I hope you understand what this phrase means.
+- Please don't flood the repos with meaningless PRs.
