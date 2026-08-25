@@ -3444,7 +3444,7 @@ button:disabled {
 }
 
 .topbar-open-image svg {
-  color: var(--accent);
+  color: currentColor;
 }
 
 .topbar-open-image:hover {

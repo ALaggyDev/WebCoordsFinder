@@ -42,12 +42,12 @@ const isColorTheme = (value: string | null): value is ColorTheme =>
   value === 'green' || value === 'pink' || value === 'blue'
 
 const getInitialTheme = (): ColorTheme => {
-  if (typeof window === 'undefined') return 'pink'
+  if (typeof window === 'undefined') return 'blue'
   try {
     const savedTheme = window.localStorage.getItem('webcoordsfinder-theme')
-    return isColorTheme(savedTheme) ? savedTheme : 'pink'
+    return isColorTheme(savedTheme) ? savedTheme : 'blue'
   } catch {
-    return 'pink'
+    return 'blue'
   }
 }
 

@@ -15,11 +15,11 @@
   --text: #f2f4f8;
   --muted: #9aa5b5;
   --faint: #667383;
-  --accent: #f24c86;
-  --accent-rgb: 242 76 134;
-  --accent-dark: #8f244d;
-  --accent-solid: #d83a73;
-  --accent-hover: #ec4c87;
+  --accent: #7196ff;
+  --accent-rgb: 113 150 255;
+  --accent-dark: #304d9c;
+  --accent-solid: #4e6bc8;
+  --accent-hover: #5e7bdc;
   --accent-contrast: #ffffff;
   --blue: #67a7ff;
   --amber: #e9b75f;
@@ -36,6 +36,15 @@
   --accent-solid: #53e6a5;
   --accent-hover: #6af0b5;
   --accent-contrast: #07140e;
+}
+
+:root[data-theme='pink'] {
+  --accent: #f24c86;
+  --accent-rgb: 242 76 134;
+  --accent-dark: #8f244d;
+  --accent-solid: #d83a73;
+  --accent-hover: #ec4c87;
+  --accent-contrast: #ffffff;
 }
 
 :root[data-theme='blue'] {
