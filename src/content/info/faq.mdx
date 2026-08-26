@@ -34,16 +34,18 @@ Yes. Projects are saved in this browser, and you can also export a portable proj
 
 ## Should I use the built-in scanner or export a CoordsFinder config?
 
-The built-in browser scanner is convenient for smaller searches, but is slower. Exporting is better when you want to use the faster CoordsFinder CPU or CUDA scanner.
+The built-in browser scanner is convenient for smaller searches, but is slower. Exporting is better when you want to use the faster native CPU, Nvidia CUDA, or Apple-silicon Metal scanner.
+
+Linear is the default scan order. On a compatible exact, single-direction search, the Metal scanner benchmarked about 3x faster with linear than spiral on the tested M4 MacBook Air. Spiral can still find a coordinate near the center of the bounds earlier because it searches center-out.
 
 ## I don't have an Nvidia GPU and the CPU scan takes so long. What should I do?
 
-Google Colab offers a Nvidia Tesla T4 GPU for free! You can use the <a href="https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing" target="_blank" rel="noreferrer">notebook</a> here.
+On an M-series Mac, export the config and use the bundled `coordsfinder-metal` command-line scanner. On other computers, Google Colab offers a Nvidia Tesla T4 GPU for free; you can use the <a href="https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing" target="_blank" rel="noreferrer">notebook</a>.
 
 ## What is the difference between WebCoordsFinder and CoordsFinder?
 
 WebCoordsFinder is a web-based app. It allows users to upload a screenshot, draw the grid, mark the texture rotations, and either perform the scan on the app or download a config file to use in CoordsFinder. It is a convenient way to generate a config file without having to painstakingly mark and write it by hand.
 
-CoordsFinder is a command-line tool that performs the actual brute-force search. It supports CUDA and is much faster than the built-in WebCoordsFinder scanner.
+CoordsFinder is a command-line tool that performs the actual brute-force search. It supports CUDA and is much faster than the built-in WebCoordsFinder scanner. This repository also includes a compatible Metal command-line scanner for Apple-silicon Macs.
 
 In short: start with WebCoordsFinder, then either use the built-in scanner or CoordsFinder.

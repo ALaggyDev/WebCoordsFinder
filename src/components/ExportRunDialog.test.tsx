@@ -158,6 +158,7 @@ describe('Export / Run workspace', () => {
     expect(screen.getByText('Estimated hits')).toBeInTheDocument()
     expect(screen.getByText('Hit precision')).toBeInTheDocument()
     expect(screen.getByText('CoordsFinder CPU')).toBeInTheDocument()
+    expect(screen.getByText('CoordsFinder Metal')).toBeInTheDocument()
     expect(screen.getByText('CoordsFinder CUDA')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Run web search' }),

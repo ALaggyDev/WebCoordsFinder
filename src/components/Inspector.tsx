@@ -1328,9 +1328,14 @@ function ExportInspector() {
         <div className="field-label">
           <span>Scan order</span>
           <InfoTip label="Scan order information">
-            "Linear" starts from -X and end in +X, then -Z to +Z.
+            "Linear" is the default. On compatible exact, single-direction
+            Apple-silicon Metal searches, it benchmarks about 3× faster than
+            spiral (18.5 vs 6.7 Gpos/s on the tested M4).
             <br />
-            "Spiral" starts from the center and spirals outward clockwise.
+            It starts from -X and ends in +X, then scans -Z to +Z.
+            <br />
+            "Spiral" starts from the center and spirals outward clockwise, so
+            it can still find nearby coordinates earlier.
           </InfoTip>
         </div>
         <select

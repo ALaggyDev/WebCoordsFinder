@@ -122,7 +122,7 @@ function createDefaultScanner(): ScannerSettings {
   // orientation unresolved until the user supplies a valid world mapping.
   return {
     textureAlgorithm: 'Vanilla-3',
-    scanOrder: 'spiral',
+    scanOrder: 'linear',
     directions: [0],
     compassResolved: false,
     bounds: {

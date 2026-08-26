@@ -19,10 +19,12 @@ describe('search estimates', () => {
     expect(estimates.map((estimate) => estimate.runtime)).toEqual([
       'web',
       'cpu',
+      'metal',
       'cuda',
     ])
     expect(estimates[0].seconds).toBeUndefined()
     expect(estimates[1].seconds).toBeGreaterThan(estimates[2].seconds!)
+    expect(estimates[2].seconds).toBeGreaterThan(estimates[3].seconds!)
 
     const measured = estimateSearchTimes(createTestDocument(), 500_000_000)
     expect(measured[0].seconds).toBeDefined()

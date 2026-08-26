@@ -97,7 +97,7 @@ describe('CoordsFinder export', () => {
     const config = generateCoordsFinderConfig(document)
 
     expect(config).toContain('algorithm = Vanilla-3')
-    expect(config).toContain('scanOrder = spiral')
+    expect(config).toContain('scanOrder = linear')
     expect(config).toContain('xRange = (-2000, 2000)')
     expect(config).toContain('cpuTileSize = (1024, 1024)')
     expect(config).toContain('cudaTileSize = (16384, 16384)')

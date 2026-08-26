@@ -3,7 +3,7 @@ import { confirmedUniqueEvidence } from './exportConfig'
 
 // These estimates communicate relative scale in the UI; only the browser
 // worker reports measured throughput, while native rates remain placeholders.
-export type SearchRuntime = 'web' | 'cpu' | 'cuda'
+export type SearchRuntime = 'web' | 'cpu' | 'metal' | 'cuda'
 
 export interface SearchTimeEstimate {
   runtime: SearchRuntime
@@ -15,6 +15,10 @@ const PLACEHOLDER_CHECKS_PER_SECOND: Record<
   number
 > = {
   cpu: 1_000_000_000,
+  // Conservative cross-chip placeholder. Compatible exact, single-direction
+  // linear searches can run much faster; throughput varies with chip, mode,
+  // scan order, and whether the lattice gate applies.
+  metal: 2_000_000_000,
   cuda: 70_000_000_000,
 }
 
@@ -73,7 +77,7 @@ export function estimateSearchTimes(
         ? { seconds: volume / measuredWebChecksPerSecond }
         : {}),
     },
-    ...(['cpu', 'cuda'] as const).map((runtime) => ({
+    ...(['cpu', 'metal', 'cuda'] as const).map((runtime) => ({
       runtime,
       seconds: work / PLACEHOLDER_CHECKS_PER_SECOND[runtime],
     })),

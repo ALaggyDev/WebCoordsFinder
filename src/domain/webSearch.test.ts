@@ -157,7 +157,7 @@ describe('web search configuration', () => {
     const request = createWebSearchRequest(searchableDocument())
 
     expect(request.mode).toBe(4)
-    expect(request.scanOrder).toBe(1)
+    expect(request.scanOrder).toBe(0)
     expect(request.directions).toEqual([0])
     expect(request.constraints).toEqual([
       {

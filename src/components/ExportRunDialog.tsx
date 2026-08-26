@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
   CheckCircle2,
+  CircuitBoard,
   Copy,
   Cpu,
   Download,
@@ -84,6 +85,11 @@ const runtimeDetails: Record<
     label: 'CoordsFinder CPU',
     detail: '~1B positions/sec',
     icon: Cpu,
+  },
+  metal: {
+    label: 'CoordsFinder Metal',
+    detail: 'Apple silicon · linear ≈3× spiral',
+    icon: CircuitBoard,
   },
   cuda: {
     label: 'CoordsFinder CUDA',
@@ -823,12 +829,12 @@ export function ExportRunDialog({
                 <Download size={18} />
                 <div>
                   <h3>Use CoordsFinder</h3>
-                  <span>Native CPU or CUDA</span>
+                  <span>Native Metal, CPU, or CUDA</span>
                 </div>
               </div>
               <p>
-                Download the exact configuration for your local CoordsFinder
-                executable.
+                Download the exact configuration for the bundled Apple-silicon
+                Metal scanner or your local CoordsFinder executable.
               </p>
               <div className="coordsfinder-links">
                 <a
@@ -837,6 +843,13 @@ export function ExportRunDialog({
                   rel="noreferrer"
                 >
                   CoordsFinder
+                </a>
+                <a
+                  href="https://github.com/ALaggyDev/WebCoordsFinder/tree/main/native/macos-metal"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Apple Silicon Metal
                 </a>
                 <a
                   href="https://colab.research.google.com/drive/17qih1n6VpQx_77C2spIF-JOJp17y9Jt6?usp=sharing"

@@ -33,7 +33,8 @@ repeatable without uploading a screenshot or project:
 4. Anchor one block, label visible faces, manually confirm their variants or
    review automatic proposals, and configure the search.
 5. Run a local background WASM search or download an exact
-   `coordsfinder.conf` for the native CPU/CUDA CoordsFinder executable.
+   `coordsfinder.conf` for native CPU/CUDA CoordsFinder or the bundled
+   Apple-silicon Metal scanner.
 
 Screenshots, project documents, reference comparisons, and browser searches
 remain on the current device. Vanilla reference textures and the scanner WASM
@@ -72,7 +73,7 @@ The top navigation has three stages:
 3. **Export** — choose the texture algorithm, scan order, optional quarter-turn
    directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
    settings. Review readiness and estimates, run the browser search, or export
-   / copy the generated configuration.
+   / copy the generated configuration for CPU, CUDA, or Metal scanning.
 
 Projects are autosaved in IndexedDB. The project library supports multiple
 local projects, bundled examples, deletion, and portable `.wcf` project
@@ -260,6 +261,8 @@ This is a React 19 + TypeScript + Vite application:
   native configuration generation.
 - `src/domain/webSearch.ts`, `src/workers/search.worker.ts`, and `src/wasm/` —
   browser-search request/checkpoint contracts, worker control, and WASM source.
+- `native/macos-metal/` — SwiftPM command-line scanner with an Apple-silicon
+  Metal compute backend and native-reference parity tests.
 - `src/storage/db.ts` — Dexie/IndexedDB project and image persistence.
 - `src/domain/projectBundle.ts` — zipped `.wcf` bundles with schema validation.
 - `src/domain/examples.ts` and `public/examples/` — bundled portable example

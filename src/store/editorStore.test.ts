@@ -858,7 +858,7 @@ describe('unit-face geometry', () => {
     legacy.scanner.printChunks = true
 
     expect(normalizeEditorDocument(legacy).scanner).toMatchObject({
-      scanOrder: 'spiral',
+      scanOrder: 'linear',
       cpuTileSize: { x: 1024, z: 1024 },
       cudaTileSize: { x: 16384, z: 16384 },
       errorTolerance: 0,
