@@ -2115,13 +2115,9 @@ export function worldAlignedFaceCorners(
   }
   const face = faceForLocalNormal(scene.axisMapping, meshFace.normal)
   if (!face) return undefined
-  const target =
-    face === 'down'
-      ? axesForFaceRotation(face, 2)
-      : defaultAxesForFace(face)
+  const target = defaultAxesForFace(face)
   // Canonical world ordering makes crops independent of the edge and direction
-  // from which a face was constructed. Bottom faces need a half-turn so their
-  // displayed orientation matches the external view convention.
+  // from which a face was constructed.
   const uAxis = localVectorForWorld(scene.axisMapping, target.uAxis)
   const vAxis = localVectorForWorld(scene.axisMapping, target.vAxis)
   return uAxis && vAxis
