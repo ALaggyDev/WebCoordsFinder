@@ -1,59 +1,121 @@
 /* Global tokens and browser resets shared by the fixed desktop workbench. */
 :root {
   font-family: 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
-  color: #f2f4f8;
-  background: #0b0f14;
+  color: #ffffff;
+  background: #17181c;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #0b0f14;
-  --surface: #121922;
-  --surface-2: #18212c;
-  --surface-3: #202a36;
-  --border: #34404d;
-  --border-soft: #252f3a;
-  --text: #f2f4f8;
-  --muted: #9aa5b5;
-  --faint: #667383;
-  --accent: #7196ff;
-  --accent-rgb: 113 150 255;
-  --accent-dark: #304d9c;
-  --accent-solid: #4e6bc8;
-  --accent-hover: #5e7bdc;
+  --bg: #17181c;
+  --surface: #2d3038;
+  --surface-2: #353943;
+  --surface-3: #505560;
+  --border: #444954;
+  --border-soft: #252a32;
+  --panel-deep: #1f232e;
+  --panel-tabs: #292f3d;
+  --theme-muted: #a6b5d9;
+  --text: #ffffff;
+  --muted: #8f95a3;
+  --faint: #686d78;
+  --accent: hsl(222deg 100% 70%);
+  --accent-rgb: 102 148 255;
+  --accent-dark: hsl(222deg 50% 35%);
+  --accent-solid: hsl(222deg 50% 45%);
+  --accent-hover: hsl(222deg 100% 70%);
   --accent-contrast: #ffffff;
-  --blue: #67a7ff;
-  --amber: #e9b75f;
-  --red: #ff6b70;
-  --success: #65d69a;
+  --theme-hue: 222deg;
+  --blue: hsl(222deg 100% 70%);
+  --amber: #fcfc55;
+  --red: #ff3a3a;
+  --success: #53e446;
   --mono: 'SFMono-Regular', Menlo, Monaco, 'Cascadia Mono', Consolas, monospace;
   color-scheme: dark;
 }
 
 :root[data-theme='green'] {
-  --accent: #53e6a5;
-  --accent-rgb: 83 230 165;
-  --accent-dark: #1f6a4d;
-  --accent-solid: #53e6a5;
-  --accent-hover: #6af0b5;
-  --accent-contrast: #07140e;
+  --bg: #111712;
+  --surface: #2d3a2e;
+  --surface-2: #354436;
+  --surface-3: #526153;
+  --border: #425243;
+  --border-soft: #202d21;
+  --panel-deep: #19281a;
+  --panel-tabs: #29412a;
+  --theme-muted: #b1c7b0;
+  --muted: #a7b7a4;
+  --faint: #718171;
+  --accent: hsl(109deg 100% 70%);
+  --accent-rgb: 136 255 102;
+  --accent-dark: hsl(109deg 50% 35%);
+  --accent-solid: hsl(109deg 50% 45%);
+  --accent-hover: hsl(109deg 100% 70%);
+  --accent-contrast: #ffffff;
+  --theme-hue: 109deg;
 }
 
-:root[data-theme='pink'] {
-  --accent: #f24c86;
-  --accent-rgb: 242 76 134;
-  --accent-dark: #8f244d;
-  --accent-solid: #d83a73;
-  --accent-hover: #ec4c87;
+:root[data-theme='purple'] {
+  --bg: #15151a;
+  --surface: #312f39;
+  --surface-2: #393644;
+  --surface-3: #53505e;
+  --border: #46424f;
+  --border-soft: #282531;
+  --panel-deep: #211c2e;
+  --panel-tabs: #302a41;
+  --theme-muted: #b8acd5;
+  --muted: #aaa2b9;
+  --faint: #766f83;
+  --accent: hsl(260deg 100% 70%);
+  --accent-rgb: 136 102 255;
+  --accent-dark: hsl(260deg 50% 35%);
+  --accent-solid: hsl(260deg 50% 45%);
+  --accent-hover: hsl(260deg 100% 70%);
   --accent-contrast: #ffffff;
+  --theme-hue: 260deg;
 }
 
 :root[data-theme='blue'] {
-  --accent: #7196ff;
-  --accent-rgb: 113 150 255;
-  --accent-dark: #304d9c;
-  --accent-solid: #4e6bc8;
-  --accent-hover: #5e7bdc;
+  --bg: #17181c;
+  --surface: #2d3038;
+  --surface-2: #353943;
+  --surface-3: #505560;
+  --border: #444954;
+  --border-soft: #252a32;
+  --panel-deep: #1f232e;
+  --panel-tabs: #292f3d;
+  --theme-muted: #a6b5d9;
+  --muted: #9aa5b8;
+  --faint: #68758a;
+  --accent: hsl(222deg 100% 70%);
+  --accent-rgb: 102 148 255;
+  --accent-dark: hsl(222deg 50% 35%);
+  --accent-solid: hsl(222deg 50% 45%);
+  --accent-hover: hsl(222deg 100% 70%);
   --accent-contrast: #ffffff;
+  --theme-hue: 222deg;
+}
+
+:root[data-theme='white'] {
+  --bg: #141518;
+  --surface: #303238;
+  --surface-2: #3a3c42;
+  --surface-3: #555861;
+  --border: #494c54;
+  --border-soft: #292b30;
+  --panel-deep: #202126;
+  --panel-tabs: #2b2d33;
+  --theme-muted: #d1d3d8;
+  --text: #ffffff;
+  --muted: #b6b8bf;
+  --faint: #858891;
+  --accent: #ffffff;
+  --accent-rgb: 255 255 255;
+  --accent-dark: #7c7f86;
+  --accent-solid: #e7e8eb;
+  --accent-hover: #ffffff;
+  --accent-contrast: #17181c;
+  --theme-hue: 0deg;
 }
 
 * {
@@ -91,7 +153,8 @@ summary:focus-visible {
 }
 
 ::selection {
-  background: rgb(var(--accent-rgb) / 0.28);
+  color: #ffffff;
+  background: var(--accent-solid);
 }
 
 ::-webkit-scrollbar {
@@ -100,8 +163,8 @@ summary:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #465363;
-  border-radius: 2px;
+  background: var(--surface-3);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-track {

@@ -7,7 +7,6 @@ import {
   FolderOpen,
   Grid3X3,
   ImagePlus,
-  Info,
   Keyboard,
   Palette,
   X,
@@ -30,21 +29,26 @@ const steps: Array<{
   { id: 'export', label: 'Export', icon: Download },
 ]
 
-type ColorTheme = 'green' | 'pink' | 'blue'
+type ColorTheme = 'blue' | 'green' | 'purple' | 'white'
 
 const themeOptions: Array<{ id: ColorTheme; label: string }> = [
-  { id: 'green', label: 'Original green' },
-  { id: 'pink', label: 'Pink' },
   { id: 'blue', label: 'Blue' },
+  { id: 'green', label: 'Green' },
+  { id: 'purple', label: 'Purple' },
+  { id: 'white', label: 'White' },
 ]
 
 const isColorTheme = (value: string | null): value is ColorTheme =>
-  value === 'green' || value === 'pink' || value === 'blue'
+  value === 'blue' ||
+  value === 'green' ||
+  value === 'purple' ||
+  value === 'white'
 
 const getInitialTheme = (): ColorTheme => {
   if (typeof window === 'undefined') return 'blue'
   try {
     const savedTheme = window.localStorage.getItem('webcoordsfinder-theme')
+    if (savedTheme === 'pink') return 'purple'
     return isColorTheme(savedTheme) ? savedTheme : 'blue'
   } catch {
     return 'blue'
@@ -104,6 +108,7 @@ export function TopBar({
 
   return (
     <header className={currentPath === '/' ? 'topbar' : 'topbar info-topbar'}>
+      <div className="topbar-content">
       <div className="topbar-brand-area">
         <button className="brand" type="button" onClick={() => navigate('/')}>
           <span className="brand-mark" aria-hidden="true">
@@ -125,7 +130,6 @@ export function TopBar({
                 setKeybindingsOpen(false)
               }}
             >
-              <Info size={15} />
               <span>Info</span>
             </button>
             {infoMenuOpen && (
@@ -182,7 +186,8 @@ export function TopBar({
           <button
             className="icon-button topbar-theme"
             type="button"
-            aria-label="Choose color theme"
+            aria-label={`Choose color theme. Current theme: ${theme}`}
+            title={`Color theme: ${theme}`}
             aria-haspopup="menu"
             aria-expanded={themeMenuOpen}
             onClick={() => {
@@ -296,6 +301,7 @@ export function TopBar({
           </span>
         </button>
       </div>}
+      </div>
     </header>
   )
 }

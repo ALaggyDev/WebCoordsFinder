@@ -589,3 +589,112 @@ body.export-run-dialog-open {
   background:
     linear-gradient(to bottom, rgba(18, 26, 35, 0), var(--surface) 18px);
 }
+
+/* WebCoordsFinder export-dialog theme ---------------------------------------
+ * App-specific dialog rules using the shared workbench palette.
+ */
+.export-run-backdrop {
+  background: rgba(23, 24, 28, 0.82);
+}
+
+.export-run-dialog {
+  color: #fff;
+  background: var(--surface);
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.export-run-header {
+  min-height: 55px;
+  padding: 14px 20px;
+  background: var(--panel-deep);
+  border-color: var(--border-soft);
+}
+
+.export-run-header span,
+.export-run-section-label {
+  color: #8f95a3;
+  font: 11px/1.35 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+
+.export-run-header h2 {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+
+.export-run-content {
+  padding: 20px;
+  gap: 20px;
+}
+
+.export-run-status,
+.export-run-metrics > div,
+.runtime-estimate,
+.run-target,
+.web-search-stats > div,
+.web-search-results-scroll,
+.export-run-config-preview pre {
+  background: var(--surface-2);
+  border-color: var(--border);
+  border-radius: 4px;
+}
+
+.export-run-status {
+  padding: 7px 10px;
+}
+
+.export-run-status.ready {
+  color: #fff;
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+
+.export-run-status.blocked {
+  color: #fcfc55;
+  background: var(--surface-2);
+  border-color: #696a48;
+}
+
+.runtime-estimate-heading,
+.run-target-heading,
+.web-search-phase,
+.web-search-checkpoint-note svg,
+.coordsfinder-links a {
+  color: var(--accent);
+}
+
+.run-target {
+  border-top: 4px solid var(--accent);
+}
+
+.web-search-progress progress,
+.web-search-progress progress::-webkit-progress-bar {
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.web-search-progress progress::-webkit-progress-value,
+.web-search-progress progress::-moz-progress-bar {
+  background: var(--accent-solid);
+  border-radius: 4px;
+}
+
+.web-search-results th,
+.export-run-config-preview pre {
+  background: var(--bg);
+}
+
+.export-inspector-footer {
+  background: var(--surface);
+  border-top: 1px solid var(--border-soft);
+}
+
+:root[data-theme='white'] .export-run-status.ready {
+  color: var(--accent-contrast);
+}
