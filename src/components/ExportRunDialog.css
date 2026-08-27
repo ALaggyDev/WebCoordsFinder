@@ -19,7 +19,7 @@ body.export-run-dialog-open {
   overflow: auto;
   color: var(--text);
   background:
-    radial-gradient(circle at 80% 0%, rgba(83, 230, 165, 0.07), transparent 32%),
+    radial-gradient(circle at 80% 0%, rgb(var(--accent-rgb) / 0.07), transparent 32%),
     var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -85,8 +85,8 @@ body.export-run-dialog-open {
 
 .export-run-status.ready {
   color: var(--accent);
-  background: rgba(83, 230, 165, 0.07);
-  border-color: rgba(83, 230, 165, 0.2);
+  background: rgb(var(--accent-rgb) / 0.07);
+  border-color: rgb(var(--accent-rgb) / 0.2);
 }
 
 .export-run-status.blocked {
@@ -528,4 +528,64 @@ body.export-run-dialog-open {
   .export-run-actions {
     grid-template-columns: 1fr;
   }
+}
+
+/* Match the editor's flatter, theme-aware workbench language. */
+.export-run-dialog {
+  background: var(--surface);
+  border-color: #465362;
+  border-radius: 4px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+
+.export-run-header {
+  background: #121a23;
+  backdrop-filter: none;
+}
+
+.export-run-header span,
+.export-run-section-label {
+  color: #8996a7;
+  font: 10px var(--mono);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.export-run-status,
+.export-run-metrics > div,
+.runtime-estimate,
+.run-target,
+.export-run-config-preview pre {
+  border-radius: 3px;
+}
+
+.export-run-status.ready {
+  color: var(--success);
+  background: rgba(101, 214, 154, 0.06);
+  border-color: rgba(101, 214, 154, 0.26);
+}
+
+.export-run-metrics > div,
+.runtime-estimate,
+.run-target {
+  background: transparent;
+  border-color: #34404c;
+}
+
+.runtime-estimate-heading,
+.run-target-heading {
+  color: var(--accent);
+}
+
+.run-target {
+  border-top: 3px solid var(--accent);
+}
+
+.export-run-config-preview pre {
+  background: #0b1118;
+}
+
+.export-inspector-footer {
+  background:
+    linear-gradient(to bottom, rgba(18, 26, 35, 0), var(--surface) 18px);
 }

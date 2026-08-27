@@ -1,26 +1,59 @@
 /* Global tokens and browser resets shared by the fixed desktop workbench. */
 :root {
-  font-family: Inter, 'Segoe UI Variable', 'Segoe UI', sans-serif;
-  color: #e8eef1;
-  background: #0b1014;
+  font-family: 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
+  color: #f2f4f8;
+  background: #0b0f14;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #0b1014;
-  --surface: #11181d;
-  --surface-2: #172027;
-  --surface-3: #1d282f;
-  --border: #2a353d;
-  --border-soft: #202a31;
-  --text: #e8eef1;
-  --muted: #8d9aa3;
-  --faint: #5d6a73;
+  --bg: #0b0f14;
+  --surface: #121922;
+  --surface-2: #18212c;
+  --surface-3: #202a36;
+  --border: #34404d;
+  --border-soft: #252f3a;
+  --text: #f2f4f8;
+  --muted: #9aa5b5;
+  --faint: #667383;
+  --accent: #7196ff;
+  --accent-rgb: 113 150 255;
+  --accent-dark: #304d9c;
+  --accent-solid: #4e6bc8;
+  --accent-hover: #5e7bdc;
+  --accent-contrast: #ffffff;
+  --blue: #67a7ff;
+  --amber: #e9b75f;
+  --red: #ff6b70;
+  --success: #65d69a;
+  --mono: 'SFMono-Regular', Menlo, Monaco, 'Cascadia Mono', Consolas, monospace;
+  color-scheme: dark;
+}
+
+:root[data-theme='green'] {
   --accent: #53e6a5;
+  --accent-rgb: 83 230 165;
   --accent-dark: #1f6a4d;
-  --blue: #70a7ff;
-  --amber: #f0b64d;
-  --red: #ff716d;
-  --mono: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+  --accent-solid: #53e6a5;
+  --accent-hover: #6af0b5;
+  --accent-contrast: #07140e;
+}
+
+:root[data-theme='pink'] {
+  --accent: #f24c86;
+  --accent-rgb: 242 76 134;
+  --accent-dark: #8f244d;
+  --accent-solid: #d83a73;
+  --accent-hover: #ec4c87;
+  --accent-contrast: #ffffff;
+}
+
+:root[data-theme='blue'] {
+  --accent: #7196ff;
+  --accent-rgb: 113 150 255;
+  --accent-dark: #304d9c;
+  --accent-solid: #4e6bc8;
+  --accent-hover: #5e7bdc;
+  --accent-contrast: #ffffff;
 }
 
 * {
@@ -58,7 +91,7 @@ summary:focus-visible {
 }
 
 ::selection {
-  background: rgba(83, 230, 165, 0.25);
+  background: rgb(var(--accent-rgb) / 0.28);
 }
 
 ::-webkit-scrollbar {
@@ -67,8 +100,8 @@ summary:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #35424a;
-  border-radius: 999px;
+  background: #465363;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-track {

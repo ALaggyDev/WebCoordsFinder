@@ -143,13 +143,13 @@ function SectionTitle({
 }: {
   icon: typeof Grid3X3
   title: string
-  eyebrow: string
+  eyebrow?: string
 }) {
   return (
     <div className="inspector-heading">
       <div className="heading-icon"><Icon size={17} /></div>
       <div>
-        <span>{eyebrow}</span>
+        {eyebrow ? <span>{eyebrow}</span> : null}
         <h2>{title}</h2>
       </div>
     </div>
@@ -253,8 +253,7 @@ function GeometryInspector() {
       <>
         <SectionTitle
           icon={Grid3X3}
-          eyebrow="Mesh geometry"
-          title="Global geometry"
+          title="Geometry"
         />
         <section className="geometry-part">
           <div className="empty-inspector calibration-empty">
@@ -284,9 +283,9 @@ function GeometryInspector() {
 
   return (
     <>
-      <SectionTitle icon={Grid3X3} eyebrow="Mesh geometry" title="Global geometry" />
+      <SectionTitle icon={Grid3X3} title="Geometry" />
       <section className="geometry-part">
-        <h3>Perspective geometry</h3>
+        <h3>Projection</h3>
         <div className="geometry-status-list">
           <div className="geometry-status resolved">
             <Grid3X3 size={17} />
@@ -355,7 +354,7 @@ function GeometryInspector() {
               type="button"
               onClick={startUpOrientation}
             >
-              Change up direction
+              Change up
             </button>
           </div>
         ) : orientationDraft?.mode === 'up' ? (
@@ -1277,7 +1276,7 @@ function ExportInspector() {
 
   return (
     <div className="export-inspector">
-      <SectionTitle icon={Download} eyebrow="Search setup" title="Export configuration" />
+      <SectionTitle icon={Download} title="Export" />
       <div className="field">
         <div className="field-label">
           <span>Texture algorithm</span>

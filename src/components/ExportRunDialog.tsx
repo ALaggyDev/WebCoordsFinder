@@ -489,7 +489,7 @@ export function ExportRunDialog({
       >
         <header className="export-run-header">
           <div>
-            <span>Search handoff</span>
+            <span>Search</span>
             <h2 id="export-run-title">Export or run search</h2>
           </div>
           <button
