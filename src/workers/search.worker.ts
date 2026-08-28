@@ -23,14 +23,19 @@ interface SearchExports extends WebAssembly.Exports {
     filterCount: number,
     directionCount: number,
   ) => number
-  search_set_direction: (index: number, quarterTurns: number) => number
+  search_set_direction: (
+    index: number,
+    quarterTurns: number,
+    filterCount: number,
+    forcedErrors: number,
+  ) => number
   search_set_filter: (
+    directionIndex: number,
     index: number,
     x: number,
     y: number,
     z: number,
-    rotation: number,
-    visibleMask: number,
+    acceptedIndices: number,
   ) => number
   search_restore: (processed: bigint, matchCount: bigint) => number
   search_scan_batch: (maxPositions: number, captureLimit: number) => number
@@ -225,7 +230,7 @@ async function startSearch(
       request.zStart,
       request.zEnd,
       request.maxBadBlocks,
-      request.constraints.length,
+      Math.max(...request.constraintsByDirection.map((constraints) => constraints.length)),
       request.directions.length,
     )
     if (configureError !== 0) {
@@ -236,24 +241,28 @@ async function startSearch(
       const directionError = module.search_set_direction(
         index,
         direction / 90,
+        request.constraintsByDirection[index].length,
+        request.forcedErrorsByDirection[index],
       )
       if (directionError !== 0) {
         throw new Error(`WASM scanner rejected direction ${direction}°.`)
       }
     })
 
-    request.constraints.forEach((constraint, index) => {
-      const filterError = module.search_set_filter(
-        index,
-        constraint.x,
-        constraint.y,
-        constraint.z,
-        constraint.rotation,
-        constraint.visibleMask,
-      )
-      if (filterError !== 0) {
-        throw new Error(`WASM scanner rejected constraint ${index + 1}.`)
-      }
+    request.constraintsByDirection.forEach((constraints, directionIndex) => {
+      constraints.forEach((constraint, index) => {
+        const filterError = module.search_set_filter(
+          directionIndex,
+          index,
+          constraint.x,
+          constraint.y,
+          constraint.z,
+          constraint.acceptedIndices,
+        )
+        if (filterError !== 0) {
+          throw new Error(`WASM scanner rejected constraint ${index + 1}.`)
+        }
+      })
     })
 
     const next = command.checkpoint?.next ?? shardStart

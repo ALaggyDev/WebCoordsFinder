@@ -1,4 +1,5 @@
 import { confirmedUniqueEvidence, validateForExport } from './exportConfig'
+import { compileFilterDirections } from './filterConstraints'
 import type {
   EditorDocument,
   PersistedWebSearchPhase,
@@ -13,7 +14,7 @@ import type {
 // The web-search protocol keeps exact counters as BigInt in memory and as
 // decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 5
+export const WEB_SEARCH_ENGINE_VERSION = 6
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -32,8 +33,7 @@ export interface WebSearchConstraint {
   x: number
   y: number
   z: number
-  rotation: number
-  visibleMask: 1 | 3
+  acceptedIndices: number
 }
 
 export interface WebSearchRequest {
@@ -47,7 +47,8 @@ export interface WebSearchRequest {
   zStart: number
   zEnd: number
   maxBadBlocks: number
-  constraints: WebSearchConstraint[]
+  constraintsByDirection: WebSearchConstraint[][]
+  forcedErrorsByDirection: number[]
 }
 
 export interface WebSearchOrdinalShard {
@@ -345,6 +346,12 @@ export function createWebSearchRequest(
     throw new Error('The web search volume exceeds the WASM scanner limit.')
   }
 
+  const compiledDirections = compileFilterDirections(
+    confirmedUniqueEvidence(document),
+    document.scanner.textureAlgorithm,
+    document.scanner.directions,
+  )
+
   return {
     mode: textureModeIds[document.scanner.textureAlgorithm],
     scanOrder: scanOrderIds[document.scanner.scanOrder],
@@ -356,17 +363,8 @@ export function createWebSearchRequest(
     zStart,
     zEnd,
     maxBadBlocks,
-    constraints: confirmedUniqueEvidence(document)
-      .map((entry) => ({
-        x: entry.coordinate.x,
-        y: entry.coordinate.y,
-        z: entry.coordinate.z,
-        rotation: entry.selectedVariant!,
-        visibleMask: entry.stateCount === 2 ? 1 as const : 3 as const,
-      }))
-      // Four-state evidence rejects random coordinates more often, reducing
-      // average hot-loop work without changing accepted candidates or errors.
-      .sort((left, right) => right.visibleMask - left.visibleMask),
+    constraintsByDirection: compiledDirections.map((entry) => entry.constraints),
+    forcedErrorsByDirection: compiledDirections.map((entry) => entry.forcedErrors),
   }
 }
 

@@ -11,10 +11,11 @@ processing pause and stop messages without WebAssembly threads or shared
 memory.
 
 `search_restore` reconstructs the next X/Y/Z cursor from a saved 64-bit
-absolute ordinal, including the active compass-direction pass. Each
-direction rotates the filter's X/Z offsets and advances four-state variants by
-one per quarter-turn; folded two-state side variants remain unchanged. The
-Every captured match includes its absolute ordinal. The coordinator merges
+absolute ordinal, including the active compass-direction pass. Each direction
+uses precompiled 16-model acceptance masks. Top variants advance by one per
+quarter-turn, bottom variants decrease, folded side variants remain unchanged,
+and netherrack observations are combined per block. Every captured match
+includes its absolute ordinal. The coordinator merges
 worker results by that ordinal, so the retained first 1,000 are deterministic
 and identical to a monolithic scan even when later shards report first. The
 project stores ordinals, counters, and cursors as decimal strings, so a reload

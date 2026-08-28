@@ -47,7 +47,7 @@ function searchableDocument(): EditorDocument {
 
 interface TestSearchExports extends WebAssembly.Exports {
   search_configure: (...values: number[]) => number
-  search_set_direction: (index: number, quarterTurns: number) => number
+  search_set_direction: (...values: number[]) => number
   search_set_filter: (...values: number[]) => number
   search_restore: (processed: bigint, matchCount: bigint) => number
   search_scan_batch: (maxPositions: number, captureLimit: number) => number
@@ -62,6 +62,64 @@ interface TestSearchExports extends WebAssembly.Exports {
   search_get_result_z: (index: number) => number
   search_get_result_direction: (index: number) => number
 }
+
+function ordinaryMask(mode: number, rotation: number, side = false): number {
+  let mask = 0
+  for (let index = 0; index < 16; index += 1) {
+    const visible = mode === 2 ? index >> 2 : index & 3
+    if ((side ? visible & 1 : visible) === rotation) mask |= 1 << index
+  }
+  return mask
+}
+
+function ordinaryConstraint(
+  mode: number,
+  turns: number,
+  x: number,
+  y: number,
+  z: number,
+  rotation: number,
+  face: 'up' | 'down' | 'side' = 'up',
+) {
+  const [directionalX, directionalZ] = turns === 1
+    ? [-z, x]
+    : turns === 2
+      ? [-x, -z]
+      : turns === 3
+        ? [z, -x]
+        : [x, z]
+  const directionalRotation = face === 'side'
+    ? rotation
+    : (rotation + turns) % 4
+  return {
+    x: directionalX,
+    y,
+    z: directionalZ,
+    acceptedIndices: ordinaryMask(mode, directionalRotation, face === 'side'),
+  }
+}
+
+function setDirection(
+  module: TestSearchExports,
+  index: number,
+  turns: number,
+  constraints: Array<{ x: number; y: number; z: number; acceptedIndices: number }>,
+  forcedErrors = 0,
+) {
+  expect(module.search_set_direction(index, turns, constraints.length, forcedErrors)).toBe(0)
+  constraints.forEach((constraint, constraintIndex) => {
+    expect(module.search_set_filter(
+      index,
+      constraintIndex,
+      constraint.x,
+      constraint.y,
+      constraint.z,
+      constraint.acceptedIndices,
+    )).toBe(0)
+  })
+}
+
+const matchAllConstraint = { x: 0, y: 0, z: 0, acceptedIndices: 0xffff }
 
 describe('web search configuration', () => {
   it('splits exact half-open ordinal ranges without gaps or overlaps', () => {
@@ -148,9 +206,9 @@ describe('web search configuration', () => {
       selectedVariant: 2,
     })
 
-    expect(createWebSearchRequest(document).constraints.map((entry) =>
-      entry.visibleMask,
-    )).toEqual([3, 1])
+    expect(createWebSearchRequest(document).constraintsByDirection[0].map((entry) =>
+      entry.acceptedIndices,
+    )).toEqual([0x4444, 0xaaaa])
   })
 
   it('maps confirmed evidence and texture modes to the WASM scanner format', () => {
@@ -159,15 +217,45 @@ describe('web search configuration', () => {
     expect(request.mode).toBe(4)
     expect(request.scanOrder).toBe(1)
     expect(request.directions).toEqual([0])
-    expect(request.constraints).toEqual([
+    expect(request.constraintsByDirection).toEqual([[
       {
         x: 0,
         y: 0,
         z: 0,
-        rotation: 1,
-        visibleMask: 1,
+        acceptedIndices: 0xaaaa,
       },
-    ])
+    ]])
+    expect(request.forcedErrorsByDirection).toEqual([0])
+  })
+
+  it('increases four-way bottom variants for clockwise search directions', () => {
+    const document = searchableDocument()
+    document.evidence = [{
+      ...document.evidence[0],
+      blockId: 'dirt',
+      stateCount: 4,
+      selectedVariant: 0,
+      localNormal: { x: 0, y: 1, z: 0 },
+    }]
+    document.scanner.directions = [90]
+
+    expect(createWebSearchRequest(document).constraintsByDirection[0][0])
+      .toMatchObject({ acceptedIndices: 0x2222 })
+  })
+
+  it('intersects correlated netherrack faces into one 16-model constraint', () => {
+    const document = searchableDocument()
+    const base = document.evidence[0]
+    document.scanner.textureAlgorithm = 'Vanilla-3'
+    document.evidence = [
+      { ...base, id: 'rack-up', blockId: 'netherrack', stateCount: 4, selectedVariant: 1, localNormal: { x: 0, y: -1, z: 0 } },
+      { ...base, id: 'rack-north', blockId: 'netherrack', stateCount: 4, selectedVariant: 3, localNormal: { x: 0, y: 0, z: 1 } },
+      { ...base, id: 'rack-east', blockId: 'netherrack', stateCount: 4, selectedVariant: 2, localNormal: { x: 1, y: 0, z: 0 } },
+    ]
+
+    expect(createWebSearchRequest(document).constraintsByDirection).toEqual([[
+      { x: 0, y: 0, z: 0, acceptedIndices: 1 << 5 },
+    ]])
   })
 
   it('counts every selected direction as a separate search pass', () => {
@@ -258,9 +346,8 @@ describe('checked-in web search WASM', () => {
       expect(
         module.search_configure(mode, scanOrder, -3, 3, 0, 1, -2, 2, 0, 1, 2),
       ).toBe(0)
-      expect(module.search_set_direction(0, 0)).toBe(0)
-      expect(module.search_set_direction(1, 1)).toBe(0)
-      expect(module.search_set_filter(0, 1, 0, -1, 2, 3)).toBe(0)
+      setDirection(module, 0, 0, [ordinaryConstraint(mode, 0, 1, 0, -1, 2)])
+      setDirection(module, 1, 1, [ordinaryConstraint(mode, 1, 1, 0, -1, 2)])
     }
     const collect = (module: TestSearchExports) =>
       Array.from({ length: module.search_get_result_count() }, (_, index) =>
@@ -330,8 +417,7 @@ describe('checked-in web search WASM', () => {
       expect(
         module.search_configure(0, 0, 0, 1_999, 0, 0, 0, 0, 1, 1, 1),
       ).toBe(0)
-      expect(module.search_set_direction(0, 0)).toBe(0)
-      expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+      setDirection(module, 0, 0, [matchAllConstraint])
       expect(module.search_restore(shard.start, 0n)).toBe(0)
       expect(
         module.search_scan_batch(Number(shard.end - shard.start), 1_000),
@@ -363,8 +449,7 @@ describe('checked-in web search WASM', () => {
     const module = instance.exports as TestSearchExports
 
     expect(module.search_configure(2, 0, 0, 9, 0, 0, 0, 0, 1, 1, 1)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
 
     expect(module.search_scan_batch(3, 2)).toBe(3)
     expect(module.search_get_processed()).toBe(3n)
@@ -373,8 +458,7 @@ describe('checked-in web search WASM', () => {
     expect(module.search_is_finished()).toBe(0)
 
     expect(module.search_configure(2, 0, 0, 9, 0, 0, 0, 0, 1, 1, 1)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
     expect(module.search_restore(3n, 3n)).toBe(0)
     expect(module.search_scan_batch(7, 0)).toBe(7)
     expect(module.search_get_processed()).toBe(10n)
@@ -389,9 +473,8 @@ describe('checked-in web search WASM', () => {
     const module = instance.exports as TestSearchExports
 
     expect(module.search_configure(2, 0, 0, 2, 0, 0, 0, 0, 1, 1, 2)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_direction(1, 1)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
+    setDirection(module, 1, 1, [matchAllConstraint])
     expect(module.search_get_total()).toBe(6n)
     expect(module.search_scan_batch(4, 4)).toBe(4)
     expect(
@@ -402,9 +485,8 @@ describe('checked-in web search WASM', () => {
     ).toEqual([0, 90, 0, 90])
 
     expect(module.search_configure(2, 0, 0, 2, 0, 0, 0, 0, 1, 1, 2)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_direction(1, 1)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
+    setDirection(module, 1, 1, [matchAllConstraint])
     expect(module.search_restore(4n, 4n)).toBe(0)
     expect(module.search_scan_batch(2, 2)).toBe(2)
     expect(module.search_get_processed()).toBe(6n)
@@ -423,8 +505,7 @@ describe('checked-in web search WASM', () => {
     const module = instance.exports as TestSearchExports
 
     expect(module.search_configure(2, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
     expect(module.search_scan_batch(8, 8)).toBe(8)
 
     expect(
@@ -445,9 +526,8 @@ describe('checked-in web search WASM', () => {
     const module = instance.exports as TestSearchExports
 
     expect(module.search_configure(2, 1, -1, 1, 0, 0, -1, 1, 1, 1, 2)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_direction(1, 1)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
+    setDirection(module, 1, 1, [matchAllConstraint])
     expect(module.search_scan_batch(5, 5)).toBe(5)
     expect(
       Array.from({ length: module.search_get_result_count() }, (_, index) => [
@@ -460,9 +540,8 @@ describe('checked-in web search WASM', () => {
     ])
 
     expect(module.search_configure(2, 1, -1, 1, 0, 0, -1, 1, 1, 1, 2)).toBe(0)
-    expect(module.search_set_direction(0, 0)).toBe(0)
-    expect(module.search_set_direction(1, 1)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+    setDirection(module, 0, 0, [matchAllConstraint])
+    setDirection(module, 1, 1, [matchAllConstraint])
     expect(module.search_restore(5n, 5n)).toBe(0)
     expect(module.search_scan_batch(13, 13)).toBe(13)
     expect(module.search_get_processed()).toBe(18n)
@@ -491,8 +570,7 @@ describe('checked-in web search WASM', () => {
       [3, 4, 8, 10],
     ]) {
       expect(module.search_configure(2, 1, xStart, xEnd, 0, 0, zStart, zEnd, 1, 1, 1)).toBe(0)
-      expect(module.search_set_direction(0, 0)).toBe(0)
-      expect(module.search_set_filter(0, 0, 0, 0, 0, 3)).toBe(0)
+      setDirection(module, 0, 0, [matchAllConstraint])
       const total = (xEnd - xStart + 1) * (zEnd - zStart + 1)
       expect(module.search_scan_batch(total, total)).toBe(total)
       expect(module.search_get_result_count()).toBe(total)
@@ -507,7 +585,7 @@ describe('checked-in web search WASM', () => {
     }
   })
 
-  it('rotates X/Z offsets, shifts four-state variants, and preserves side variants', async () => {
+  it('rotates offsets, shifts all four-way variants clockwise, and preserves side variants', async () => {
     const binary = await readFile('src/wasm/coords_search.wasm')
     const { instance } = await WebAssembly.instantiate(binary)
     const module = instance.exports as TestSearchExports
@@ -517,15 +595,14 @@ describe('checked-in web search WASM', () => {
       x: number,
       z: number,
       rotation: number,
-      visibleMask: 1 | 3,
+      face: 'up' | 'down' | 'side',
     ) => {
       expect(
         module.search_configure(2, 0, -4, 4, 0, 0, -4, 4, 0, 1, 1),
       ).toBe(0)
-      expect(module.search_set_direction(0, quarterTurns)).toBe(0)
-      expect(
-        module.search_set_filter(0, x, 0, z, rotation, visibleMask),
-      ).toBe(0)
+      setDirection(module, 0, quarterTurns, [
+        ordinaryConstraint(2, quarterTurns, x, 0, z, rotation, face),
+      ])
       expect(module.search_scan_batch(81, 81)).toBe(81)
       return Array.from(
         { length: module.search_get_result_count() },
@@ -544,19 +621,22 @@ describe('checked-in web search WASM', () => {
       { quarterTurns: 3, x: -2, z: -1 },
     ]
     transformed.forEach(({ quarterTurns, x, z }) => {
-      expect(scan(quarterTurns, 1, -2, 0, 3)).toEqual(
-        scan(0, x, z, quarterTurns, 3),
+      expect(scan(quarterTurns, 1, -2, 0, 'up')).toEqual(
+        scan(0, x, z, quarterTurns, 'up'),
       )
-      expect(scan(quarterTurns, 1, -2, 1, 1)).toEqual(
-        scan(0, x, z, 1, 1),
+      expect(scan(quarterTurns, 1, -2, 0, 'down')).toEqual(
+        scan(0, x, z, quarterTurns, 'down'),
+      )
+      expect(scan(quarterTurns, 1, -2, 1, 'side')).toEqual(
+        scan(0, x, z, 1, 'side'),
       )
     })
 
     expect(
       module.search_configure(2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1),
     ).toBe(0)
-    expect(module.search_set_direction(0, 1)).toBe(0)
-    expect(module.search_set_filter(0, 0, 0, -128, 0, 3)).toBe(2)
+    expect(module.search_set_direction(0, 1, 1, 0)).toBe(0)
+    expect(module.search_set_filter(0, 0, 128, 0, 0, 0x1111)).toBe(2)
   })
 
   it('matches native CoordsFinder reference vectors for every texture mode', async () => {
@@ -594,8 +674,7 @@ describe('checked-in web search WASM', () => {
       expect(module.search_configure(mode, 0, -2, 2, 0, 1, -1, 1, 0, 1, 1)).toBe(
         0,
       )
-      expect(module.search_set_direction(0, 0)).toBe(0)
-      expect(module.search_set_filter(0, 1, 0, -1, 2, 3)).toBe(0)
+      setDirection(module, 0, 0, [ordinaryConstraint(mode, 0, 1, 0, -1, 2)])
       expect(module.search_scan_batch(30, 30)).toBe(30)
       const matches = Array.from(
         { length: module.search_get_result_count() },
@@ -608,5 +687,21 @@ describe('checked-in web search WASM', () => {
       )
       expect(matches).toEqual(expectedMatches)
     })
+  })
+
+  it('samples native Vanilla-3 16-model indices for netherrack masks', async () => {
+    const binary = await readFile('src/wasm/coords_search.wasm')
+    const { instance } = await WebAssembly.instantiate(binary)
+    const module = instance.exports as TestSearchExports
+
+    expect(module.search_configure(2, 0, -32, 31, 0, 0, 0, 0, 0, 1, 1)).toBe(0)
+    setDirection(module, 0, 0, [
+      { x: 0, y: 0, z: 0, acceptedIndices: 1 << 5 },
+    ])
+    expect(module.search_scan_batch(64, 64)).toBe(64)
+    expect(Array.from(
+      { length: module.search_get_result_count() },
+      (_, index) => module.search_get_result_x(index),
+    )).toEqual([8, 17, 28])
   })
 })

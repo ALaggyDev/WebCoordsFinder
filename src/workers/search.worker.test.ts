@@ -41,7 +41,8 @@ describe('search shard worker failure recovery', () => {
         zStart: 0,
         zEnd: 0,
         maxBadBlocks: 0,
-        constraints: [],
+        constraintsByDirection: [[]],
+        forcedErrorsByDirection: [0],
       },
     }
     window.onmessage?.call(window, new MessageEvent('message', { data: command }))
