@@ -134,7 +134,6 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     errors.push('Select at least one unique quarter-turn search direction.')
   }
   if (rows.length === 0) errors.push('No block faces are confirmed.')
-  if (rows.length > 256) errors.push('CoordsFinder supports at most 256 filter rows.')
   if (
     bounds.xStart > bounds.xEnd ||
     bounds.yStart > bounds.yEnd ||
@@ -212,9 +211,6 @@ export function validateForExport(document: EditorDocument): ValidationResult {
         document.scanner.textureAlgorithm,
         validDirections,
       )
-      if (compiled.some((direction) => direction.constraints.length > 256)) {
-        errors.push('CoordsFinder supports at most 256 compiled block constraints.')
-      }
       if (compiled.some(
         (direction) =>
           direction.constraints.length === 0 &&

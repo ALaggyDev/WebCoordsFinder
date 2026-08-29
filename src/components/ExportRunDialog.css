@@ -192,6 +192,11 @@ body.export-run-dialog-open {
   gap: 5px;
 }
 
+.export-run-validation .validation {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .export-run-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

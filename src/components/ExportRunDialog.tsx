@@ -209,6 +209,15 @@ export function ExportRunDialog({
   const searchVolume = useMemo(() => estimateSearchVolume(document), [document])
   const estimatedHits = useMemo(() => estimateHitCount(document), [document])
   const hitPrecision = useMemo(() => estimateHitPrecision(document), [document])
+  const validationWarnings = useMemo(
+    () => hitPrecision < 0.8
+      ? [
+          ...validation.warnings,
+          `This search may return many false positives. Add more confirmed faces to improve the result (estimated precision: ${formatHitPrecision(hitPrecision)}; recommended: 80% or higher).`,
+        ]
+      : validation.warnings,
+    [hitPrecision, validation.warnings],
+  )
   const minimumBitsFor80Percent = useMemo(
     () => minimumBitsForPrecision(document, 0.8),
     [document],
@@ -590,7 +599,7 @@ export function ExportRunDialog({
           </section>
 
           {(validation.errors.length > 0 ||
-            validation.warnings.length > 0) && (
+            validationWarnings.length > 0) && (
             <div className="export-run-validation">
               {validation.errors.map((message) => (
                 <div className="validation error" key={message}>
@@ -598,7 +607,7 @@ export function ExportRunDialog({
                   {message}
                 </div>
               ))}
-              {validation.warnings.map((message) => (
+              {validationWarnings.map((message) => (
                 <div className="validation warning" key={message}>
                   <AlertTriangle size={14} />
                   {message}
