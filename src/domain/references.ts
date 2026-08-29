@@ -1,4 +1,8 @@
-import type { BlockProfile, FaceDirection } from './types'
+import type {
+  BlockProfile,
+  CandidateTransform,
+  FaceDirection,
+} from './types'
 
 // Reference paths mirror the checked-in Minecraft asset tree. Profiles name
 // concrete face textures explicitly so analysis never guesses model lookups.
@@ -8,16 +12,39 @@ function texture(name: string): string {
   return `${textureRoot}/${name}.png`
 }
 
-const rotationalFaces: Partial<Record<FaceDirection, 4>> = { up: 4, down: 4 }
-// Minecraft exposes four model states, but opposite rotations of these cube
-// side textures are visually indistinguishable and fold to two constraints.
-const mirroredCubeFaces: Partial<Record<FaceDirection, 2 | 4>> = {
-  up: 4,
-  down: 4,
-  north: 2,
-  south: 2,
-  east: 2,
-  west: 2,
+const quarterTurnTransforms: CandidateTransform[] = [
+  'identity',
+  'rotate90',
+  'rotate180',
+  'rotate270',
+]
+const mirroredTransforms: CandidateTransform[] = [
+  'identity',
+  'mirrorX',
+  'rotate180',
+  'mirrorXRotate180',
+]
+const mirroredSideTransforms: CandidateTransform[] = ['identity', 'mirrorX']
+
+const ordinaryQuarterTurnVariants: BlockProfile['variantTransforms'] = {
+  up: quarterTurnTransforms,
+  down: ['identity', 'rotate270', 'rotate180', 'rotate90'],
+}
+const mirroredCubeVariants: BlockProfile['variantTransforms'] = {
+  up: mirroredTransforms,
+  down: mirroredTransforms,
+  north: mirroredSideTransforms,
+  south: mirroredSideTransforms,
+  east: mirroredSideTransforms,
+  west: mirroredSideTransforms,
+}
+const netherrackVariants: BlockProfile['variantTransforms'] = {
+  up: quarterTurnTransforms,
+  down: quarterTurnTransforms,
+  north: quarterTurnTransforms,
+  south: quarterTurnTransforms,
+  east: quarterTurnTransforms,
+  west: quarterTurnTransforms,
 }
 
 function cubeTexture(name: string): Record<FaceDirection, string> {
@@ -49,9 +76,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Cave',
     accent: '#9aa3a7',
     compatibleSince: '1.19.3',
-    faceStates: mirroredCubeFaces,
     referenceTextures: cubeTexture('stone'),
-    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    variantTransforms: mirroredCubeVariants,
     notes: 'Mirrored model variants; side faces fold to two visible states.',
   },
   {
@@ -60,7 +86,6 @@ const baseProfiles: BlockProfile[] = [
     family: 'Cave',
     accent: '#687176',
     compatibleSince: '1.19.3',
-    faceStates: mirroredCubeFaces,
     referenceTextures: {
       ...topAndBottomTextures('deepslate_top'),
       north: texture('deepslate'),
@@ -68,7 +93,7 @@ const baseProfiles: BlockProfile[] = [
       east: texture('deepslate'),
       west: texture('deepslate'),
     },
-    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    variantTransforms: mirroredCubeVariants,
     notes: 'Axis-aware mirrored model variants.',
   },
   {
@@ -77,9 +102,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Cave',
     accent: '#5a6265',
     compatibleSince: '1.19.3',
-    faceStates: mirroredCubeFaces,
     referenceTextures: cubeTexture('bedrock'),
-    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    variantTransforms: mirroredCubeVariants,
     notes: 'Mirrored model variants; side faces fold to two states.',
   },
   {
@@ -88,9 +112,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Deep dark',
     accent: '#0d5660',
     compatibleSince: '1.19.3',
-    faceStates: mirroredCubeFaces,
     referenceTextures: cubeTexture('sculk'),
-    transforms: ['identity', 'mirrorX', 'rotate180', 'mirrorXRotate180'],
+    variantTransforms: mirroredCubeVariants,
     notes: 'Mirrored model variants; side faces fold to two visible states.',
   },
   {
@@ -99,16 +122,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Nether',
     accent: '#703a35',
     compatibleSince: '1.19.3',
-    faceStates: {
-      up: 4,
-      down: 4,
-      north: 4,
-      south: 4,
-      east: 4,
-      west: 4,
-    },
     referenceTextures: cubeTexture('netherrack'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: netherrackVariants,
     notes: 'Correlated 16-model rotations across all six faces. Requires config v2.',
   },
   {
@@ -117,9 +132,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#896449',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Four top/bottom model rotations.',
   },
   {
@@ -128,9 +142,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#896449',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('rooted_dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Four top/bottom model rotations.',
   },
   {
@@ -139,9 +152,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Plants',
     accent: '#4f8b43',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('lily_pad'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Four rotations of the flat top/bottom model.',
     settings: { grassTint: true },
   },
@@ -151,9 +163,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#6da95b',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('grass_block_top', 'dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Non-snowy top and bottom faces only.',
     settings: { grassTint: true },
   },
@@ -163,9 +174,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#987653',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('dirt_path_top', 'dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Top and bottom faces only.',
   },
   {
@@ -174,9 +184,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#76604a',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('podzol_top', 'dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Top and bottom faces only.',
   },
   {
@@ -185,9 +194,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Terrain',
     accent: '#8e788d',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('mycelium_top', 'dirt'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Top and bottom faces only.',
   },
   {
@@ -196,9 +204,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Sediment',
     accent: '#d8cc91',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('sand'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Top and bottom faces only.',
   },
   {
@@ -207,9 +214,8 @@ const baseProfiles: BlockProfile[] = [
     family: 'Sediment',
     accent: '#b96f43',
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures('red_sand'),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Top and bottom faces only.',
   },
 ]
@@ -241,9 +247,8 @@ const concretePowderProfiles: BlockProfile[] = concretePowderColors.map((color) 
     family: 'Built',
     accent: color.accent,
     compatibleSince: '1.19.3',
-    faceStates: rotationalFaces,
     referenceTextures: topAndBottomTextures(blockId),
-    transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+    variantTransforms: ordinaryQuarterTurnVariants,
     notes: 'Four top/bottom model rotations.',
   }
 })
@@ -256,7 +261,8 @@ export const blockProfiles: BlockProfile[] = [
 export const blockProfileMap = new Map(blockProfiles.map((profile) => [profile.id, profile]))
 
 export function statesForFace(blockId: string, face: FaceDirection): 2 | 4 | undefined {
-  return blockProfileMap.get(blockId)?.faceStates[face]
+  const count = variantTransformsForFace(blockId, face).length
+  return count === 2 || count === 4 ? count : undefined
 }
 
 export function sharedStatesForFaces(
@@ -281,6 +287,26 @@ export function referenceTextureForFace(
   face: FaceDirection,
 ): string | undefined {
   return blockProfileMap.get(blockId)?.referenceTextures[face]
+}
+
+export function variantTransformsForFace(
+  blockId: string,
+  face: FaceDirection | undefined,
+): CandidateTransform[] {
+  if (!face) return []
+  return blockProfileMap.get(blockId)?.variantTransforms[face] ?? []
+}
+
+export function sharedVariantTransformsForFaces(
+  blockId: string,
+  faces: FaceDirection[],
+): CandidateTransform[] | undefined {
+  const variants = faces.map((face) => variantTransformsForFace(blockId, face))
+  if (variants.length === 0 || variants.some((entry) => entry.length === 0)) {
+    return undefined
+  }
+  const serialized = variants.map((entry) => entry.join(':'))
+  return new Set(serialized).size === 1 ? variants[0] : undefined
 }
 
 export function sharedReferenceTextureForFaces(

@@ -283,9 +283,8 @@ export interface BlockProfile {
   family: string
   accent: string
   compatibleSince: string
-  faceStates: Partial<Record<FaceDirection, 2 | 4>>
   referenceTextures: Partial<Record<FaceDirection, string>>
-  transforms: CandidateTransform[]
+  variantTransforms: Partial<Record<FaceDirection, CandidateTransform[]>>
   notes: string
   // Profiles opt into their own controls, keeping this extensible for future
   // settings such as the deepslate axis.

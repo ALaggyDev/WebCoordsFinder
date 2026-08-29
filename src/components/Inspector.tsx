@@ -52,6 +52,8 @@ import {
   referenceTextureForFace,
   sharedReferenceTextureForFaces,
   sharedStatesForFaces,
+  sharedVariantTransformsForFaces,
+  variantTransformsForFace,
 } from '../domain/references'
 import {
   defaultGrassTintSettings,
@@ -717,10 +719,13 @@ function FaceInspector({
   }) as CSSProperties
   const renderedReferenceUrl = displayReferenceUrl || referenceUrl
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
+  const variantTransforms = evidenceFace
+    ? variantTransformsForFace(evidence.blockId, evidenceFace)
+    : sharedVariantTransformsForFaces(evidence.blockId, possibleEvidenceFaces) ?? []
   const selectedTransform =
     evidence.selectedVariant === undefined || !profile
       ? undefined
-      : profile.transforms[evidence.selectedVariant]
+      : variantTransforms[evidence.selectedVariant]
   const statuses = new Set(selectedEvidence.map((entry) => entry.reviewStatus))
   const selectedFaces = selectedEvidence.map((entry) =>
     faceForLocalNormal(document.scene.axisMapping, entry.localNormal),
@@ -956,7 +961,7 @@ function FaceInspector({
           <h3>Visible variant</h3>
           <div className="candidate-grid">
             {candidates.map((variant) => {
-              const transform = profile.transforms[variant]
+              const transform = variantTransforms[variant]
               const score = evidence.scores?.find((entry) => entry.variant === variant)?.score
               return (
                 <button

@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest'
 import {
   blockProfiles,
   referenceTextureForFace,
+  statesForFace,
+  variantTransformsForFace,
 } from './references'
 import type { FaceDirection } from './types'
 
@@ -16,7 +18,7 @@ const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
 describe('bundled reference textures', () => {
   it('provides a valid PNG for every supported profile face', () => {
     for (const profile of blockProfiles) {
-      for (const face of Object.keys(profile.faceStates) as FaceDirection[]) {
+      for (const face of Object.keys(profile.variantTransforms) as FaceDirection[]) {
         const source = referenceTextureForFace(profile.id, face)
         expect(source, `${profile.id} ${face}`).toBeDefined()
 
@@ -49,5 +51,24 @@ describe('bundled reference textures', () => {
     expect(profiles).toHaveLength(16)
     expect(blockProfiles.some((profile) => profile.id === 'concrete_powder')).toBe(false)
     expect(new Set(profiles.map((profile) => profile.referenceTextures.up)).size).toBe(16)
+  })
+
+  it('declares the exact visible variants for each face family', () => {
+    expect(variantTransformsForFace('dirt', 'up')).toEqual([
+      'identity', 'rotate90', 'rotate180', 'rotate270',
+    ])
+    expect(variantTransformsForFace('dirt', 'down')).toEqual([
+      'identity', 'rotate270', 'rotate180', 'rotate90',
+    ])
+    expect(variantTransformsForFace('deepslate', 'down')).toEqual([
+      'identity', 'mirrorX', 'rotate180', 'mirrorXRotate180',
+    ])
+    expect(variantTransformsForFace('deepslate', 'north')).toEqual([
+      'identity', 'mirrorX',
+    ])
+    expect(statesForFace('deepslate', 'north')).toBe(2)
+    expect(variantTransformsForFace('netherrack', 'down')).toEqual([
+      'identity', 'rotate90', 'rotate180', 'rotate270',
+    ])
   })
 })

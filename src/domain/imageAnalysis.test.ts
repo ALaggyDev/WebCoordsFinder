@@ -23,7 +23,7 @@ describe('grass colormap lookup', () => {
 })
 
 describe('worker analysis scoring parity', () => {
-  it('matches the original per-transform scoring for four and folded two-state evidence', () => {
+  it('assigns one score to each face-specific variant reference', () => {
     const size = 16
     const sample = new Uint8ClampedArray(size * size * 4)
     const reference = new Uint8ClampedArray(size * size * 4)
@@ -61,7 +61,6 @@ describe('worker analysis scoring parity', () => {
     const fourState = scoreNormalizedGradientCandidates(
       normalizedGradientVector(sample, size),
       optimizedReferences,
-      4,
     )
     expect(fourState.scores).toEqual(
       legacyScores
@@ -71,15 +70,14 @@ describe('worker analysis scoring parity', () => {
 
     const twoState = scoreNormalizedGradientCandidates(
       normalizedGradientVector(sample, size),
-      optimizedReferences,
-      2,
+      optimizedReferences.slice(0, 2),
     )
     expect(twoState.scores).toHaveLength(2)
     expect(twoState.scores.find((entry) => entry.variant === 0)?.score).toBe(
-      Math.max(legacyScores[0], legacyScores[2]),
+      legacyScores[0],
     )
     expect(twoState.scores.find((entry) => entry.variant === 1)?.score).toBe(
-      Math.max(legacyScores[1], legacyScores[3]),
+      legacyScores[1],
     )
   })
 })

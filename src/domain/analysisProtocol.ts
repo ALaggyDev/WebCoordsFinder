@@ -11,7 +11,6 @@ export interface AutoAnalyzeJob {
   referenceUrl: string
   grassTint?: GrassTintSettings
   transforms: CandidateTransform[]
-  stateCount: 2 | 4
 }
 
 export interface AutoAnalyzeRequest {
