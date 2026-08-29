@@ -128,8 +128,8 @@ function createDefaultScanner(): ScannerSettings {
     bounds: {
       xStart: -2000,
       xEnd: 2000,
-      yStart: -60,
-      yEnd: 0,
+      yStart: -64,
+      yEnd: 120,
       zStart: -2000,
       zEnd: 2000,
     },
