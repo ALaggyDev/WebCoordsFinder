@@ -282,7 +282,6 @@ export interface BlockProfile {
   label: string
   family: string
   accent: string
-  compatibleSince: string
   referenceTextures: Partial<Record<FaceDirection, string>>
   variantTransforms: Partial<Record<FaceDirection, CandidateTransform[]>>
   notes: string
