@@ -356,16 +356,12 @@ export function normalizedGradientVectorScore(
 export function scoreNormalizedGradientCandidates(
   sample: NormalizedGradientVector,
   references: NormalizedGradientVector[],
-  stateCount: 2 | 4,
 ): { scores: CandidateScore[]; confidence: number } {
-  const uniqueScores = new Map<number, number>()
-  references.forEach((reference, index) => {
-    const variant = stateCount === 2 ? index % 2 : index
-    const score = normalizedGradientVectorScore(sample, reference)
-    uniqueScores.set(variant, Math.max(score, uniqueScores.get(variant) ?? -1))
-  })
-  const scores = [...uniqueScores.entries()]
-    .map(([variant, score]) => ({ variant, score }))
+  const scores = references
+    .map((reference, variant) => ({
+      variant,
+      score: normalizedGradientVectorScore(sample, reference),
+    }))
     .sort((left, right) => right.score - left.score)
   return {
     scores,

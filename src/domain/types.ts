@@ -236,7 +236,7 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 2 | 3 | 4 | 5
+  engineVersion: 2 | 3 | 4 | 5 | 6
   // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase
@@ -282,10 +282,8 @@ export interface BlockProfile {
   label: string
   family: string
   accent: string
-  compatibleSince: string
-  faceStates: Partial<Record<FaceDirection, 2 | 4>>
   referenceTextures: Partial<Record<FaceDirection, string>>
-  transforms: CandidateTransform[]
+  variantTransforms: Partial<Record<FaceDirection, CandidateTransform[]>>
   notes: string
   // Profiles opt into their own controls, keeping this extensible for future
   // settings such as the deepslate axis.

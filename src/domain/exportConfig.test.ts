@@ -105,7 +105,7 @@ describe('CoordsFinder export', () => {
     expect(config).toContain('verbose = false')
     expect(config).not.toMatch(/\b(mode|xStart|xEnd|chunkBlocksX|maxBadBlocks|printChunks)\s*=/)
     expect(config).toContain('directions = [0]')
-    expect(config).toContain('[filter]\n# x y z | variant [side]')
+    expect(config).toContain('[filter]\n# x y z | variant [side|netherrack-<face>]')
     expect(config).not.toContain('# Anchor block:')
     expect(config).toContain('-1 0 0 | 3')
     expect(config).toContain('0 0 0 | 1 side')
@@ -113,6 +113,32 @@ describe('CoordsFinder export', () => {
       errors: [],
       rowCount: 2,
     })
+  })
+
+  it('emits ordinary four-way and side observations in native syntax', () => {
+    const document = documentWith([
+      evidence('bottom', { x: 0, y: 0, z: 0 }, 4, 3),
+      evidence('side', { x: 1, y: 0, z: 0 }, 2, 1),
+    ])
+    const config = generateCoordsFinderConfig(document)
+
+    expect(config).toContain(
+      '[filter]\n# x y z | variant [side|netherrack-<face>]\n0 0 0 | 3\n1 0 0 | 1 side',
+    )
+  })
+
+  it('keeps and exports correlated netherrack faces', () => {
+    const coordinate = { x: 0, y: 0, z: 0 }
+    const document = documentWith([
+      { ...evidence('rack-up', coordinate, 4, 1), blockId: 'netherrack', localNormal: { x: 0, y: -1, z: 0 } },
+      { ...evidence('rack-north', coordinate, 4, 3), blockId: 'netherrack', localNormal: { x: 0, y: 0, z: 1 } },
+    ])
+
+    expect(confirmedUniqueEvidence(document)).toHaveLength(2)
+    const config = generateCoordsFinderConfig(document)
+    expect(config).toContain('0 0 0 | 1 netherrack-up')
+    expect(config).toContain('0 0 0 | 3 netherrack-north')
+    expect(validateForExport(document).errors).toEqual([])
   })
 
   it('rebases evidence coordinates around the selected anchor block', () => {

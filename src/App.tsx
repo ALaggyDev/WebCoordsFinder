@@ -44,7 +44,11 @@ import {
   downloadBlob,
   readProjectBundle,
 } from './domain/projectBundle'
-import { blockProfileMap, referenceTextureForFace } from './domain/references'
+import {
+  blockProfileMap,
+  referenceTextureForFace,
+  variantTransformsForFace,
+} from './domain/references'
 import type { EditorDocument } from './domain/types'
 import {
   clearAllData,
@@ -664,8 +668,7 @@ function App() {
           quad,
           referenceUrl,
           grassTint: entry.blockSettings?.grassTint,
-          transforms: profile.transforms,
-          stateCount: entry.stateCount,
+          transforms: variantTransformsForFace(entry.blockId, face),
         }]
       })
       const requestId = crypto.randomUUID()

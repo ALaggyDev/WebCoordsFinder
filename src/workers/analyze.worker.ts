@@ -118,7 +118,6 @@ async function analyzeJob(
   const { scores, confidence } = scoreNormalizedGradientCandidates(
     sample,
     references,
-    job.stateCount,
   )
   return {
     evidenceId: job.evidenceId,

@@ -32,8 +32,7 @@ typedef struct {
     int8_t x;
     int8_t y;
     int8_t z;
-    uint8_t rotation;
-    uint8_t visible_mask;
+    uint16_t accepted_indices;
 } Filter;
 
 typedef struct {
@@ -49,6 +48,8 @@ static Filter directional_filters[MAX_DIRECTIONS][MAX_FILTERS];
 static SearchResult batch_results[MAX_BATCH_RESULTS];
 static uint8_t directions[MAX_DIRECTIONS];
 static uint8_t direction_set[MAX_DIRECTIONS];
+static uint16_t direction_filter_counts[MAX_DIRECTIONS];
+static uint16_t direction_forced_errors[MAX_DIRECTIONS];
 
 static int32_t search_x_start;
 static int32_t search_x_end;
@@ -216,26 +217,27 @@ static uint32_t texture_variant(
     int32_t mode,
     int32_t x,
     int32_t y,
-    int32_t z)
+    int32_t z,
+    uint32_t variants)
 {
     switch (mode) {
     case MODE_VANILLA_1:
-        return positive_modulo(coordinate_random_legacy(x, y, z), 4);
+        return positive_modulo(coordinate_random_legacy(x, y, z), variants);
     case MODE_VANILLA_2:
         return positive_modulo(
             random_vanilla_2(coordinate_random(x, y, z)),
-            4);
+            variants);
     case MODE_VANILLA_3:
-        return legacy_next_int(coordinate_random(x, y, z), 4);
+        return legacy_next_int(coordinate_random(x, y, z), variants);
     case MODE_SODIUM_1:
         return positive_modulo(
             random_sodium_1(coordinate_random(x, y, z)),
-            4);
+            variants);
     case MODE_SODIUM_2:
     default:
         return positive_modulo(
             random_sodium_2(coordinate_random(x, y, z)),
-            4);
+            variants);
     }
 }
 
@@ -438,15 +440,23 @@ int32_t search_configure(
     search_finished = 0;
     for (int32_t index = 0; index < MAX_DIRECTIONS; index += 1) {
         direction_set[index] = 0;
+        direction_filter_counts[index] = 0;
+        direction_forced_errors[index] = 0;
     }
     return 0;
 }
 
 EXPORT("search_set_direction")
-int32_t search_set_direction(int32_t index, int32_t quarter_turns)
+int32_t search_set_direction(
+    int32_t index,
+    int32_t quarter_turns,
+    int32_t filter_count,
+    int32_t forced_errors)
 {
     if (index < 0 || index >= search_direction_count) return 1;
     if (quarter_turns < 0 || quarter_turns > 3) return 2;
+    if (filter_count < 0 || filter_count > search_filter_count ||
+        forced_errors < 0 || forced_errors > 65535) return 4;
 
     for (int32_t other = 0; other < search_direction_count; other += 1) {
         if (other != index &&
@@ -457,75 +467,35 @@ int32_t search_set_direction(int32_t index, int32_t quarter_turns)
     }
 
     directions[index] = (uint8_t)quarter_turns;
+    direction_filter_counts[index] = (uint16_t)filter_count;
+    direction_forced_errors[index] = (uint16_t)forced_errors;
     direction_set[index] = 1;
     return 0;
 }
 
 EXPORT("search_set_filter")
 int32_t search_set_filter(
+    int32_t direction_index,
     int32_t index,
     int32_t x,
     int32_t y,
     int32_t z,
-    int32_t rotation,
-    int32_t visible_mask)
+    int32_t accepted_indices)
 {
-    if (index < 0 || index >= search_filter_count) return 1;
+    if (direction_index < 0 || direction_index >= search_direction_count ||
+        index < 0 || index >= direction_filter_counts[direction_index]) return 1;
     if (x < -128 || x > 127 || y < -128 || y > 127 ||
         z < -128 || z > 127) {
         return 2;
     }
-    if ((visible_mask != 1 && visible_mask != 3) ||
-        rotation < 0 || rotation > visible_mask) {
-        return 3;
-    }
+    if (accepted_indices < 1 || accepted_indices > 65535) return 3;
+    if (!direction_set[direction_index]) return 4;
 
-    for (int32_t direction_index = 0;
-         direction_index < search_direction_count;
-         direction_index += 1) {
-        if (!direction_set[direction_index]) return 4;
-
-        int32_t directional_x;
-        int32_t directional_z;
-        int32_t quarter_turns = directions[direction_index];
-        switch (quarter_turns) {
-        case 1:
-            directional_x = -z;
-            directional_z = x;
-            break;
-        case 2:
-            directional_x = -x;
-            directional_z = -z;
-            break;
-        case 3:
-            directional_x = z;
-            directional_z = -x;
-            break;
-        case 0:
-        default:
-            directional_x = x;
-            directional_z = z;
-            break;
-        }
-        if (directional_x < -128 || directional_x > 127 ||
-            directional_z < -128 || directional_z > 127) {
-            return 2;
-        }
-
-        Filter* filter = &directional_filters[direction_index][index];
-        /*
-         * Four-state variants rotate with the search direction. Folded side
-         * variants remain the same two-state observation after X/Z rotation.
-         */
-        filter->x = (int8_t)directional_x;
-        filter->y = (int8_t)y;
-        filter->z = (int8_t)directional_z;
-        filter->rotation = (uint8_t)(
-            visible_mask == 3
-                ? (rotation + quarter_turns) % 4
-                : rotation);
-        filter->visible_mask = (uint8_t)visible_mask;
-    }
+    Filter* filter = &directional_filters[direction_index][index];
+    filter->x = (int8_t)x;
+    filter->y = (int8_t)y;
+    filter->z = (int8_t)z;
+    filter->accepted_indices = (uint16_t)accepted_indices;
     return 0;
 }
 
@@ -586,17 +556,19 @@ uint32_t search_scan_batch(uint32_t max_positions, uint32_t capture_limit)
     if (capture_limit > MAX_BATCH_RESULTS) capture_limit = MAX_BATCH_RESULTS;
 
     while (!search_finished && scanned < max_positions) {
-        int32_t bad_blocks = 0;
+        int32_t bad_blocks = direction_forced_errors[cursor_direction];
 
-        for (int32_t index = 0; index < search_filter_count; index += 1) {
+        for (int32_t index = 0;
+             bad_blocks <= search_max_bad_blocks &&
+             index < direction_filter_counts[cursor_direction];
+             index += 1) {
             Filter filter = directional_filters[cursor_direction][index];
             int32_t x = wrap_add_i32(cursor_x, filter.x);
             int32_t y = wrap_add_i32(cursor_y, filter.y);
             int32_t z = wrap_add_i32(cursor_z, filter.z);
-            uint32_t visible_variant =
-                texture_variant(search_mode, x, y, z) & filter.visible_mask;
+            uint32_t model_index = texture_variant(search_mode, x, y, z, 16);
 
-            if (visible_variant != filter.rotation) {
+            if ((filter.accepted_indices & (1u << model_index)) == 0) {
                 bad_blocks += 1;
                 if (bad_blocks > search_max_bad_blocks) break;
             }

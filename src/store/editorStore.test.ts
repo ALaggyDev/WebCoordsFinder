@@ -857,7 +857,8 @@ describe('unit-face geometry', () => {
     legacy.scanner.maxBadBlocks = 3
     legacy.scanner.printChunks = true
 
-    expect(normalizeEditorDocument(legacy).scanner).toMatchObject({
+    const normalized = normalizeEditorDocument(legacy)
+    expect(normalized.scanner).toMatchObject({
       scanOrder: 'spiral',
       cpuTileSize: { x: 1024, z: 1024 },
       cudaTileSize: { x: 16384, z: 16384 },

@@ -1,5 +1,6 @@
 import type {
   EditorDocument,
+  FaceDirection,
   FaceEvidence,
   Point3,
   SearchDirection,
@@ -8,14 +9,23 @@ import type {
 import { searchDirections } from './types'
 import {
   isAxisMappingComplete,
+  faceForLocalNormal,
   isWorldUpResolved,
   mappedAnchorOffset,
   sceneLatticeParity,
 } from './geometry'
+import {
+  acceptedIndexCount,
+  compileFilterDirections,
+  informationBits,
+} from './filterConstraints'
 
 // Export rows are derived values: they are anchor-relative and mapped from the
 // screenshot-local lattice into the user-confirmed world basis.
-type ExportEvidence = FaceEvidence & { coordinate: Point3 }
+export type ExportEvidence = FaceEvidence & {
+  coordinate: Point3
+  face: FaceDirection
+}
 
 function coordinateKey(evidence: ExportEvidence): string {
   const { x, y, z } = evidence.coordinate
@@ -40,7 +50,7 @@ function rotateXzOffset(
 }
 
 export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidence[] {
-  const unique = new Map<string, ExportEvidence>()
+  const grouped = new Map<string, ExportEvidence[]>()
   document.evidence
     .filter(
       (entry) =>
@@ -54,19 +64,37 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
         entry.latticeCoordinate,
       )
       if (!coordinate) return
-      const mapped = { ...entry, coordinate }
+      const face = faceForLocalNormal(document.scene.axisMapping, entry.localNormal)
+      if (!face) return
+      const mapped = { ...entry, coordinate, face }
       const key = coordinateKey(mapped)
-      const existing = unique.get(key)
-      // Perpendicular observations can refer to one block. Four-state evidence
-      // carries more information and therefore wins a coordinate collision.
-      if (!existing || entry.stateCount > existing.stateCount) {
-        unique.set(key, mapped)
-      }
+      grouped.set(key, [...(grouped.get(key) ?? []), mapped])
     })
-  return [...unique.values()].sort((a, b) => {
+
+  const rows = [...grouped.values()].flatMap((entries) => {
+    const hasNetherrack = entries.some((entry) => entry.blockId === 'netherrack')
+    if (!hasNetherrack) {
+      // Perpendicular ordinary observations can refer to one block. Four-state
+      // evidence carries more information and therefore wins that collision.
+      return entries.reduce((strongest, entry) =>
+        entry.stateCount > strongest.stateCount ? entry : strongest,
+      )
+    }
+
+    // Netherrack's model choice correlates every visible face. Keep one row
+    // per world face so the native and web scanners can intersect them.
+    const uniqueFaces = new Map<string, ExportEvidence>()
+    entries.forEach((entry) => {
+      uniqueFaces.set(`${entry.blockId}:${entry.face}`, entry)
+    })
+    return [...uniqueFaces.values()]
+  })
+  const faceOrder: FaceDirection[] = ['up', 'down', 'north', 'south', 'east', 'west']
+  return rows.sort((a, b) => {
     if (a.coordinate.y !== b.coordinate.y) return a.coordinate.y - b.coordinate.y
     if (a.coordinate.z !== b.coordinate.z) return a.coordinate.z - b.coordinate.z
-    return a.coordinate.x - b.coordinate.x
+    if (a.coordinate.x !== b.coordinate.x) return a.coordinate.x - b.coordinate.x
+    return faceOrder.indexOf(a.face) - faceOrder.indexOf(b.face)
   })
 }
 
@@ -161,6 +189,57 @@ export function validateForExport(document: EditorDocument): ValidationResult {
     }
   })
 
+  const familiesByCoordinate = new Map<string, Set<string>>()
+  rows.forEach((entry) => {
+    const key = coordinateKey(entry)
+    const families = familiesByCoordinate.get(key) ?? new Set<string>()
+    families.add(entry.blockId === 'netherrack' ? 'netherrack' : 'ordinary')
+    familiesByCoordinate.set(key, families)
+  })
+  familiesByCoordinate.forEach((families, key) => {
+    if (families.size > 1) {
+      errors.push(`Block offset ${key.replaceAll(':', ', ')} mixes ordinary and netherrack evidence.`)
+    }
+  })
+
+  const validDirections = document.scanner.directions.filter((direction) =>
+    searchDirections.includes(direction as SearchDirection),
+  ) as SearchDirection[]
+  if (validDirections.length > 0) {
+    try {
+      const compiled = compileFilterDirections(
+        rows,
+        document.scanner.textureAlgorithm,
+        validDirections,
+      )
+      if (compiled.some((direction) => direction.constraints.length > 256)) {
+        errors.push('CoordsFinder supports at most 256 compiled block constraints.')
+      }
+      if (compiled.some(
+        (direction) =>
+          direction.constraints.length === 0 &&
+          direction.forcedErrors <= document.scanner.errorTolerance,
+      )) {
+        errors.push('The filter has no usable block constraints after combining observations.')
+      }
+      if (compiled.every(
+        (direction) => direction.forcedErrors > document.scanner.errorTolerance,
+      )) {
+        errors.push('Combined face observations exceed the error tolerance in every search direction.')
+      }
+      const conflicts = compiled.filter((direction) => direction.forcedErrors > 0)
+      if (conflicts.length > 0) {
+        warnings.push(
+          `Combined observations create forced block errors (${conflicts
+            .map((direction) => `${direction.direction}°: ${direction.forcedErrors}`)
+            .join(', ')}).`,
+        )
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'Unable to compile face constraints.')
+    }
+  }
+
   const proposals = document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length
   if (proposals > 0) {
     warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} omitted until reviewed.`)
@@ -190,10 +269,15 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
     `verbose = ${scanner.verbose ? 'true' : 'false'}`,
     '',
     '[filter]',
-    '# x y z | variant [side]',
+    '# x y z | variant [side|netherrack-<face>]',
     ...rows.map((entry) => {
       const { x, y, z } = entry.coordinate
-      return `${x} ${y} ${z} | ${entry.selectedVariant}${entry.stateCount === 2 ? ' side' : ''}`
+      const marker = entry.blockId === 'netherrack'
+        ? ` netherrack-${entry.face}`
+        : entry.stateCount === 2
+          ? ' side'
+          : ''
+      return `${x} ${y} ${z} | ${entry.selectedVariant}${marker}`
     }),
     '',
   ]
@@ -201,10 +285,14 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
 }
 
 export function constraintBits(document: EditorDocument): number {
-  return confirmedUniqueEvidence(document).reduce(
-    (sum, evidence) => sum + (evidence.stateCount === 4 ? 2 : 1),
-    0,
-  )
+  const direction = document.scanner.directions[0]
+  if (direction === undefined) return 0
+  const compiled = compileFilterDirections(
+    confirmedUniqueEvidence(document),
+    document.scanner.textureAlgorithm,
+    [direction],
+  )[0]
+  return Math.round(informationBits(compiled) * 100) / 100
 }
 
 export function approximateCandidateCount(document: EditorDocument): string {
@@ -216,10 +304,14 @@ export function approximateCandidateCount(document: EditorDocument): string {
   ]
   let volume = sizes[0] * sizes[1] * sizes[2]
   const rows = confirmedUniqueEvidence(document)
+  const direction = document.scanner.directions[0]
+  const constraints = direction === undefined
+    ? []
+    : compileFilterDirections(rows, document.scanner.textureAlgorithm, [direction])[0].constraints
   // This is an independence estimate for display, not a promise about actual
   // collisions in Minecraft's coordinate hash.
-  rows.forEach((entry) => {
-    volume /= BigInt(entry.stateCount)
+  constraints.forEach((entry) => {
+    volume = volume * BigInt(acceptedIndexCount(entry.acceptedIndices)) / 16n
   })
   if (volume < 1n && rows.length > 0) return '<1'
   return new Intl.NumberFormat('en-US').format(volume)
