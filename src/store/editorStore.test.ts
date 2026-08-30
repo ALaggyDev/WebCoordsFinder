@@ -849,7 +849,7 @@ describe('unit-face geometry', () => {
     }
     delete legacy.scanner.scanOrder
     delete legacy.scanner.cpuTileSize
-    delete legacy.scanner.cudaTileSize
+    delete legacy.scanner.gpuTileSize
     delete legacy.scanner.errorTolerance
     delete legacy.scanner.verbose
     legacy.scanner.chunkBlocksX = 7
@@ -861,7 +861,7 @@ describe('unit-face geometry', () => {
     expect(normalized.scanner).toMatchObject({
       scanOrder: 'spiral',
       cpuTileSize: { x: 1024, z: 1024 },
-      cudaTileSize: { x: 16384, z: 16384 },
+      gpuTileSize: { x: 8192, z: 8192 },
       errorTolerance: 0,
       verbose: false,
     })

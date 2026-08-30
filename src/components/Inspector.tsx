@@ -1427,8 +1427,8 @@ function ExportInspector() {
         <div className="field-grid two">
           <NumberField label="CPU tile size X" value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
           <NumberField label="CPU tile size Z" value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
-          <NumberField label="CUDA tile size X" value={document.scanner.cudaTileSize.x} min={1} onChange={(x) => updateScanner({ cudaTileSize: { ...document.scanner.cudaTileSize, x } })} />
-          <NumberField label="CUDA tile size Z" value={document.scanner.cudaTileSize.z} min={1} onChange={(z) => updateScanner({ cudaTileSize: { ...document.scanner.cudaTileSize, z } })} />
+          <NumberField label="GPU tile size X" value={document.scanner.gpuTileSize.x} min={1} onChange={(x) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, x } })} />
+          <NumberField label="GPU tile size Z" value={document.scanner.gpuTileSize.z} min={1} onChange={(z) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, z } })} />
           <label className="check-field">
             <input type="checkbox" checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
             verbose logging

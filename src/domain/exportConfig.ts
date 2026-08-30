@@ -144,10 +144,10 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   if (
     document.scanner.cpuTileSize.x <= 0 ||
     document.scanner.cpuTileSize.z <= 0 ||
-    document.scanner.cudaTileSize.x <= 0 ||
-    document.scanner.cudaTileSize.z <= 0
+    document.scanner.gpuTileSize.x <= 0 ||
+    document.scanner.gpuTileSize.z <= 0
   ) {
-    errors.push('CPU and CUDA tile dimensions must be positive.')
+    errors.push('CPU and GPU tile dimensions must be positive.')
   }
   if (document.scanner.errorTolerance < 0) {
     errors.push('Error tolerance cannot be negative.')
@@ -261,7 +261,7 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
     `errorTolerance = ${scanner.errorTolerance}`,
     '',
     `cpuTileSize = (${scanner.cpuTileSize.x}, ${scanner.cpuTileSize.z})`,
-    `cudaTileSize = (${scanner.cudaTileSize.x}, ${scanner.cudaTileSize.z})`,
+    `gpuTileSize = (${scanner.gpuTileSize.x}, ${scanner.gpuTileSize.z})`,
     `verbose = ${scanner.verbose ? 'true' : 'false'}`,
     '',
     '[filter]',

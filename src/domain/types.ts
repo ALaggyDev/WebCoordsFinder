@@ -259,7 +259,7 @@ export interface ScannerSettings {
   compassResolved: boolean
   bounds: SearchBounds
   cpuTileSize: { x: number; z: number }
-  cudaTileSize: { x: number; z: number }
+  gpuTileSize: { x: number; z: number }
   errorTolerance: number
   verbose: boolean
   confidenceThreshold: number

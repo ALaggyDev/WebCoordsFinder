@@ -134,7 +134,7 @@ function createDefaultScanner(): ScannerSettings {
       zEnd: 2000,
     },
     cpuTileSize: { x: 1024, z: 1024 },
-    cudaTileSize: { x: 16384, z: 16384 },
+    gpuTileSize: { x: 8192, z: 8192 },
     errorTolerance: 0,
     verbose: false,
     confidenceThreshold: 0.08,
@@ -325,7 +325,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     ...normalized.scanner,
     bounds: { ...defaults.bounds, ...normalized.scanner.bounds },
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
-    cudaTileSize: { ...defaults.cudaTileSize, ...normalized.scanner.cudaTileSize },
+    gpuTileSize: { ...defaults.gpuTileSize, ...normalized.scanner.gpuTileSize },
   }
   const parity = sceneLatticeParity(normalized.scene)
   const mappingWasComplete = (['a', 'b', 'c'] as const).every(
