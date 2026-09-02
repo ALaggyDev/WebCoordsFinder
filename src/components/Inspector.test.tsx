@@ -216,7 +216,7 @@ describe('face inspector batch selection', () => {
       screen.queryByAltText('Perspective-correct selected block face'),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Auto analyze selected faces' }),
+      screen.getByRole('button', { name: 'Auto analyze' }),
     ).toBeInTheDocument()
     expect(
       within(screen.getByLabelText('Face selection actions'))
@@ -225,7 +225,7 @@ describe('face inspector batch selection', () => {
     ).toEqual([
       'Flip visible side',
       'Clear variants',
-      'Auto analyze selected faces',
+      'Auto analyze',
       'Confirm',
     ])
 
@@ -270,7 +270,7 @@ describe('face inspector batch selection', () => {
     )
 
     const autoAnalyze = screen.getByRole('button', {
-      name: 'Auto analyze selected faces',
+      name: 'Auto analyze',
     })
     const confirm = screen.getByRole('button', { name: 'Confirm' })
     expect(autoAnalyze).toBeEnabled()
@@ -454,7 +454,7 @@ describe('Auto Analyze queue', () => {
 
     expect(
       screen.getByText(
-        'No analyzed faces yet. Select faces and use Auto analyze selected faces.',
+        'No analyzed faces yet. Select faces and use Auto analyze.',
       ),
     ).toBeInTheDocument()
     expect(

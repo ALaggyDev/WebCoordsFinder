@@ -157,7 +157,7 @@ describe('face keyboard shortcuts', () => {
     )
 
     expect(
-      screen.getByRole('dialog', { name: 'Project library' }),
+      screen.getByRole('dialog', { name: 'Project Library' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Projects 0/i })).toHaveAttribute(
       'aria-selected',

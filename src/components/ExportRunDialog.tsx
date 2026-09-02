@@ -489,8 +489,7 @@ export function ExportRunDialog({
       >
         <header className="export-run-header">
           <div>
-            <span>Search</span>
-            <h2 id="export-run-title">Export or run search</h2>
+            <h2 id="export-run-title">Export or Run Search</h2>
           </div>
           <button
             aria-label="Close Export / Run"
@@ -506,7 +505,6 @@ export function ExportRunDialog({
         <div className="export-run-content">
           <div className="export-run-readiness">
             <div>
-              <span className="export-run-section-label">Search readiness</span>
               <strong>
                 {validation.errors.length === 0
                   ? 'Ready to search'
@@ -561,9 +559,6 @@ export function ExportRunDialog({
           <section className="export-run-section">
             <div className="export-run-section-heading">
               <div>
-                <span className="export-run-section-label">
-                  Estimated search time
-                </span>
                 <h3>Runtime comparison</h3>
               </div>
             </div>

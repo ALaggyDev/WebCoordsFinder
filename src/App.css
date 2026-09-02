@@ -1715,7 +1715,7 @@ button:disabled {
 }
 
 .profile-note {
-  margin: 8px 0 14px;
+  margin: 6px 0;
   display: flex;
   gap: 7px;
   align-items: flex-start;
@@ -3588,8 +3588,11 @@ button:disabled {
   letter-spacing: -0.035em;
 }
 
+.candidate-section h3 {
+  margin: 8px 0 10px;
+}
+
 .geometry-part > h3,
-.candidate-section h3,
 .geometry-part.world-orientation > h3 {
   margin-bottom: 14px;
   color: #98a5b6;
@@ -4012,7 +4015,7 @@ button:disabled {
  * gradients and square shapes. Its decoration is independent of the layout.
  */
 .app {
-  --topbar-height: 52px;
+  --topbar-height: 60px;
   --topbar-texture-height: 50px; /* Scales the square pattern, not the header. */
   --topbar-cool-color: #234c76;
   --topbar-warm-color: rgb(185 112 62 / 0.78);
@@ -4107,6 +4110,24 @@ button:disabled {
   align-items: stretch;
 }
 
+/* Keep the workflow centered on the full workbench, independent of header actions. */
+@media (min-width: 1121px) {
+  .topbar-content {
+    display: flex;
+  }
+
+  .workflow,
+  .site-navigation {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .topbar-utility-actions {
+    margin-left: auto;
+  }
+}
+
 .topbar-brand-area,
 .topbar-actions,
 .topbar-utility-actions,
@@ -4116,6 +4137,10 @@ button:disabled {
   display: flex;
   align-items: center;
   border: 0;
+}
+
+.topbar-brand-area {
+  min-width: 244px;
 }
 
 .info-menu {
@@ -4152,15 +4177,18 @@ button:disabled {
 }
 
 .brand strong {
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
-.brand:hover strong,
+.brand:hover strong {
+  color: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
 .brand:hover .brand-mark {
-  color: #c4c4c4;
+  color: var(--accent-hover);
 }
 
 .topbar-info,
@@ -4178,6 +4206,16 @@ button:disabled {
   font-weight: 500;
 }
 
+.topbar-info {
+  height: 100%;
+  padding: 0 12px;
+  color: #c4c4c4;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .topbar-info:hover,
 .topbar-back-to-editor:hover,
 .site-navigation-link:hover,
@@ -4188,19 +4226,19 @@ button:disabled {
 
 .workflow,
 .site-navigation {
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .workflow-step,
 .site-navigation-link {
   position: relative;
-  min-width: 0;
+  min-width: 132px;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  gap: 8px;
   color: #c4c4c4;
   background: transparent;
   border: 0;
@@ -4221,6 +4259,13 @@ button:disabled {
   display: none;
 }
 
+.workflow-step::before {
+  display: inline;
+  color: var(--theme-muted);
+  content: attr(data-step-number);
+  font: 500 12px var(--mono);
+}
+
 .workflow-step:hover:not(:disabled) {
   color: #fff;
   background: transparent;
@@ -4231,14 +4276,18 @@ button:disabled {
   font-weight: 600;
 }
 
+.workflow-step.active::before {
+  color: var(--accent);
+}
+
 .workflow-step.active::after,
 .site-navigation-link.active::after {
-  right: 10px;
+  right: 0;
   bottom: 1px;
-  left: 10px;
-  height: 3px;
+  left: 0;
+  height: 4px;
   background: var(--accent);
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .workflow-step:disabled {
@@ -4290,8 +4339,8 @@ button:disabled {
 
 .topbar-open-image,
 .project-menu-trigger {
-  min-height: 34px;
-  height: 34px;
+  min-height: 42px;
+  height: 42px;
   border-radius: 4px;
   box-shadow: none;
 }
@@ -4365,10 +4414,11 @@ button:disabled {
 }
 
 .theme-menu-label {
-  color: var(--muted);
-  font: 600 9px var(--mono);
+  padding: 8px 9px 7px;
+  color: #fff;
+  font: 600 11px 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .theme-option {
@@ -4387,7 +4437,7 @@ button:disabled {
   height: 100%;
   margin: 0;
   align-self: stretch;
-  grid-template-columns: 54px minmax(0, 1fr) 330px;
+  grid-template-columns: 54px minmax(0, 1fr) 340px;
   overflow: hidden;
   background: var(--surface);
   box-shadow: none;
@@ -4496,7 +4546,7 @@ button:disabled {
 .heading-icon {
   width: 34px;
   height: 34px;
-  color: #fff;
+  color: var(--accent);
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -4518,7 +4568,7 @@ button:disabled {
   font-size: 18px;
   font-weight: 500;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .geometry-part > h3,
@@ -4528,7 +4578,7 @@ button:disabled {
   color: #fff;
   font-size: 12px;
   font-weight: 600;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .geometry-part + .geometry-part,
@@ -4580,8 +4630,8 @@ button:disabled {
 }
 
 .geometry-summary {
-  border-right: 0;
-  border-left: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
 }
 
 .orientation-derived span {
@@ -4689,7 +4739,7 @@ button:disabled {
   gap: 20px;
   display: flex;
   align-items: stretch;
-  background: var(--panel-tabs);
+  background: var(--panel-deep);
   border: 0;
   border-radius: 0;
 }
@@ -4709,10 +4759,10 @@ button:disabled {
 .face-tabs button:hover,
 .face-tabs button.active {
   color: #fff;
-  background: transparent;
 }
 
 .face-tabs button.active {
+  background: transparent;
   box-shadow: none;
   font-weight: 600;
 }
@@ -4734,11 +4784,30 @@ button:disabled {
   border-radius: 0;
 }
 
+.faces-workspace > .inspector-heading {
+  min-height: 44px;
+  margin-bottom: 14px;
+  background: var(--panel-tabs);
+}
+
 .evidence-meta > span {
   color: #8f95a3;
   background: var(--surface-2);
   border-color: var(--border);
   border-radius: 4px;
+}
+
+.block-profile-heading {
+  min-height: 18px;
+  margin-bottom: 6px;
+}
+
+.block-profile-heading > label {
+  line-height: 15px;
+}
+
+.candidate-section {
+  margin-top: 0;
 }
 
 .face-selection-actions {
@@ -4812,17 +4881,200 @@ button:disabled {
   border-radius: 4px;
 }
 
-.project-start-card {
-  width: min(640px, calc(100% - 40px));
-  padding: 32px 50px;
-  justify-items: start;
+.export-inspector-footer .primary-button {
+  min-height: 42px;
+}
+
+.canvas-status strong {
+  color: #e9b75f;
+}
+
+/* Keep the shortcut list in the same compact menu language as Color theme. */
+.keybindings-popup {
+  width: 270px;
+  padding: 4px;
+}
+
+.keybindings-list {
+  padding: 0;
+  gap: 1px;
+}
+
+.keybindings-list > div {
+  min-height: 29px;
+  padding: 0 6px;
+  color: var(--theme-muted);
+  border-radius: 4px;
+}
+
+.keybindings-list > div:hover {
   color: #fff;
   background: var(--surface-2);
+}
+
+.keybindings-list > div span {
+  color: #fff;
+}
+
+/* Shortcut keys inherit the active theme instead of using the old fixed teal. */
+.keybindings-popup kbd {
+  color: var(--accent);
+  background: rgb(var(--accent-rgb) / 0.12);
+  border-color: rgb(var(--accent-rgb) / 0.38);
+  box-shadow: none;
+}
+
+.keybindings-popup .keybindings-list > div b {
+  color: var(--theme-muted);
+}
+
+/* Keep the tint controls in the same themed control language as the inspector. */
+.block-settings-menu {
+  width: min(248px, 100%);
+  gap: 3px;
+  padding: 5px 6px;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  font-family: 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
+}
+
+.block-settings-menu > * {
+  margin: 0;
+}
+
+.block-settings-menu-header {
+  min-height: 20px;
+}
+
+.block-settings-title {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reset-tint-button {
+  min-height: 20px;
+  padding: 0 4px;
+  color: var(--accent);
+  background: rgb(var(--accent-rgb) / 0.1);
+  border: 1px solid rgb(var(--accent-rgb) / 0.34);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.reset-tint-button:hover:not(:disabled) {
+  color: var(--accent);
+  background: rgb(var(--accent-rgb) / 0.18);
+}
+
+.reset-tint-button:disabled {
+  color: var(--theme-muted);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.tint-slider {
+  gap: 1px;
+  color: var(--theme-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tint-slider > span {
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0 2px;
+  align-items: center;
+  line-height: 12px;
+}
+
+.tint-slider output {
+  color: #fff;
+  font: 10px var(--mono);
+}
+
+.tint-slider input {
+  min-height: 0;
+  height: 14px;
+  margin: 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background:
+    linear-gradient(
+      to right,
+      var(--accent) 0%,
+      var(--accent) var(--tint-position),
+      var(--surface-3) var(--tint-position),
+      var(--surface-3) 100%
+    ) center / 100% 4px no-repeat;
+}
+
+.tint-slider input::-webkit-slider-thumb {
+  width: 9px;
+  height: 9px;
+  border-color: var(--surface);
+  box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.65);
+}
+
+.tint-slider input::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-color: var(--surface);
+  box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.65);
+}
+
+.info-menu-popup {
+  top: calc(100% + 2px);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity 160ms ease 120ms,
+    transform 160ms ease 120ms,
+    visibility 0s linear 280ms;
+}
+
+.info-menu:hover .info-menu-popup,
+.info-menu:focus-within .info-menu-popup {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+
+.project-dialog-title h2 {
+  text-transform: none;
+}
+
+.project-start-card {
+  width: min(440px, calc(100% - 48px));
+  padding: 27px;
+  justify-items: stretch;
+  color: #fff;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.38);
   text-align: left;
   backdrop-filter: none;
+}
+
+.project-start-action {
+  min-height: 46px;
+}
+
+.canvas-shell,
+.empty-project-canvas {
+  background-color: #0b1118;
+  background-image:
+    linear-gradient(rgba(139, 161, 184, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 161, 184, 0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
 .project-start-mark {
@@ -4840,9 +5092,9 @@ button:disabled {
   margin-bottom: 8px;
   color: #fff;
   font-size: 24px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .project-start-card > p {
@@ -4874,7 +5126,7 @@ button:disabled {
   font-size: 28px;
   font-weight: 500;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .project-dialog-backdrop,
@@ -4921,7 +5173,7 @@ button:disabled {
   font-size: 20px;
   font-weight: 500;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .project-dialog-tabs {
@@ -5042,7 +5294,7 @@ button:disabled {
   .topbar-content {
     width: 100%;
     padding-inline: 10px;
-    grid-template-columns: auto minmax(240px, 1fr) auto auto;
+    grid-template-columns: 244px minmax(0, 1fr) auto auto;
   }
 
   .brand {
@@ -5051,8 +5303,14 @@ button:disabled {
   }
 
   .workflow-step {
-    padding-inline: 8px;
-    font-size: 13px;
+    min-width: 0;
+    padding-inline: 6px;
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .workflow-step::before {
+    font-size: 11px;
   }
 
   .project-menu-trigger {
@@ -5061,6 +5319,6 @@ button:disabled {
 
   .workspace {
     width: 100%;
-    grid-template-columns: 50px minmax(0, 1fr) 310px;
+    grid-template-columns: 50px minmax(0, 1fr) 320px;
   }
 }

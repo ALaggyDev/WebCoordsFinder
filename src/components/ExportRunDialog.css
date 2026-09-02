@@ -617,7 +617,7 @@ body.export-run-dialog-open {
   color: #8f95a3;
   font: 11px/1.35 'Avenir Next', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .export-run-header h2 {
@@ -625,7 +625,7 @@ body.export-run-dialog-open {
   font-size: 20px;
   font-weight: 500;
   letter-spacing: 0;
-  text-transform: lowercase;
+  text-transform: none;
 }
 
 .export-run-content {
