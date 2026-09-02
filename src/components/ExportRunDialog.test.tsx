@@ -153,7 +153,7 @@ describe('Export / Run workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
 
     expect(
-      screen.getByRole('dialog', { name: 'Export or run search' }),
+      screen.getByRole('dialog', { name: 'Export or Run Search' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Estimated hits')).toBeInTheDocument()
     expect(screen.getByText('Hit precision')).toBeInTheDocument()
