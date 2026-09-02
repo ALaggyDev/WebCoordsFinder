@@ -368,7 +368,7 @@ export function ProjectDialog({
           <div className="project-dialog-title">
             <div aria-hidden="true"><FolderOpen size={20} /></div>
             <div>
-              <h2 id="project-dialog-title">Project library</h2>
+              <h2 id="project-dialog-title">Project Library</h2>
             </div>
           </div>
           <div className="project-dialog-header-actions">

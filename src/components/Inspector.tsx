@@ -1058,7 +1058,7 @@ function FaceSelectionActions({
               : undefined}
         >
           {busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-          Auto analyze selected faces
+          Auto analyze
         </button>
         <button
           type="button"
@@ -1177,7 +1177,7 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
       <div className="review-list">
         {reviewItems.length === 0 ? (
           <div className="list-empty">
-            No analyzed faces yet. Select faces and use Auto analyze selected faces.
+            No analyzed faces yet. Select faces and use Auto analyze.
           </div>
         ) : (
           reviewItems.map((entry) => {

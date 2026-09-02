@@ -93,7 +93,7 @@ describe('top bar project actions', () => {
     )
 
     expect(onOpenProjects).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('opens a read-only keybindings popup', () => {

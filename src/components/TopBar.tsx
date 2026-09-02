@@ -7,10 +7,8 @@ import {
   FolderOpen,
   Grid3X3,
   ImagePlus,
-  Info,
   Keyboard,
   Palette,
-  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EditorStep } from '../domain/types'
@@ -30,21 +28,26 @@ const steps: Array<{
   { id: 'export', label: 'Export', icon: Download },
 ]
 
-type ColorTheme = 'green' | 'pink' | 'blue'
+type ColorTheme = 'blue' | 'green' | 'purple' | 'white'
 
 const themeOptions: Array<{ id: ColorTheme; label: string }> = [
-  { id: 'green', label: 'Original green' },
-  { id: 'pink', label: 'Pink' },
   { id: 'blue', label: 'Blue' },
+  { id: 'green', label: 'Green' },
+  { id: 'purple', label: 'Purple' },
+  { id: 'white', label: 'White' },
 ]
 
 const isColorTheme = (value: string | null): value is ColorTheme =>
-  value === 'green' || value === 'pink' || value === 'blue'
+  value === 'blue' ||
+  value === 'green' ||
+  value === 'purple' ||
+  value === 'white'
 
 const getInitialTheme = (): ColorTheme => {
   if (typeof window === 'undefined') return 'blue'
   try {
     const savedTheme = window.localStorage.getItem('webcoordsfinder-theme')
+    if (savedTheme === 'pink') return 'purple'
     return isColorTheme(savedTheme) ? savedTheme : 'blue'
   } catch {
     return 'blue'
@@ -69,7 +72,6 @@ export function TopBar({
   onOpenProjects,
 }: TopBarProps) {
   const [keybindingsOpen, setKeybindingsOpen] = useState(false)
-  const [infoMenuOpen, setInfoMenuOpen] = useState(false)
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [theme, setTheme] = useState<ColorTheme>(getInitialTheme)
   const step = useEditorStore((state) => state.step)
@@ -86,24 +88,23 @@ export function TopBar({
   }, [theme])
 
   useEffect(() => {
-    if (!keybindingsOpen && !themeMenuOpen && !infoMenuOpen) return
+    if (!keybindingsOpen && !themeMenuOpen) return
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setKeybindingsOpen(false)
       setThemeMenuOpen(false)
-      setInfoMenuOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [infoMenuOpen, keybindingsOpen, themeMenuOpen])
+  }, [keybindingsOpen, themeMenuOpen])
 
   const navigate = (path: AppPath) => {
-    setInfoMenuOpen(false)
     onNavigate(path)
   }
 
   return (
     <header className={currentPath === '/' ? 'topbar' : 'topbar info-topbar'}>
+      <div className="topbar-content">
       <div className="topbar-brand-area">
         <button className="brand" type="button" onClick={() => navigate('/')}>
           <span className="brand-mark" aria-hidden="true">
@@ -118,23 +119,14 @@ export function TopBar({
               type="button"
               aria-label="Information pages"
               aria-haspopup="menu"
-              aria-expanded={infoMenuOpen}
-              onClick={() => {
-                setInfoMenuOpen((open) => !open)
-                setThemeMenuOpen(false)
-                setKeybindingsOpen(false)
-              }}
             >
-              <Info size={15} />
               <span>Info</span>
             </button>
-            {infoMenuOpen && (
-              <div className="info-menu-popup" role="menu" aria-label="Information pages">
-                <button type="button" role="menuitem" onClick={() => navigate('/info/what-is-this')}>What is this?</button>
-                <button type="button" role="menuitem" onClick={() => navigate('/info/how-to-use')}>How to use</button>
-                <button type="button" role="menuitem" onClick={() => navigate('/info/faq')}>FAQ</button>
-              </div>
-            )}
+            <div className="info-menu-popup" role="menu" aria-label="Information pages">
+              <button type="button" role="menuitem" onClick={() => navigate('/info/what-is-this')}>What is this?</button>
+              <button type="button" role="menuitem" onClick={() => navigate('/info/how-to-use')}>How to use</button>
+              <button type="button" role="menuitem" onClick={() => navigate('/info/faq')}>FAQ</button>
+            </div>
           </div>
         ) : (
           <button className="topbar-back-to-editor" type="button" onClick={() => navigate('/')}>
@@ -182,13 +174,13 @@ export function TopBar({
           <button
             className="icon-button topbar-theme"
             type="button"
-            aria-label="Choose color theme"
+            aria-label={`Choose color theme. Current theme: ${theme}`}
+            title={`Color theme: ${theme}`}
             aria-haspopup="menu"
             aria-expanded={themeMenuOpen}
             onClick={() => {
               setThemeMenuOpen((open) => !open)
               setKeybindingsOpen(false)
-              setInfoMenuOpen(false)
             }}
           >
             <Palette size={16} />
@@ -227,7 +219,6 @@ export function TopBar({
               onClick={() => {
                 setKeybindingsOpen((open) => !open)
                 setThemeMenuOpen(false)
-                setInfoMenuOpen(false)
               }}
             >
               <Keyboard size={16} />
@@ -238,19 +229,7 @@ export function TopBar({
                 role="dialog"
                 aria-label="Keybindings"
               >
-                <div className="keybindings-header">
-                  <div>
-                    <h2>Keybindings</h2>
-                  </div>
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Close keybindings"
-                    onClick={() => setKeybindingsOpen(false)}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
+                <div className="theme-menu-label">Keybindings</div>
                 <div className="keybindings-list">
                   <div><kbd>Left click</kbd><b>+</b><kbd>Drag</kbd><span>Pan</span></div>
                   <div><kbd>Left click</kbd><span>Select</span></div>
@@ -296,6 +275,7 @@ export function TopBar({
           </span>
         </button>
       </div>}
+      </div>
     </header>
   )
 }

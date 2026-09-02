@@ -84,7 +84,7 @@ describe('project dialog', () => {
     render(<ProjectDialog {...baseProps} />)
 
     expect(
-      screen.getByRole('dialog', { name: 'Project library' }),
+      screen.getByRole('dialog', { name: 'Project Library' }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Already open/i })).toBeDisabled()
 
