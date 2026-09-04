@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -460,6 +460,18 @@ function App() {
     }
   }
 
+  const handleImageDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const file = Array.from(event.dataTransfer.files).find((candidate) =>
+      candidate.type.startsWith('image/'),
+    )
+    if (file) {
+      void importImage(file)
+    } else if (event.dataTransfer.files.length) {
+      notify('Drop a PNG, JPEG, or WebP image to open it.', 'warning')
+    }
+  }
+
   const exportProject = async (projectId: string) => {
     try {
       let exportDocument: EditorDocument
@@ -796,7 +808,11 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={handleImageDrop}
+    >
       <TopBar
         activeProjectId={activeProjectId}
         currentPath={currentPath}

@@ -245,6 +245,47 @@ describe('face keyboard shortcuts', () => {
     )
   })
 
+  it('opens an image dropped onto the app', async () => {
+    vi.stubGlobal(
+      'Image',
+      class {
+        src = ''
+        naturalWidth = 1920
+        naturalHeight = 1080
+
+        decode() {
+          return Promise.resolve()
+        }
+      },
+    )
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:dropped-image'),
+      revokeObjectURL: vi.fn(),
+    })
+    const imageId = '00000000-0000-4000-8000-000000000003'
+    const projectId = '00000000-0000-4000-8000-000000000004'
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(imageId)
+      .mockReturnValueOnce(projectId)
+
+    const { container } = render(<App />)
+    const file = new File(['image'], 'dropped.png', { type: 'image/png' })
+    fireEvent.drop(container.querySelector('.app')!, {
+      dataTransfer: { files: [file] },
+    })
+
+    await waitFor(() =>
+      expect(storageMocks.persistImage).toHaveBeenCalledWith(imageId, file),
+    )
+    expect(storageMocks.setActiveProjectId).toHaveBeenCalledWith(projectId)
+    expect(useEditorStore.getState().document).toEqual(
+      expect.objectContaining({
+        projectName: 'dropped',
+        image: expect.objectContaining({ key: imageId }),
+      }),
+    )
+  })
+
   it('selects all faces with Ctrl+A', () => {
     useEditorStore.setState({ step: 'grid' })
     render(<App />)
