@@ -20,6 +20,7 @@ import {
   LoaderCircle,
   RotateCcw,
   ScanSearch,
+  Settings2,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -61,6 +62,7 @@ import {
   searchDirections,
   textureAlgorithms,
   type CandidateTransform,
+  type SearchBounds,
   type SearchDirection,
   type ScanOrder,
   type TextureAlgorithm,
@@ -135,6 +137,140 @@ function NumberField({
         }}
       />
     </label>
+  )
+}
+
+const horizontalSearchPresets = [
+  { label: '2k', value: 2_000 },
+  { label: '5k', value: 5_000 },
+  { label: '30k', value: 30_000 },
+  { label: 'Donut SMP', value: 225_000 },
+  { label: 'World Border', value: 30_000_000 },
+] as const
+
+const verticalSearchPresets = [
+  { label: 'Deepslate', start: -64, end: 0 },
+  { label: 'Stone', start: 0, end: 120 },
+  { label: 'Underground', start: -64, end: 120 },
+  { label: 'Overworld', start: -64, end: 320 },
+  { label: 'Nether', start: 0, end: 128 },
+] as const
+
+function SearchAreaPresets({
+  bounds,
+  updateBounds,
+}: {
+  bounds: SearchBounds
+  updateBounds: (patch: Partial<SearchBounds>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (
+        buttonRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) return
+      setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+    globalThis.document.addEventListener('pointerdown', closeOnOutsidePointer)
+    globalThis.document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      globalThis.document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      globalThis.document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <div className="search-presets">
+      <button
+        ref={buttonRef}
+        type="button"
+        className={open ? 'search-presets-button active' : 'search-presets-button'}
+        aria-label="Search area presets"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Search area presets"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Settings2 size={14} />
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="search-presets-menu"
+          role="dialog"
+          aria-label="Search area presets"
+        >
+          <div className="search-presets-group">
+            <div className="search-presets-heading">
+              <span>XZ</span>
+            </div>
+            <div className="search-presets-grid">
+              {horizontalSearchPresets.map((preset) => {
+                const active =
+                  bounds.xStart === -preset.value &&
+                  bounds.xEnd === preset.value &&
+                  bounds.zStart === -preset.value &&
+                  bounds.zEnd === preset.value
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={active ? 'search-preset-option active' : 'search-preset-option'}
+                    aria-pressed={active}
+                    onClick={() => updateBounds({
+                      xStart: -preset.value,
+                      xEnd: preset.value,
+                      zStart: -preset.value,
+                      zEnd: preset.value,
+                    })}
+                  >
+                    <span>{preset.label}</span>
+                    <small>±{preset.value.toLocaleString('en-US')}</small>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className="search-presets-group">
+            <div className="search-presets-heading">
+              <span>Y</span>
+            </div>
+            <div className="search-presets-grid">
+              {verticalSearchPresets.map((preset) => {
+                const active = bounds.yStart === preset.start && bounds.yEnd === preset.end
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={active ? 'search-preset-option active' : 'search-preset-option'}
+                    aria-pressed={active}
+                    onClick={() => updateBounds({
+                      yStart: preset.start,
+                      yEnd: preset.end,
+                    })}
+                  >
+                    <span>{preset.label}</span>
+                    <small>{preset.start} to {preset.end}</small>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1387,7 +1523,10 @@ function ExportInspector() {
         </div>
       </div>
       <div className="subsection">
-        <div className="field-label subsection-label">Search area</div>
+        <div className="field-label subsection-label search-area-heading">
+          <span>Search area</span>
+          <SearchAreaPresets bounds={bounds} updateBounds={updateBounds} />
+        </div>
         <div className="bounds-grid">
           {(['x', 'y', 'z'] as const).map((axis) => (
             <div key={axis} className="bounds-row">
