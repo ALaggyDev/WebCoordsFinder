@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -155,9 +155,9 @@ function App() {
   const redo = useEditorStore((state) => state.redo)
   const resetProject = useEditorStore((state) => state.resetProject)
 
-  const notify = (message: string, kind: ToastKind = 'info') => {
+  const notify = useCallback((message: string, kind: ToastKind = 'info') => {
     setToast({ message, kind })
-  }
+  }, [])
 
   useEffect(() => {
     const updatePath = () => setCurrentPath(appPathFromLocation(window.location.pathname))
@@ -209,7 +209,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [loadDocument])
+  }, [loadDocument, notify])
 
   useEffect(() => {
     if (!hydrated || !activeProjectId) return
@@ -227,7 +227,7 @@ function App() {
         .catch(() => notify('Autosave is temporarily unavailable.', 'warning'))
     }, 500)
     return () => window.clearTimeout(timeout)
-  }, [activeProjectId, document, hydrated])
+  }, [activeProjectId, document, hydrated, notify])
 
   useEffect(() => {
     let active = true
@@ -408,7 +408,7 @@ function App() {
     imageInputRef.current?.click()
   }
 
-  const importImage = async (file: File) => {
+  const importImage = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       notify('Choose a PNG, JPEG, or WebP image.', 'warning')
       return
@@ -458,7 +458,40 @@ function App() {
       URL.revokeObjectURL(source)
       notify('The selected image could not be decoded.', 'warning')
     }
-  }
+  }, [activeProjectId, document, loadDocument, notify, projects])
+
+  useEffect(() => {
+    if (currentPath !== '/') return
+
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
+
+      const clipboard = event.clipboardData
+      const item = Array.from(clipboard?.items ?? []).find(
+        (candidate) =>
+          candidate.kind === 'file' && candidate.type.startsWith('image/'),
+      )
+      const file = item?.getAsFile() ?? Array.from(clipboard?.files ?? []).find(
+        (candidate) => candidate.type.startsWith('image/'),
+      )
+      if (!file) return
+
+      // Paste is user-initiated, so this avoids proactive clipboard access and
+      // its browser permission prompt while sharing the normal import path.
+      event.preventDefault()
+      void importImage(file)
+    }
+
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [currentPath, importImage])
 
   const handleImageDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -843,8 +876,8 @@ function App() {
                     </div>
                     <h1>Start a project</h1>
                     <p>
-                      Choose a Minecraft screenshot to begin, or open one of
-                      the example projects.
+                      Choose or paste a Minecraft screenshot to begin, or open
+                      one of the example projects.
                     </p>
                     <button
                       className="primary-button project-start-action"

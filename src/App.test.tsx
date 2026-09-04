@@ -286,6 +286,92 @@ describe('face keyboard shortcuts', () => {
     )
   })
 
+  it('opens an image pasted from the clipboard', async () => {
+    vi.stubGlobal(
+      'Image',
+      class {
+        src = ''
+        naturalWidth = 1920
+        naturalHeight = 1080
+
+        decode() {
+          return Promise.resolve()
+        }
+      },
+    )
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:pasted-image'),
+      revokeObjectURL: vi.fn(),
+    })
+    const imageId = '00000000-0000-4000-8000-000000000005'
+    const projectId = '00000000-0000-4000-8000-000000000006'
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(imageId)
+      .mockReturnValueOnce(projectId)
+
+    render(<App />)
+    const file = new File(['image'], 'clipboard.png', { type: 'image/png' })
+    fireEvent.paste(window, {
+      clipboardData: {
+        files: [file],
+        items: [
+          {
+            kind: 'file',
+            type: 'image/png',
+            getAsFile: () => file,
+          },
+        ],
+      },
+    })
+
+    await waitFor(() =>
+      expect(storageMocks.persistImage).toHaveBeenCalledWith(imageId, file),
+    )
+    expect(storageMocks.setActiveProjectId).toHaveBeenCalledWith(projectId)
+    expect(useEditorStore.getState().document).toEqual(
+      expect.objectContaining({
+        projectName: 'clipboard',
+        image: expect.objectContaining({ key: imageId }),
+      }),
+    )
+  })
+
+  it('ignores pasted clipboard content without an image', () => {
+    render(<App />)
+
+    fireEvent.paste(window, {
+      clipboardData: {
+        files: [],
+        items: [{ kind: 'string', type: 'text/plain' }],
+      },
+    })
+
+    expect(storageMocks.persistImage).not.toHaveBeenCalled()
+  })
+
+  it('preserves native paste behavior in text inputs', () => {
+    const { container } = render(<App />)
+    const input = document.createElement('input')
+    input.type = 'text'
+    container.querySelector('.app')!.append(input)
+    const file = new File(['image'], 'clipboard.png', { type: 'image/png' })
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        files: [file],
+        items: [
+          {
+            kind: 'file',
+            type: 'image/png',
+            getAsFile: () => file,
+          },
+        ],
+      },
+    })
+
+    expect(storageMocks.persistImage).not.toHaveBeenCalled()
+  })
+
   it('selects all faces with Ctrl+A', () => {
     useEditorStore.setState({ step: 'grid' })
     render(<App />)
