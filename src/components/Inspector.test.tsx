@@ -443,12 +443,52 @@ describe('Auto Analyze queue', () => {
     expect(within(queueRows[0]).getByText('2, 0, 0')).toBeInTheDocument()
     expect(within(queueRows[1]).getByText('0, 0, 0')).toBeInTheDocument()
     expect(within(queueRows[0]).getByText('Δ 0.25')).toBeInTheDocument()
-    expect(within(queueRows[1]).getByText('Variant —')).toBeInTheDocument()
+    expect(within(queueRows[1]).getByText('Variant 0')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Confirm face 0, 0, 0' }),
+    ).toBeEnabled()
 
     fireEvent.mouseEnter(queueRows[0])
     expect(useEditorStore.getState().hoveredEvidenceId).toBe(highConfidenceId)
-    fireEvent.mouseLeave(queueRows[0])
+    expect(screen.getByLabelText('Hovered face preview')).toBeInTheDocument()
+    expect(screen.getByText('Unwarped face')).toBeInTheDocument()
+    expect(screen.getAllByText('Variant 2')).toHaveLength(2)
+    fireEvent.mouseEnter(queueRows[1])
+    expect(useEditorStore.getState().hoveredEvidenceId).toBe(lowConfidenceId)
+    expect(screen.getByLabelText('Hovered face preview')).toBeInTheDocument()
+    expect(screen.getAllByText('Variant 0')).toHaveLength(2)
+    fireEvent.mouseLeave(queueRows[0].closest('.review-list')!)
     expect(useEditorStore.getState().hoveredEvidenceId).toBeNull()
+    expect(screen.queryByLabelText('Hovered face preview')).not.toBeInTheDocument()
+
+    const confirmToggle = screen.getByRole('button', {
+      name: 'Confirm face 2, 0, 0',
+    })
+    fireEvent.click(confirmToggle)
+    expect(
+      useEditorStore.getState().document.evidence.find(
+        (entry) => entry.id === highConfidenceId,
+      )?.reviewStatus,
+    ).toBe('confirmed')
+    fireEvent.click(screen.getByRole('button', { name: 'Unconfirm face 2, 0, 0' }))
+    const unconfirmed = useEditorStore.getState().document.evidence.find(
+      (entry) => entry.id === highConfidenceId,
+    )
+    expect(unconfirmed?.reviewStatus).toBe('proposed')
+    expect(unconfirmed?.selectedVariant).toBe(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm face 0, 0, 0' }))
+    const acceptedBestMatch = useEditorStore.getState().document.evidence.find(
+      (entry) => entry.id === lowConfidenceId,
+    )
+    expect(acceptedBestMatch?.reviewStatus).toBe('confirmed')
+    expect(acceptedBestMatch?.selectedVariant).toBe(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Unconfirm face 0, 0, 0' }))
+    expect(
+      useEditorStore.getState().document.evidence.find(
+        (entry) => entry.id === lowConfidenceId,
+      )?.reviewStatus,
+    ).toBe('unlabeled')
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear queue' }))
 

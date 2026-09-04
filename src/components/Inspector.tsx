@@ -6,9 +6,9 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Check,
-  ChevronRight,
   Compass,
   Crosshair,
   Download,
@@ -62,6 +62,8 @@ import {
   searchDirections,
   textureAlgorithms,
   type CandidateTransform,
+  type EditorDocument,
+  type FaceEvidence,
   type SearchBounds,
   type SearchDirection,
   type ScanOrder,
@@ -1213,6 +1215,146 @@ function BoxSelectPlaceholder() {
   return <div className="selection-placeholder"><span /><span /><span /><span /></div>
 }
 
+function ReviewFacePreview({
+  document,
+  evidence,
+  top,
+  right,
+}: {
+  document: EditorDocument
+  evidence: FaceEvidence
+  top: number
+  right: number
+}) {
+  const meshFace = document.scene.faces.find((face) => face.id === evidence.faceId)
+  const evidenceFace = faceForLocalNormal(
+    document.scene.axisMapping,
+    evidence.localNormal,
+  )
+  const [cropUrl, setCropUrl] = useState('')
+  const [cropStatus, setCropStatus] = useState<
+    'loading' | 'ready' | 'unresolved' | 'error'
+  >('loading')
+  const [displayReferenceUrl, setDisplayReferenceUrl] = useState('')
+  const referenceUrl = evidenceFace
+    ? referenceTextureForFace(evidence.blockId, evidenceFace)
+    : undefined
+  const variantTransforms = evidenceFace
+    ? variantTransformsForFace(evidence.blockId, evidenceFace)
+    : []
+  const displayVariant = evidence.selectedVariant ?? evidence.scores?.[0]?.variant
+  const tentativeBestMatch = evidence.selectedVariant === undefined && displayVariant !== undefined
+  const selectedTransform = displayVariant === undefined
+    ? undefined
+    : variantTransforms[displayVariant]
+
+  useEffect(() => {
+    let active = true
+    if (
+      !meshFace ||
+      !evidenceFace ||
+      !faceHasWorldOrientation(document.scene, meshFace)
+    ) {
+      setCropUrl('')
+      setCropStatus('unresolved')
+      return
+    }
+    const quad = worldAlignedFaceQuad(document.scene, meshFace)
+    if (!quad) {
+      setCropUrl('')
+      setCropStatus('error')
+      return
+    }
+    setCropUrl('')
+    setCropStatus('loading')
+    warpQuad(document.image.src, quad, 112)
+      .then((crop) => {
+        if (active) {
+          setCropUrl(imageDataUrl(crop))
+          setCropStatus('ready')
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCropUrl('')
+          setCropStatus('error')
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [document.image.src, document.scene, evidenceFace, meshFace])
+
+  useEffect(() => {
+    let active = true
+    setDisplayReferenceUrl('')
+    if (!referenceUrl) return
+    colorizedReferenceTexture(
+      referenceUrl,
+      evidence.blockSettings?.grassTint ?? defaultGrassTintSettings,
+    )
+      .then((url) => {
+        if (active) setDisplayReferenceUrl(url)
+      })
+      .catch(() => {
+        if (active) setDisplayReferenceUrl(referenceUrl)
+      })
+    return () => {
+      active = false
+    }
+  }, [evidence.blockSettings?.grassTint, referenceUrl])
+
+  return createPortal(
+    <aside
+      className="review-face-preview"
+      style={{ top, right }}
+      aria-label="Hovered face preview"
+    >
+      <div className="face-preview-item">
+        <div className="face-preview">
+          {cropStatus === 'ready' && cropUrl ? (
+            <img src={cropUrl} alt="Unwarped analyzed face" />
+          ) : cropStatus === 'loading' ? (
+            <LoaderCircle className="spin" />
+          ) : (
+            <div className="reference-unavailable" role="status">
+              {cropStatus === 'unresolved'
+                ? 'World alignment unresolved'
+                : 'Unable to unwarp this face'}
+            </div>
+          )}
+        </div>
+        <span className="face-preview-label">Unwarped face</span>
+      </div>
+      <div className="face-preview-item">
+        <div className="face-preview reference">
+          {referenceUrl ? (
+            <img
+              src={displayReferenceUrl || referenceUrl}
+              alt={tentativeBestMatch
+                ? `Best matching variant ${displayVariant}, below threshold`
+                : displayVariant === undefined
+                  ? 'No analysis result'
+                  : `Selected variant ${displayVariant}`}
+              style={selectedTransform
+                ? { transform: transformStyle(selectedTransform) }
+                : undefined}
+            />
+          ) : (
+            <div className="reference-unavailable">Reference unavailable</div>
+          )}
+        </div>
+        <span className="face-preview-label">
+          {displayVariant === undefined
+            ? 'No analysis result'
+            : `Variant ${displayVariant}`}
+        </span>
+      </div>
+    </aside>,
+    globalThis.document.body,
+  )
+}
+
 function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   const document = useEditorStore((state) => state.document)
   const selectedIds = useEditorStore((state) => state.selectedEvidenceIds)
@@ -1221,6 +1363,14 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
   const clearReviewQueue = useEditorStore((state) => state.clearReviewQueue)
   const inspectEvidence = useEditorStore((state) => state.inspectEvidence)
   const setHoveredEvidence = useEditorStore((state) => state.setHoveredEvidence)
+  const toggleEvidenceConfirmation = useEditorStore(
+    (state) => state.toggleEvidenceConfirmation,
+  )
+  const [preview, setPreview] = useState<{
+    evidenceId: string
+    top: number
+    right: number
+  } | null>(null)
   useEffect(() => () => setHoveredEvidence(null), [setHoveredEvidence])
   const reviewItems = useMemo(
     () =>
@@ -1272,6 +1422,23 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
   const proposedCount = reviewItems.filter(
     (entry) => entry.reviewStatus === 'proposed',
   ).length
+  const previewEvidence = preview
+    ? reviewItems.find((entry) => entry.id === preview.evidenceId)
+    : undefined
+
+  const showPreview = (evidenceId: string, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect()
+    const previewHeight = 168
+    setHoveredEvidence(evidenceId)
+    setPreview({
+      evidenceId,
+      top: Math.min(
+        Math.max(72, rect.top + rect.height / 2 - previewHeight / 2),
+        Math.max(72, window.innerHeight - previewHeight - 8),
+      ),
+      right: window.innerWidth - rect.left + 10,
+    })
+  }
 
   return (
     <>
@@ -1310,13 +1477,22 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
           <Check size={15} /> Accept proposed ({proposedCount})
         </button>
       </div>
-      <div className="review-list">
+      <div
+        className="review-list"
+        onMouseLeave={() => {
+          setHoveredEvidence(null)
+          setPreview(null)
+        }}
+      >
         {reviewItems.length === 0 ? (
           <div className="list-empty">
             No analyzed faces yet. Select faces and use Auto analyze.
           </div>
         ) : (
           reviewItems.map((entry) => {
+            const bestVariant = entry.scores?.[0]?.variant
+            const tentativeBestMatch =
+              entry.selectedVariant === undefined && bestVariant !== undefined
             const coordinate =
               mappedAnchorOffset(
                 document.scene,
@@ -1324,13 +1500,17 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
                 entry.latticeCoordinate,
               ) ?? entry.latticeCoordinate
             return (
-              <button
+              <div
                 key={entry.id}
-                type="button"
                 className={`review-item ${entry.reviewStatus}`}
                 onClick={() => inspectEvidence(entry.id)}
-                onMouseEnter={() => setHoveredEvidence(entry.id)}
-                onMouseLeave={() => setHoveredEvidence(null)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  inspectEvidence(entry.id)
+                }}
+                onMouseEnter={(event) => showPreview(entry.id, event.currentTarget)}
+                tabIndex={0}
                 title="Inspect this face"
               >
                 <span className="review-state" />
@@ -1343,15 +1523,43 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
                   {entry.confidence === undefined ? 'Δ —' : `Δ ${entry.confidence.toFixed(2)}`}
                 </strong>
                 <small>
-                  Variant {entry.selectedVariant === undefined ? '—' : entry.selectedVariant}
+                  Variant {entry.selectedVariant ?? bestVariant ?? '—'}
                 </small>
               </div>
-              <ChevronRight size={14} />
-            </button>
+              <button
+                type="button"
+                className={`review-confirm-toggle${
+                  entry.reviewStatus === 'confirmed' ? ' confirmed' : ''
+                }`}
+                aria-label={`${
+                  entry.reviewStatus === 'confirmed' ? 'Unconfirm' : 'Confirm'
+                } face ${coordinate.x}, ${coordinate.y}, ${coordinate.z}`}
+                title={entry.reviewStatus === 'confirmed'
+                  ? 'Unconfirm face'
+                  : tentativeBestMatch
+                    ? `Confirm best match (Variant ${bestVariant})`
+                    : 'Confirm face'}
+                disabled={bestVariant === undefined}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  toggleEvidenceConfirmation(entry.id)
+                }}
+              >
+                <Check size={15} />
+              </button>
+            </div>
             )
           })
         )}
       </div>
+      {preview && previewEvidence ? (
+        <ReviewFacePreview
+          document={document}
+          evidence={previewEvidence}
+          top={preview.top}
+          right={preview.right}
+        />
+      ) : null}
     </>
   )
 }

@@ -560,6 +560,7 @@ interface EditorState {
     evidenceIds: string[],
     status: 'confirmed' | 'unlabeled',
   ) => void
+  toggleEvidenceConfirmation: (evidenceId: string) => void
   applyAnalysisResults: (results: AnalysisResult[]) => void
   acceptProposed: () => void
   clearReviewQueue: () => void
@@ -1368,6 +1369,25 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.reviewStatus = reviewStatus
             if (reviewStatus === 'unlabeled') entry.selectedVariant = undefined
           })
+      }),
+    ),
+  toggleEvidenceConfirmation: (id) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const entry = document.evidence.find((item) => item.id === id)
+        if (!entry?.scores?.length) return
+        if (entry.reviewStatus !== 'confirmed') {
+          // A direct review action may accept the best match even when its
+          // confidence did not reach the automatic proposal threshold.
+          entry.selectedVariant ??= entry.scores[0].variant
+          entry.reviewStatus = 'confirmed'
+          return
+        }
+        // Keep the analyzed choice when returning a confirmed queue item to
+        // review; unconfirming should not discard the proposal itself.
+        entry.reviewStatus = (entry.confidence ?? 0) >= document.scanner.confidenceThreshold
+          ? 'proposed'
+          : 'unlabeled'
       }),
     ),
   applyAnalysisResults: (results) =>

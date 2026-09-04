@@ -2025,7 +2025,7 @@ button:disabled {
   width: 100%;
   padding: 8px;
   display: grid;
-  grid-template-columns: 7px 1fr auto auto;
+  grid-template-columns: 7px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   color: var(--muted);
@@ -2034,6 +2034,11 @@ button:disabled {
   border-radius: 7px;
   text-align: left;
   cursor: pointer;
+}
+
+.review-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .review-item:hover {
@@ -2080,6 +2085,64 @@ button:disabled {
   margin-top: 2px;
   color: var(--muted);
   font: 9px var(--mono);
+}
+
+.review-confirm-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.review-confirm-toggle:hover:not(:disabled):not(.confirmed) {
+  color: var(--accent);
+  background: rgb(var(--accent-rgb) / 0.08);
+  border-color: rgb(var(--accent-rgb) / 0.45);
+}
+
+.review-confirm-toggle.confirmed {
+  color: #07140e;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.review-confirm-toggle.confirmed:hover:not(:disabled) {
+  filter: brightness(0.78);
+}
+
+.review-face-preview {
+  position: fixed;
+  z-index: 40;
+  width: 270px;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid #46545c;
+  border-radius: 7px;
+  box-shadow: 0 15px 36px rgba(0, 0, 0, 0.46);
+  pointer-events: none;
+}
+
+.review-face-preview::after {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  width: 10px;
+  height: 10px;
+  content: '';
+  background: var(--surface);
+  border-top: 1px solid #46545c;
+  border-right: 1px solid #46545c;
+  transform: translateY(-50%) rotate(45deg);
 }
 
 .list-empty {
