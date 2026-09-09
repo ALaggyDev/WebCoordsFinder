@@ -228,6 +228,13 @@ describe('web search configuration', () => {
     expect(request.forcedErrorsByDirection).toEqual([0])
   })
 
+  it('maps reverse spiral to its WASM scan order', () => {
+    const document = searchableDocument()
+    document.scanner.scanOrder = 'reverse-spiral'
+
+    expect(createWebSearchRequest(document).scanOrder).toBe(2)
+  })
+
   it('increases four-way bottom variants for clockwise search directions', () => {
     const document = searchableDocument()
     document.evidence = [{
@@ -360,7 +367,7 @@ describe('checked-in web search WASM', () => {
         ].join(','),
       )
 
-    for (const scanOrder of [0, 1]) {
+    for (const scanOrder of [0, 1, 2]) {
       for (let mode = 0; mode < 5; mode += 1) {
         const monolithicInstance = await WebAssembly.instantiate(binary)
         const monolithic = monolithicInstance.instance.exports as TestSearchExports
@@ -583,6 +590,29 @@ describe('checked-in web search WASM', () => {
       expect(module.search_get_result_x(0)).toBe(xStart + Math.floor((xEnd - xStart) / 2))
       expect(module.search_get_result_z(0)).toBe(zStart + Math.floor((zEnd - zStart) / 2))
     }
+  })
+
+  it('reverse spiral traverses the finite spiral from outside to center and resumes exactly', async () => {
+    const binary = await readFile('src/wasm/coords_search.wasm')
+    const scan = async (start: bigint, length: number) => {
+      const { instance } = await WebAssembly.instantiate(binary)
+      const module = instance.exports as TestSearchExports
+      expect(module.search_configure(2, 2, -1, 1, 0, 0, -1, 1, 1, 1, 1)).toBe(0)
+      setDirection(module, 0, 0, [matchAllConstraint])
+      expect(module.search_restore(start, start)).toBe(0)
+      expect(module.search_scan_batch(length, length)).toBe(length)
+      return Array.from({ length }, (_, index) => [
+        module.search_get_result_x(index),
+        module.search_get_result_z(index),
+      ])
+    }
+
+    expect(await scan(0n, 5)).toEqual([
+      [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1],
+    ])
+    expect(await scan(5n, 4)).toEqual([
+      [0, 1], [1, 1], [1, 0], [0, 0],
+    ])
   })
 
   it('rotates offsets, shifts all four-way variants clockwise, and preserves side variants', async () => {

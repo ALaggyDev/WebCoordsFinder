@@ -27,6 +27,7 @@ const textureModeIds: Record<TextureAlgorithm, number> = {
 const scanOrderIds: Record<ScanOrder, number> = {
   linear: 0,
   spiral: 1,
+  'reverse-spiral': 2,
 }
 
 export interface WebSearchConstraint {

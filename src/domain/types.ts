@@ -38,7 +38,7 @@ export const textureAlgorithms = [
   'Sodium-2',
 ] as const
 export type TextureAlgorithm = (typeof textureAlgorithms)[number]
-export const scanOrders = ['linear', 'spiral'] as const
+export const scanOrders = ['linear', 'spiral', 'reverse-spiral'] as const
 export type ScanOrder = (typeof scanOrders)[number]
 export const searchDirections = [0, 90, 180, 270] as const
 export type SearchDirection = (typeof searchDirections)[number]

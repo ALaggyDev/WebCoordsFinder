@@ -115,6 +115,17 @@ describe('CoordsFinder export', () => {
     })
   })
 
+  it('emits reverse spiral for the native scanner', () => {
+    const document = documentWith([
+      evidence('top', { x: 0, y: 0, z: 0 }, 4, 1),
+    ])
+    document.scanner.scanOrder = 'reverse-spiral'
+
+    expect(generateCoordsFinderConfig(document)).toContain(
+      'scanOrder = reverse-spiral',
+    )
+  })
+
   it('emits ordinary four-way and side observations in native syntax', () => {
     const document = documentWith([
       evidence('bottom', { x: 0, y: 0, z: 0 }, 4, 3),

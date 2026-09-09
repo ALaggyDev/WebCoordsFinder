@@ -1679,6 +1679,8 @@ function ExportInspector() {
             "Linear" starts from -X and end in +X, then -Z to +Z.
             <br />
             "Spiral" starts from the center and spirals outward clockwise.
+            <br />
+            "Reverse spiral" follows the same path from the outside inward.
           </InfoTip>
         </div>
         <select
