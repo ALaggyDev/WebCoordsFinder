@@ -267,28 +267,11 @@ export function OffsetInspector() {
                 the supporting block would in the screenshot.
               </p>
             )}
-            <div className="offset-mode" aria-label="Drag behavior">
-              <button
-                type="button"
-                className={state.offsetDragMode === 'block' ? 'selected' : ''}
-                aria-pressed={state.offsetDragMode === 'block'}
-                onClick={() => state.setOffsetDragMode('block')}
-              >
-                Move block
-              </button>
-              <button
-                type="button"
-                className={state.offsetDragMode === 'offset' ? 'selected' : ''}
-                aria-pressed={state.offsetDragMode === 'offset'}
-                onClick={() => state.setOffsetDragMode('offset')}
-              >
-                Fit offset
-              </button>
-            </div>
             <p className="field-help">
-              {state.offsetDragMode === 'block'
-                ? 'Drag the circular base handle to move by whole blocks in X/Z. Use Y below for height.'
-                : 'Drag the base handle to fit X/Z, snapping to possible game offsets. Adjust Y below for XYZ blocks.'}
+              Drag the base handle to fit X/Z within its block. Hold Shift for
+              within-block Y (XYZ models), Ctrl for whole-block X/Z, or both
+              for whole-block Y. Pressing a modifier applies it to the current
+              drag; releasing it preserves the snapped placement.
             </p>
             <h4>Block position</h4>
             <div className="offset-nudges">

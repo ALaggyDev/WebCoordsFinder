@@ -31,6 +31,14 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('dripstone offset controls', () => {
+  it('documents the unified modifier-based drag handle', () => {
+    render(<OffsetInspector />)
+
+    expect(screen.getByText(/hold shift for within-block y/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Move block' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Fit offset' })).not.toBeInTheDocument()
+  })
+
   it('shows the full track but caps X/Z at the equivalent clipped seeds', () => {
     render(<OffsetInspector />)
 

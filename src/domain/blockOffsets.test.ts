@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   modelLatticePoint,
+  nearestOffsetNibble,
   offsetBasis,
   offsetEvidenceListSchema,
   offsetFromNibbles,
@@ -10,6 +11,7 @@ import {
   offsetReadiness,
   worldPlaneDelta,
   worldToLocal,
+  worldVerticalDelta,
 } from './blockOffsets'
 import {
   mappedVector,
@@ -146,6 +148,34 @@ describe('Minecraft block offsets', () => {
     const result = worldPlaneDelta(scene, origin, projected)!
     expect(result.x).toBeCloseTo(2.25)
     expect(result.y).toBeCloseTo(-0.75)
+  })
+
+  it('constrains vertical drags to world Y and fits the nearest vertical seed', () => {
+    const { scene } = cameraDocument()
+    const origin = { x: 1, y: 2, z: 1 }
+    const delta = worldToLocal(scene, { x: 0, y: -0.6, z: 0 })
+    const projected = projectScenePoint(scene, {
+      x: origin.x + delta.x,
+      y: origin.y + delta.y,
+      z: origin.z + delta.z,
+    })!
+    const projectedOrigin = projectScenePoint(scene, origin)!
+    const line = {
+      x: projected.x - projectedOrigin.x,
+      y: projected.y - projectedOrigin.y,
+    }
+    const length = Math.hypot(line.x, line.y)
+
+    // Perpendicular pointer drift must not affect the recovered Y movement.
+    const result = worldVerticalDelta(scene, origin, {
+      x: projected.x - (line.y / length) * 10,
+      y: projected.y + (line.x / length) * 10,
+    })!
+    expect(result).toBeCloseTo(-0.6)
+
+    const profile = offsetProfiles.small_dripleaf
+    const expected = offsetFromNibbles(profile, { x: 0, y: 6, z: 0 }).y
+    expect(nearestOffsetNibble(profile, 'y', expected)).toBe(6)
   })
 
   it('resolves every bundled model including multipart bamboo and rotated elements', () => {

@@ -514,11 +514,9 @@ type FaceTab = 'selection' | 'review'
 
 interface EditorState {
   selectedOffsetId: string | null
-  offsetDragMode: 'block' | 'offset'
   offsetOpacity: number
   offsetYOcclusion: boolean
   selectOffset: (id: string | null) => void
-  setOffsetDragMode: (mode: 'block' | 'offset') => void
   setOffsetOpacity: (opacity: number) => void
   setOffsetYOcclusion: (enabled: boolean) => void
   addOffset: (entry: BlockOffsetEvidence) => void
@@ -722,7 +720,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   past: [],
   future: [],
   selectedOffsetId: null,
-  offsetDragMode: 'block',
   offsetOpacity: 0.7,
   offsetYOcclusion: true,
   selectOffset: (selectedOffsetId) => set((state) => ({
@@ -732,7 +729,6 @@ export const useEditorStore = create<EditorState>((set) => ({
     selectedEdges: selectedOffsetId ? [] : state.selectedEdges,
     selectedEvidenceIds: selectedOffsetId ? [] : state.selectedEvidenceIds,
   })),
-  setOffsetDragMode: (offsetDragMode) => set({ offsetDragMode }),
   setOffsetOpacity: (offsetOpacity) => set({ offsetOpacity }),
   setOffsetYOcclusion: (offsetYOcclusion) => set({ offsetYOcclusion }),
   addOffset: (entry) => set((state) => {

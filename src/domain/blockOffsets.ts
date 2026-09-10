@@ -118,20 +118,74 @@ export function offsetFromNibbles(
 
 export function nearestOffsetNibble(
   profile: OffsetProfile,
-  axis: 'x' | 'z',
+  axis: 'x' | 'y' | 'z',
   value: number,
 ): number {
+  const valueFor = (n: number) =>
+    offsetFromNibbles(profile, {
+      x: axis === 'x' ? n : 0,
+      y: axis === 'y' ? n : 0,
+      z: axis === 'z' ? n : 0,
+    })[axis]
   let best = 0
   for (let n = 1; n < 16; n++) {
-    if (
-      Math.abs(offsetFromNibbles(profile, { x: n, y: 0, z: n })[axis] - value) <
-      Math.abs(
-        offsetFromNibbles(profile, { x: best, y: 0, z: best })[axis] - value,
-      )
-    )
+    if (Math.abs(valueFor(n) - value) < Math.abs(valueFor(best) - value))
       best = n
   }
   return best
+}
+
+/** Invert a canvas drag constrained to the projected world-Y line. */
+export function worldVerticalDelta(
+  scene: SceneGeometry,
+  origin: Point3,
+  image: Point2,
+): number | undefined {
+  if (scene.projection?.kind !== 'camera') return undefined
+  const m = scene.projection.matrix
+  const worldY = worldToLocal(scene, { x: 0, y: 1, z: 0 })
+  const projectedOrigin = projectScenePoint(scene, origin)
+  const projectedUnit = projectScenePoint(scene, {
+    x: origin.x + worldY.x,
+    y: origin.y + worldY.y,
+    z: origin.z + worldY.z,
+  })
+  if (!projectedOrigin || !projectedUnit) return undefined
+
+  // Ignore pointer drift perpendicular to the projected vertical axis.
+  const line = {
+    x: projectedUnit.x - projectedOrigin.x,
+    y: projectedUnit.y - projectedOrigin.y,
+  }
+  const lengthSquared = line.x * line.x + line.y * line.y
+  if (lengthSquared < 1e-10) return undefined
+  const along =
+    ((image.x - projectedOrigin.x) * line.x +
+      (image.y - projectedOrigin.y) * line.y) /
+    lengthSquared
+  const constrained = {
+    x: projectedOrigin.x + along * line.x,
+    y: projectedOrigin.y + along * line.y,
+  }
+
+  const row = (i: number, p: Point3) =>
+    m[i] * p.x + m[i + 1] * p.y + m[i + 2] * p.z
+  const depth = row(8, origin) + m[11]
+  const depthDelta = row(8, worldY)
+  let numerator = 0
+  let denominator = 0
+  for (const [rowIndex, coordinate] of [
+    [0, constrained.x],
+    [4, constrained.y],
+  ] as const) {
+    const coefficient = row(rowIndex, worldY) - coordinate * depthDelta
+    const result = coordinate * depth - row(rowIndex, origin) - m[rowIndex + 3]
+    numerator += coefficient * result
+    denominator += coefficient * coefficient
+  }
+  if (denominator < 1e-10) return undefined
+  const delta = numerator / denominator
+  return Number.isFinite(delta) ? delta : undefined
 }
 
 /** Convert a displacement, not an absolute block coordinate, into local axes. */

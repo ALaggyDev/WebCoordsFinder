@@ -5538,14 +5538,12 @@ button:disabled {
 .offset-inspector input[type=search], .offset-inspector select { width: 100%; min-width: 0; padding: 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-deep); color: var(--text); font: inherit; }
 .offset-inspector button:focus-visible, .offset-inspector input:focus-visible, .offset-inspector select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .offset-catalog { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 190px; overflow-y: auto; padding: 2px; }
-.offset-catalog button, .offset-observations button, .offset-mode button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px; text-align: left; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel-deep); color: var(--text); font: inherit; font-size: 11px; cursor: pointer; }
+.offset-catalog button, .offset-observations button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px; text-align: left; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel-deep); color: var(--text); font: inherit; font-size: 11px; cursor: pointer; }
 .offset-catalog button small, .offset-observations small { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .offset-inspector button.selected { border-color: var(--accent); background: rgb(var(--accent-rgb) / .12); }
 .offset-inspector button:not(:disabled):hover { border-color: var(--accent); }
 .offset-observations { display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; }
 .offset-selection { border-top: 1px solid var(--border); padding-top: 16px; }
-.offset-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.offset-mode button { justify-content: center; }
 .offset-nudges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .offset-nudges > div { display: flex; align-items: center; gap: 5px; }
 .offset-nudges span { color: var(--muted); font: 12px var(--mono); margin-right: auto; }
