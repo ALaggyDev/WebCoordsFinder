@@ -25,7 +25,6 @@ const tools: Array<{ id: EditorTool; label: string; icon: typeof Crosshair; shor
 ]
 
 export function ToolRail() {
-  const offsetsActive = useEditorStore((state) => state.step === 'offsets')
   const selectedOffsetId = useEditorStore((state) => state.selectedOffsetId)
   const deleteOffset = useEditorStore((state) => state.deleteOffset)
   const tool = useEditorStore((state) => state.tool)
@@ -60,7 +59,7 @@ export function ToolRail() {
             disabled={
               // Only one base grid is allowed, and extrusion needs an explicit
               // connected edge selection.
-              offsetsActive || (id === 'plane' && hasGeometry) ||
+              (id === 'plane' && hasGeometry) ||
               (id === 'anchor' && !hasGeometry) ||
               (id === 'extrude' && !hasSelectedEdges)
             }
@@ -87,7 +86,6 @@ export function ToolRail() {
             }}
             title="Set World Orientation (D)"
             aria-label="Set World Orientation"
-            disabled={offsetsActive}
           >
             <Compass size={19} />
             <span>D</span>
@@ -96,10 +94,10 @@ export function ToolRail() {
         <button
           type="button"
           className="tool-button"
-          onClick={offsetsActive ? () => selectedOffsetId && deleteOffset(selectedOffsetId) : deleteSelectedFaces}
-          disabled={offsetsActive ? !selectedOffsetId : !hasSelectedFaces}
-          title={offsetsActive ? 'Delete selected decoration (X / Backspace / Delete)' : 'Delete selected faces (X / Backspace / Delete)'}
-          aria-label={offsetsActive ? 'Delete selected decoration' : 'Delete selected faces'}
+          onClick={selectedOffsetId ? () => deleteOffset(selectedOffsetId) : deleteSelectedFaces}
+          disabled={selectedOffsetId ? false : !hasSelectedFaces}
+          title={selectedOffsetId ? 'Delete selected decoration (X / Backspace / Delete)' : 'Delete selected faces (X / Backspace / Delete)'}
+          aria-label={selectedOffsetId ? 'Delete selected decoration' : 'Delete selected faces'}
         >
           <Eraser size={19} />
           <span>X</span>

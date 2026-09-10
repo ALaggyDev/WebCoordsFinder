@@ -725,7 +725,13 @@ export const useEditorStore = create<EditorState>((set) => ({
   offsetDragMode: 'block',
   offsetOpacity: 0.7,
   offsetYOcclusion: true,
-  selectOffset: (selectedOffsetId) => set({ selectedOffsetId }),
+  selectOffset: (selectedOffsetId) => set((state) => ({
+    selectedOffsetId,
+    // A decoration handle and mesh geometry use the same delete shortcut.
+    // Keep their selections exclusive so the shortcut always has one target.
+    selectedEdges: selectedOffsetId ? [] : state.selectedEdges,
+    selectedEvidenceIds: selectedOffsetId ? [] : state.selectedEvidenceIds,
+  })),
   setOffsetDragMode: (offsetDragMode) => set({ offsetDragMode }),
   setOffsetOpacity: (offsetOpacity) => set({ offsetOpacity }),
   setOffsetYOcclusion: (offsetYOcclusion) => set({ offsetYOcclusion }),
@@ -752,7 +758,9 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (entry) entry.confirmedBasis = offsetBasis(document)
     })
   }),
-  setStep: (step) => set({ step, ...(step === 'offsets' ? { tool: 'select' as EditorTool, orientationDraft: null, selectedEdges: [] } : {}) }),
+  // Workflow stages change the inspector, not which canvas operation is
+  // available. This lets an analyst correct geometry while aligning offsets.
+  setStep: (step) => set({ step }),
   setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) =>
     set((state) => {
@@ -769,7 +777,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       const geometry = selectedEdgeGeometry(state.document.scene, edge)
       if (!geometry) return state
-      if (!additive) return { selectedEdges: [edge] }
+      if (!additive) return { selectedEdges: [edge], selectedOffsetId: null }
 
       const key = meshEdgeKey(geometry.start, geometry.end)
       const selectedIndex = state.selectedEdges.findIndex((selection) => {
@@ -779,6 +787,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (selectedIndex >= 0) {
         return {
           selectedEdges: state.selectedEdges.filter((_, index) => index !== selectedIndex),
+          selectedOffsetId: null,
         }
       }
       const connected =
@@ -796,6 +805,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       // component replaces the chain instead of creating ambiguous endpoints.
       return {
         selectedEdges: connected ? [...state.selectedEdges, edge] : [edge],
+        selectedOffsetId: null,
       }
     }),
   clearSelectedEdges: () => set({ selectedEdges: [] }),
@@ -1266,6 +1276,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds,
         faceTab: 'selection' as FaceTab,
       }
@@ -1298,6 +1309,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds,
         faceTab: 'selection' as FaceTab,
       }
@@ -1321,6 +1333,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds: faceIds,
         faceTab: 'selection' as FaceTab,
       }

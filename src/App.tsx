@@ -338,12 +338,8 @@ function App() {
         return
       }
       const offsetState = useEditorStore.getState()
-      if (offsetState.step === 'offsets') {
-        if (!event.ctrlKey && !event.metaKey && !event.altKey && ['x', 'backspace', 'delete'].includes(event.key.toLowerCase())) {
-          event.preventDefault()
-          if (offsetState.selectedOffsetId) offsetState.deleteOffset(offsetState.selectedOffsetId)
-        }
-        if (event.key === 'Escape') offsetState.selectOffset(null)
+      if (event.key === 'Escape' && offsetState.selectedOffsetId) {
+        offsetState.selectOffset(null)
         return
       }
 
@@ -359,7 +355,8 @@ function App() {
         ['x', 'backspace', 'delete'].includes(event.key.toLowerCase())
       ) {
         event.preventDefault()
-        deleteSelectedFaces()
+        if (offsetState.selectedOffsetId) offsetState.deleteOffset(offsetState.selectedOffsetId)
+        else deleteSelectedFaces()
         return
       }
       if (event.key.toLowerCase() === 'g') {
