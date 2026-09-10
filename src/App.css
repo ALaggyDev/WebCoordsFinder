@@ -5553,7 +5553,15 @@ button:disabled {
 .offset-inspector .offset-slider, .offset-inspector .offset-opacity { display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .offset-slider small { color: var(--faint); margin-left: 5px; font-size: 10px; }
 .offset-slider output, .offset-opacity output { color: var(--text); font: 11px var(--mono); }
-.offset-slider input, .offset-opacity input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.offset-opacity input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.offset-slider-track { position: relative; grid-column: 1 / -1; width: 100%; height: 20px; background: linear-gradient(to right, rgb(var(--accent-rgb) / .7) 0 var(--offset-progress), var(--border) var(--offset-progress) 100%) center / 100% 4px no-repeat; border-radius: 2px; }
+.offset-slider-track.clamped { background: linear-gradient(to right, var(--faint) 0 25%, rgb(var(--accent-rgb) / .7) 25% var(--offset-progress), var(--border) var(--offset-progress) 75%, var(--faint) 75% 100%) center / 100% 4px no-repeat; }
+.offset-slider-track input { position: absolute; left: 0; top: 0; width: 100%; height: 20px; margin: 0; appearance: none; background: transparent; }
+.offset-slider-track.clamped input { left: 25%; width: 50%; }
+.offset-slider-track input::-webkit-slider-runnable-track { height: 4px; background: transparent; }
+.offset-slider-track input::-moz-range-track { height: 4px; background: transparent; }
+.offset-slider-track input::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -5px; appearance: none; border: 2px solid var(--panel-deep); border-radius: 50%; background: var(--accent); }
+.offset-slider-track input::-moz-range-thumb { width: 10px; height: 10px; border: 2px solid var(--panel-deep); border-radius: 50%; background: var(--accent); }
 .offset-inspector .offset-tint { flex-direction: row; align-items: center; justify-content: space-between; }
 .offset-tint input { width: 48px; height: 28px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-deep); }
 

@@ -17,7 +17,13 @@ import { projectScenePoint } from '../domain/geometry'
 import type { BlockOffsetEvidence } from '../domain/types'
 import { useEditorStore } from '../store/editorStore'
 
-export function OffsetOverlay({ scale }: { scale: number }) {
+export function OffsetOverlay({
+  scale,
+  showModels,
+}: {
+  scale: number
+  showModels: boolean
+}) {
   const {
     document,
     step,
@@ -43,6 +49,7 @@ export function OffsetOverlay({ scale }: { scale: number }) {
     })),
   )
   useEffect(() => {
+    if (!showModels) return
     let cancelled = false
     const sources = JSON.parse(textureKey) as BlockOffsetEvidence[]
     loadOffsetTextures(sources)
@@ -58,11 +65,12 @@ export function OffsetOverlay({ scale }: { scale: number }) {
     return () => {
       cancelled = true
     }
-  }, [textureKey])
+  }, [showModels, textureKey])
   const rendered = entries.map((entry) =>
     preview?.id === entry.id ? preview : entry,
   )
-  if (step !== 'offsets' || offsetReadiness(document)) return null
+  const interactive = step === 'offsets'
+  if ((!showModels && !interactive) || offsetReadiness(document)) return null
   const scene = document.scene
   const selected = rendered.find((entry) => entry.id === selectedOffsetId)
 
@@ -121,26 +129,28 @@ export function OffsetOverlay({ scale }: { scale: number }) {
     : []
   return (
     <Layer>
-      <Shape
-        listening={false}
-        // Konva buffers translucent shapes with both fill and stroke before
-        // applying opacity. These inert paints make the custom texture
-        // renderer use that path, so crossed model planes are flattened once
-        // instead of blending every tessellated triangle independently.
-        fill="transparent"
-        stroke="transparent"
-        opacity={offsetOpacity}
-        sceneFunc={(context) =>
-          drawOffsetModels(
-            context._context,
-            scene,
-            rendered,
-            textures,
-            offsetYOcclusion,
-          )
-        }
-      />
-      {footprint.length > 0 && footprint.every((p) => p) && (
+      {showModels && (
+        <Shape
+          listening={false}
+          // Konva buffers translucent shapes with both fill and stroke before
+          // applying opacity. These inert paints make the custom texture
+          // renderer use that path, so crossed model planes are flattened once
+          // instead of blending every tessellated triangle independently.
+          fill="transparent"
+          stroke="transparent"
+          opacity={offsetOpacity}
+          sceneFunc={(context) =>
+            drawOffsetModels(
+              context._context,
+              scene,
+              rendered,
+              textures,
+              offsetYOcclusion,
+            )
+          }
+        />
+      )}
+      {interactive && footprint.length > 0 && footprint.every((p) => p) && (
         <Line
           listening={false}
           points={footprint.flatMap((p) => [p!.x, p!.y])}
@@ -150,7 +160,7 @@ export function OffsetOverlay({ scale }: { scale: number }) {
           dash={[4 / scale, 3 / scale]}
         />
       )}
-      {rendered.map((entry, index) => {
+      {interactive && rendered.map((entry, index) => {
         const center = offsetHandlePoint(scene, entry)
         if (!center) return null
         const active = entry.id === selectedOffsetId
@@ -221,7 +231,7 @@ export function OffsetOverlay({ scale }: { scale: number }) {
           </Group>
         )
       })}
-      {textureError && selected && (
+      {showModels && interactive && textureError && selected && (
         <Text
           x={offsetHandlePoint(scene, selected)?.x}
           y={(offsetHandlePoint(scene, selected)?.y ?? 0) + 20 / scale}

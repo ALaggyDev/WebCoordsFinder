@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Check, Copy, Crosshair, Plus, Trash2 } from 'lucide-react'
 import {
   offsetBasis,
@@ -319,35 +320,58 @@ export function OffsetInspector() {
             <h4>Offset within block</h4>
             {(['x', 'y', 'z'] as const)
               .filter((axis) => axis !== 'y' || profile.type === 'XYZ')
-              .map((axis) => (
-                <label className="offset-slider" key={axis}>
-                  <span>
-                    {axis.toUpperCase()}{' '}
-                    <small>seed {selected.nibbles[axis]} / 15</small>
-                  </span>
-                  <output>{offset[axis].toFixed(4)} blocks</output>
-                  <input
-                    aria-label={`${axis.toUpperCase()} offset seed`}
-                    type="range"
-                    min="0"
-                    max="15"
-                    step="1"
-                    value={selected.nibbles[axis]}
-                    onChange={(e) =>
-                      state.updateOffset(selected.id, {
-                        nibbles: {
-                          ...selected.nibbles,
-                          [axis]: Number(e.target.value),
-                        },
-                      })
-                    }
-                  />
-                </label>
-              ))}
+              .map((axis) => {
+                const clamped = axis !== 'y' && profile.horizontal === 0.125
+                // Seeds 3 and 12 are the first discrete values that reach the
+                // clipped endpoints. The remaining outer seeds are duplicates.
+                const min = clamped ? 3 : 0
+                const max = clamped ? 12 : 15
+                const value = Math.max(
+                  min,
+                  Math.min(max, selected.nibbles[axis]),
+                )
+                const progress = clamped
+                  ? 25 + ((value - min) / (max - min)) * 50
+                  : ((value - min) / (max - min)) * 100
+                return (
+                  <label className="offset-slider" key={axis}>
+                    <span>
+                      {axis.toUpperCase()}{' '}
+                      <small>seed {value} / 15</small>
+                    </span>
+                    <output>{offset[axis].toFixed(4)} blocks</output>
+                    <div
+                      className={`offset-slider-track${clamped ? ' clamped' : ''}`}
+                      style={
+                        {
+                          '--offset-progress': `${progress}%`,
+                        } as CSSProperties
+                      }
+                    >
+                      <input
+                        aria-label={`${axis.toUpperCase()} offset seed`}
+                        type="range"
+                        min={min}
+                        max={max}
+                        step="1"
+                        value={value}
+                        onChange={(e) =>
+                          state.updateOffset(selected.id, {
+                            nibbles: {
+                              ...selected.nibbles,
+                              [axis]: Number(e.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  </label>
+                )
+              })}
             {profile.horizontal === 0.125 && (
               <p className="field-help">
-                Dripstone clamps at ±0.125 blocks; several seed values produce
-                the same visible offset.
+                Dripstone clamps at ±0.125 blocks. The muted ends show clipped
+                seed values; the slider stops at the equivalent endpoints.
               </p>
             )}
             {profile.variants[selected.modelIndex].parts.some((part) =>
