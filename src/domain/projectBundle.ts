@@ -1,5 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { z } from 'zod'
+import { offsetEvidenceListSchema } from './blockOffsets'
 import {
   searchDirections,
   textureAlgorithms,
@@ -30,6 +31,7 @@ const projectSchema = z
     }),
     scene: z.unknown(),
     evidence: z.array(z.unknown()),
+    offsets: offsetEvidenceListSchema.optional(),
     scanner: z
       .object({
         textureAlgorithm: z.enum(textureAlgorithms),

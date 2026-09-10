@@ -337,6 +337,16 @@ function App() {
         redo()
         return
       }
+      const offsetState = useEditorStore.getState()
+      if (offsetState.step === 'offsets') {
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && ['x', 'backspace', 'delete'].includes(event.key.toLowerCase())) {
+          event.preventDefault()
+          if (offsetState.selectedOffsetId) offsetState.deleteOffset(offsetState.selectedOffsetId)
+        }
+        if (event.key === 'Escape') offsetState.selectOffset(null)
+        return
+      }
+
       if (event.ctrlKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
         selectAllFaces()

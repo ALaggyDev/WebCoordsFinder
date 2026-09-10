@@ -101,6 +101,7 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
 export function validateForExport(document: EditorDocument): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
+  if (document.offsets?.length) warnings.push('Block offset observations are saved in the project but are not used by browser search or native CoordsFinder export yet.')
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 

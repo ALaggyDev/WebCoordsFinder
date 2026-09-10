@@ -36,6 +36,7 @@ npm run build
 - Perspective-aware 3D mesh editor: draw a base grid, extrude connected faces, calibrate a shared camera view, and pan or zoom to inspect evidence.
 - Explicit world orientation and anchor controls for reliable X/Y/Z offsets.
 - Manual and batch face labeling with perspective-correct crops, bundled vanilla reference textures, and grass-tint controls for supported blocks.
+- Manual block-offset alignment with bundled decoration models, discrete XZ/XYZ offsets, and undoable placement. Requires a 3D camera and confirmed compass; measurements are saved in `.wcf` projects but are not yet used by the scanners.
 - Reviewable automatic variant proposals, scored in a background worker; only confirmed evidence is used for searching or export.
 - Search configuration for Vanilla and Sodium texture algorithms, inclusive bounds, quarter-turn directions, error tolerance, and scanner tile settings.
 - Run a compatible parallel CoordsFinder search locally in a WebAssembly worker pool, with pause, stop, exact shard checkpoints, and resumable results.

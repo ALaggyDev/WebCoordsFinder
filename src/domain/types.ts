@@ -44,7 +44,7 @@ export const searchDirections = [0, 90, 180, 270] as const
 export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
-export type EditorStep = 'grid' | 'faces' | 'export'
+export type EditorStep = 'grid' | 'faces' | 'offsets' | 'export'
 export type EditorTool = 'select' | 'anchor' | 'plane' | 'orient' | 'extrude'
 
 export type CandidateTransform =
@@ -274,7 +274,22 @@ export interface EditorDocument {
   image: ImageAsset
   scene: SceneGeometry
   evidence: FaceEvidence[]
+  /** Optional addition to schema 1; older projects have no offset observations. */
+  offsets?: BlockOffsetEvidence[]
   scanner: ScannerSettings
+}
+
+export interface BlockOffsetEvidence {
+  id: string
+  blockId: string
+  modelIndex: number
+  /** Owning block's minimum screenshot-local lattice corner. */
+  position: Point3
+  /** Seed nibbles, 0..15. Dripstone clamping can make several values equivalent. */
+  nibbles: Point3
+  tint: string
+  /** Confirmation is valid only for the camera and compass used to align it. */
+  confirmedBasis?: string
 }
 
 export interface BlockProfile {

@@ -5515,3 +5515,54 @@ button:disabled {
     grid-template-columns: 50px minmax(0, 1fr) 320px;
   }
 }
+
+/* Decoration alignment uses the workbench's theme and compact inspector rhythm. */
+.offset-inspector { display: flex; flex-direction: column; gap: 14px; }
+.offset-inspector .field-help { font-size: 12px; color: var(--muted); }
+.offset-catalog img { width: 24px; height: 24px; object-fit: cover; object-position: top; image-rendering: pixelated; flex-shrink: 0; }
+.offset-catalog button span { flex: 1; }
+.offset-inspector .section-title { display: flex; align-items: center; gap: 9px; }
+.offset-inspector h2 { font-size: 17px; margin: 0; }
+.offset-inspector h3 { font-size: 13px; margin: 0; }
+.offset-inspector h4 { font-size: 12px; margin: 2px 0 0; color: var(--theme-muted); }
+.offset-inspector p { margin: 0; line-height: 1.6; }
+.offset-badge { margin-left: auto; border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; color: var(--muted); font: 11px var(--mono); }
+.offset-notice, .offset-prerequisites { padding: 12px; font-size: 12px; line-height: 1.6; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-deep); color: var(--theme-muted); }
+.offset-prerequisites { border-color: var(--accent-dark); }
+.offset-prerequisites button { margin-top: 10px; }
+.offset-controls { display: flex; flex-direction: column; gap: 12px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.offset-controls:disabled { opacity: .45; }
+.offset-inspector label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--muted); }
+.offset-inspector input[type=search], .offset-inspector select { width: 100%; min-width: 0; padding: 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-deep); color: var(--text); font: inherit; }
+.offset-inspector button:focus-visible, .offset-inspector input:focus-visible, .offset-inspector select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.offset-catalog { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 190px; overflow-y: auto; padding: 2px; }
+.offset-catalog button, .offset-observations button, .offset-mode button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px; text-align: left; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel-deep); color: var(--text); font: inherit; font-size: 11px; cursor: pointer; }
+.offset-catalog button small, .offset-observations small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.offset-inspector button.selected { border-color: var(--accent); background: rgb(var(--accent-rgb) / .12); }
+.offset-inspector button:not(:disabled):hover { border-color: var(--accent); }
+.offset-observations { display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; }
+.offset-selection { border-top: 1px solid var(--border); padding-top: 16px; }
+.offset-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.offset-mode button { justify-content: center; }
+.offset-nudges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.offset-nudges > div { display: flex; align-items: center; gap: 5px; }
+.offset-nudges span { color: var(--muted); font: 12px var(--mono); margin-right: auto; }
+.offset-nudges button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-deep); color: var(--text); width: 28px; height: 28px; cursor: pointer; }
+.offset-inspector .offset-slider, .offset-inspector .offset-opacity { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.offset-slider small { color: var(--faint); margin-left: 5px; font-size: 10px; }
+.offset-slider output, .offset-opacity output { color: var(--text); font: 11px var(--mono); }
+.offset-slider input, .offset-opacity input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.offset-inspector .offset-tint { flex-direction: row; align-items: center; justify-content: space-between; }
+.offset-tint input { width: 48px; height: 28px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--panel-deep); }
+
+/* Four stages need to share the header space with the project actions. */
+@media (min-width: 1121px) and (max-width: 1450px) {
+  .topbar-content:has(.workflow) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; padding-inline: 16px; }
+  .topbar-content .workflow { position: static; transform: none; min-width: 0; }
+  .workflow-step { min-width: 0; flex: 1; padding-inline: 10px; font-size: 13px; }
+}
+.offset-add { border: 1px solid var(--border); border-radius: 7px; }
+.offset-add > summary { display: flex; align-items: center; gap: 8px; padding: 12px; color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
+.offset-add > summary::after { content: '＋'; margin-left: auto; color: var(--muted); }
+.offset-add[open] > summary::after { content: '−'; }
+.offset-add > .offset-controls { padding: 0 10px 12px; }

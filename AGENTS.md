@@ -55,7 +55,7 @@ variant before it becomes search evidence or is exported.
 
 ## User Workflow
 
-The top navigation has three stages:
+The top navigation has four stages:
 
 1. **Geometry** — draw four corners around the first block-aligned surface and
    set its dimensions. The editor saves a planar solve. Select one or more
@@ -69,7 +69,15 @@ The top navigation has three stages:
    selected faces with the bundled reference texture off the main thread. Its
    confidence threshold controls which suggestions are proposed; they can be
    reviewed, bulk-confirmed, corrected, or cleared.
-3. **Export** — choose the texture algorithm, scan order, optional quarter-turn
+3. **Offsets** — requires a 3D camera and confirmed parity-consistent compass.
+   Select a supporting mesh face, add a bundled decoration, and drag its base
+   handle to move whole blocks or fit discrete X/Z offsets. World-axis nudges,
+   XYZ vertical offsets, model states, tint, and opacity assist manual alignment.
+   Confirmed measurements become stale when the camera or mapping changes.
+   Optional `EditorDocument.offsets` preserves schema-1 compatibility and is
+   autosaved, undoable, and included in portable projects. Neither the browser
+   scanner nor the native configuration consumes these observations yet.
+4. **Export** — choose the texture algorithm, scan order, optional quarter-turn
    directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
    settings. Review readiness and estimates, run the browser search, or export
    / copy the generated configuration.
@@ -264,6 +272,14 @@ This is a React 19 + TypeScript + Vite application:
 - `src/domain/projectBundle.ts` — zipped `.wcf` bundles with schema validation.
 - `src/domain/examples.ts` and `public/examples/` — bundled portable example
   projects.
+- `src/domain/blockOffsets.ts`, `offsetRendering.ts`, and `offsetModels.json` —
+  offset contracts, Java-compatible nibble values, world/lattice placement,
+  textured model projection, and resolved vanilla model data.
+- `src/components/OffsetInspector.tsx` and `OffsetOverlay.tsx` — decoration
+  placement, alignment, and confirmation. `scripts/bundle-offset-models.mjs`
+  rebuilds the model catalog and `public/minecraft/offsets` textures from an
+  extracted Minecraft assets directory. The supplied 1.21.11 assets include 37
+  supported blocks; golden dandelion is absent and is not substituted.
 
 The PWA service worker precaches the local shell, textures, examples, and WASM
 for offline use. Its 4 MiB Workbox precache limit intentionally accommodates

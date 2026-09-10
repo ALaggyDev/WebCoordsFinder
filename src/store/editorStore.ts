@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { offsetBasis, offsetEvidenceListSchema, offsetEvidenceSchema, offsetReadiness } from '../domain/blockOffsets'
+import type { BlockOffsetEvidence } from '../domain/types'
 import {
   automaticAxisMappingForUp,
   axisMappingFromUpAndHorizontal,
@@ -315,6 +317,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     throw new Error('This project uses an unsupported document schema.')
   }
   const normalized = structuredClone(input as EditorDocument)
+  normalized.offsets = offsetEvidenceListSchema.parse(normalized.offsets ?? [])
   normalized.scene.worldUpIntent ??= null
   normalized.scene.horizontalOrientationIntent ??= null
   const defaults = createDefaultScanner()
@@ -510,6 +513,16 @@ function pruneGeometry(document: EditorDocument): void {
 type FaceTab = 'selection' | 'review'
 
 interface EditorState {
+  selectedOffsetId: string | null
+  offsetDragMode: 'block' | 'offset'
+  offsetOpacity: number
+  selectOffset: (id: string | null) => void
+  setOffsetDragMode: (mode: 'block' | 'offset') => void
+  setOffsetOpacity: (opacity: number) => void
+  addOffset: (entry: BlockOffsetEvidence) => void
+  updateOffset: (id: string, patch: Partial<BlockOffsetEvidence>) => void
+  deleteOffset: (id: string) => void
+  confirmOffset: (id: string) => void
   document: EditorDocument
   step: EditorStep
   faceTab: FaceTab
@@ -706,7 +719,36 @@ export const useEditorStore = create<EditorState>((set) => ({
   hoveredEvidenceId: null,
   past: [],
   future: [],
-  setStep: (step) => set({ step }),
+  selectedOffsetId: null,
+  offsetDragMode: 'block',
+  offsetOpacity: 0.7,
+  selectOffset: (selectedOffsetId) => set({ selectedOffsetId }),
+  setOffsetDragMode: (offsetDragMode) => set({ offsetDragMode }),
+  setOffsetOpacity: (offsetOpacity) => set({ offsetOpacity }),
+  addOffset: (entry) => set((state) => {
+    if (offsetReadiness(state.document)) return state
+    const parsed = offsetEvidenceSchema.parse(entry)
+    return { ...mutateDocument(state, (document) => { (document.offsets ??= []).push(parsed) }), selectedOffsetId: parsed.id }
+  }),
+  updateOffset: (id, patch) => set((state) => {
+    if (offsetReadiness(state.document) || !state.document.offsets?.some((entry) => entry.id === id)) return state
+    return mutateDocument(state, (document) => {
+      document.offsets = document.offsets!.map((entry) => entry.id === id
+        ? offsetEvidenceSchema.parse({ ...entry, ...patch, id, confirmedBasis: undefined }) : entry)
+    })
+  }),
+  deleteOffset: (id) => set((state) => ({
+    ...mutateDocument(state, (document) => { document.offsets = document.offsets?.filter((entry) => entry.id !== id) }),
+    selectedOffsetId: state.selectedOffsetId === id ? null : state.selectedOffsetId,
+  })),
+  confirmOffset: (id) => set((state) => {
+    if (offsetReadiness(state.document)) return state
+    return mutateDocument(state, (document) => {
+      const entry = document.offsets?.find((entry) => entry.id === id)
+      if (entry) entry.confirmedBasis = offsetBasis(document)
+    })
+  }),
+  setStep: (step) => set({ step, ...(step === 'offsets' ? { tool: 'select' as EditorTool, orientationDraft: null, selectedEdges: [] } : {}) }),
   setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) =>
     set((state) => {
@@ -768,6 +810,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     syncUnconfirmedProposals(document)
     set({
       document,
+      selectedOffsetId: null,
       past: [],
       future: [],
       faceTab: 'selection',
@@ -795,6 +838,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scene.worldUpIntent = null
         document.scene.horizontalOrientationIntent = null
         document.evidence = []
+        document.offsets = []
         document.anchorFaceId = null
         document.scanner.compassResolved = false
       }),

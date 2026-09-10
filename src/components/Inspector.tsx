@@ -1,3 +1,4 @@
+import { OffsetInspector } from './OffsetInspector'
 import {
   useEffect,
   useMemo,
@@ -1811,6 +1812,7 @@ export function Inspector(props: InspectorProps) {
       <div className="inspector-scroll">
         {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
+        {step === 'offsets' && <OffsetInspector />}
         {step === 'export' && <ExportInspector />}
       </div>
     </aside>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Layers3 } from 'lucide-react'
+import { OffsetOverlay } from './OffsetOverlay'
 import type Konva from 'konva'
 import {
   Arrow,
@@ -1673,7 +1674,8 @@ export function EditorCanvas() {
             </>
           )}
         </Layer>
-          {boxSelection && (
+        <OffsetOverlay scale={view.scale} />
+        {boxSelection && (
           <Layer listening={false}>
             <Rect
               x={Math.min(boxSelection.start.x, boxSelection.current.x)}
