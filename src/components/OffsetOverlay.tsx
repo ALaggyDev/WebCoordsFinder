@@ -123,6 +123,12 @@ export function OffsetOverlay({ scale }: { scale: number }) {
     <Layer>
       <Shape
         listening={false}
+        // Konva buffers translucent shapes with both fill and stroke before
+        // applying opacity. These inert paints make the custom texture
+        // renderer use that path, so crossed model planes are flattened once
+        // instead of blending every tessellated triangle independently.
+        fill="transparent"
+        stroke="transparent"
         opacity={offsetOpacity}
         sceneFunc={(context) =>
           drawOffsetModels(
