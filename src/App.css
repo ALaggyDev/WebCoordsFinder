@@ -5520,6 +5520,8 @@ button:disabled {
 .offset-inspector { display: flex; flex-direction: column; gap: 14px; }
 .offset-inspector .field-help { font-size: 12px; color: var(--muted); }
 .offset-catalog img { width: 24px; height: 24px; object-fit: cover; object-position: top; image-rendering: pixelated; flex-shrink: 0; }
+.offset-catalog img.grass-tinted { filter: url(#offset-catalog-grass-tint); }
+.offset-catalog-filter { position: absolute; width: 0; height: 0; overflow: hidden; }
 .offset-catalog button span { flex: 1; }
 .offset-inspector .section-title { display: flex; align-items: center; gap: 9px; }
 .offset-inspector h2 { font-size: 17px; margin: 0; }

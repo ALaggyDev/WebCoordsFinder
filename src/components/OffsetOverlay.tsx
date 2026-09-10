@@ -24,6 +24,7 @@ export function OffsetOverlay({ scale }: { scale: number }) {
     selectedOffsetId,
     offsetDragMode,
     offsetOpacity,
+    offsetYOcclusion,
     selectOffset,
     updateOffset,
   } = useEditorStore()
@@ -124,7 +125,13 @@ export function OffsetOverlay({ scale }: { scale: number }) {
         listening={false}
         opacity={offsetOpacity}
         sceneFunc={(context) =>
-          drawOffsetModels(context._context, scene, rendered, textures)
+          drawOffsetModels(
+            context._context,
+            scene,
+            rendered,
+            textures,
+            offsetYOcclusion,
+          )
         }
       />
       {footprint.length > 0 && footprint.every((p) => p) && (

@@ -516,9 +516,11 @@ interface EditorState {
   selectedOffsetId: string | null
   offsetDragMode: 'block' | 'offset'
   offsetOpacity: number
+  offsetYOcclusion: boolean
   selectOffset: (id: string | null) => void
   setOffsetDragMode: (mode: 'block' | 'offset') => void
   setOffsetOpacity: (opacity: number) => void
+  setOffsetYOcclusion: (enabled: boolean) => void
   addOffset: (entry: BlockOffsetEvidence) => void
   updateOffset: (id: string, patch: Partial<BlockOffsetEvidence>) => void
   deleteOffset: (id: string) => void
@@ -722,9 +724,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedOffsetId: null,
   offsetDragMode: 'block',
   offsetOpacity: 0.7,
+  offsetYOcclusion: true,
   selectOffset: (selectedOffsetId) => set({ selectedOffsetId }),
   setOffsetDragMode: (offsetDragMode) => set({ offsetDragMode }),
   setOffsetOpacity: (offsetOpacity) => set({ offsetOpacity }),
+  setOffsetYOcclusion: (offsetYOcclusion) => set({ offsetYOcclusion }),
   addOffset: (entry) => set((state) => {
     if (offsetReadiness(state.document)) return state
     const parsed = offsetEvidenceSchema.parse(entry)

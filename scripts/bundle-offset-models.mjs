@@ -41,16 +41,61 @@ for (const id of ids) {
   const state = read(`blockstates/${id}.json`)
   const choices = []
   if (state.variants) {
-    for (const [label, value] of Object.entries(state.variants)) {
-      for (const [index, entry] of (Array.isArray(value)
-        ? value
-        : [value]
-      ).entries()) {
-        choices.push({
-          label: `${label || 'default'}${Array.isArray(value) ? ` · model ${index + 1}` : ''}`,
-          parts: [entry],
-        })
+    const variants = Object.entries(state.variants)
+    const parsed = variants.map(([label, value]) => ({
+      label,
+      properties: Object.fromEntries(
+        label
+          .split(',')
+          .filter(Boolean)
+          .map((property) => property.split('=')),
+      ),
+      entries: Array.isArray(value) ? value : [value],
+    }))
+    const hasTwoBlockHalves =
+      parsed.some(({ properties }) => properties.half === 'lower') &&
+      parsed.some(({ properties }) => properties.half === 'upper')
+
+    if (hasTwoBlockHalves) {
+      // A double plant is one visual observation. Pair block-state halves and
+      // retain the upper model one block above the owning (lower) position.
+      for (const lower of parsed.filter(
+        ({ properties }) => properties.half === 'lower',
+      )) {
+        const shared = Object.fromEntries(
+          Object.entries(lower.properties).filter(([key]) => key !== 'half'),
+        )
+        const upper = parsed.find(
+          ({ properties }) =>
+            properties.half === 'upper' &&
+            JSON.stringify(
+              Object.fromEntries(
+                Object.entries(properties).filter(([key]) => key !== 'half'),
+              ),
+            ) === JSON.stringify(shared),
+        )
+        if (!upper) throw new Error(`Missing upper half for ${id}: ${lower.label}`)
+        for (const [lowerIndex, lowerEntry] of lower.entries.entries())
+          for (const [upperIndex, upperEntry] of upper.entries.entries()) {
+            const weighted = lower.entries.length * upper.entries.length > 1
+            choices.push({
+              label: `${Object.entries(shared)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(',') || 'default'}${weighted ? ` · models ${lowerIndex + 1}/${upperIndex + 1}` : ''}`,
+              parts: [
+                { ...lowerEntry, blockY: 0 },
+                { ...upperEntry, blockY: 1 },
+              ],
+            })
+          }
       }
+    } else {
+      for (const { label, entries } of parsed)
+        for (const [index, entry] of entries.entries())
+          choices.push({
+            label: `${label || 'default'}${entries.length > 1 ? ` · model ${index + 1}` : ''}`,
+            parts: [{ ...entry, blockY: 0 }],
+          })
     }
   } else {
     // Enumerate multipart states, then their weighted alternatives, including
@@ -110,12 +155,24 @@ for (const id of ids) {
     type: xyz.has(id) ? 'XYZ' : 'XZ',
     horizontal: id === 'pointed_dripstone' ? 0.125 : 0.25,
     vertical: xyz.has(id) ? (id === 'small_dripleaf' ? 0.1 : 0.2) : 0,
-    variants: choices.map(({ label, parts }) => ({
-      label,
-      parts: parts.map((part) => {
+    variants: choices.map(({ label, parts }) => {
+      const resolvedParts = parts.map((part) => {
         const resolved = model(part.model)
+        const yShift = (part.blockY ?? 0) * 16
         const elements = resolved.elements.map((element) => ({
           ...element,
+          from: [element.from[0], element.from[1] + yShift, element.from[2]],
+          to: [element.to[0], element.to[1] + yShift, element.to[2]],
+          ...(element.rotation && {
+            rotation: {
+              ...element.rotation,
+              origin: [
+                element.rotation.origin[0],
+                element.rotation.origin[1] + yShift,
+                element.rotation.origin[2],
+              ],
+            },
+          }),
           faces: Object.fromEntries(
             Object.entries(element.faces).map(([side, face]) => {
               let texture = face.texture
@@ -130,9 +187,23 @@ for (const id of ids) {
             }),
           ),
         }))
-        return { x: part.x ?? 0, y: part.y ?? 0, elements }
-      }),
-    })),
+        return {
+          x: part.x ?? 0,
+          y: part.y ?? 0,
+          elements,
+        }
+      })
+      // Lower and upper blockstates normally use the same block rotation. Once
+      // their element coordinates share one space, collapse them into one part.
+      const merged = new Map()
+      for (const part of resolvedParts) {
+        const key = `${part.x}:${part.y}`
+        const existing = merged.get(key)
+        if (existing) existing.elements.push(...part.elements)
+        else merged.set(key, part)
+      }
+      return { label, parts: [...merged.values()] }
+    }),
   }
 }
 for (const texture of textures) {

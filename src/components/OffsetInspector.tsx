@@ -113,6 +113,15 @@ export function OffsetInspector() {
           Add decoration
         </summary>
         <fieldset disabled={Boolean(blocked)} className="offset-controls">
+          <svg className="offset-catalog-filter" aria-hidden="true">
+            <filter id="offset-catalog-grass-tint" colorInterpolationFilters="sRGB">
+              <feComponentTransfer>
+                <feFuncR type="linear" slope="0.568627" />
+                <feFuncG type="linear" slope="0.741176" />
+                <feFuncB type="linear" slope="0.349020" />
+              </feComponentTransfer>
+            </filter>
+          </svg>
           <label>
             Find a block
             <input
@@ -137,6 +146,13 @@ export function OffsetInspector() {
                 >
                   <img
                     alt=""
+                    className={
+                      Object.values(
+                        p.variants[0].parts[0].elements[0].faces,
+                      )[0].tintindex === undefined
+                        ? undefined
+                        : 'grass-tinted'
+                    }
                     src={
                       Object.values(p.variants[0].parts[0].elements[0].faces)[0]
                         .texture
@@ -232,12 +248,22 @@ export function OffsetInspector() {
                 ))}
               </select>
             </label>
-            {profile.variants.some((variant) =>
-              variant.label.includes('half='),
-            ) && (
+            {profile.type === 'XYZ' && (
+              <button
+                type="button"
+                className={`secondary-button full${state.offsetYOcclusion ? ' selected' : ''}`}
+                aria-pressed={state.offsetYOcclusion}
+                onClick={() =>
+                  state.setOffsetYOcclusion(!state.offsetYOcclusion)
+                }
+              >
+                Y occlusion
+              </button>
+            )}
+            {profile.type === 'XYZ' && (
               <p className="field-help">
-                For two-block plants, add each visible half separately and
-                choose its half here.
+                Y occlusion hides the part shifted below the owning block, as
+                the supporting block would in the screenshot.
               </p>
             )}
             <div className="offset-mode" aria-label="Drag behavior">
@@ -383,8 +409,9 @@ export function OffsetInspector() {
         <p className="field-help">
           Bundled from the supplied Minecraft 1.21.11 resources. Golden
           dandelion is unavailable in that asset set. Models are alignment
-          overlays; lighting, water, and scene occlusion are not simulated.
-          Offset matching is manual.
+          overlays; lighting, water, and general scene occlusion are not
+          simulated. Y occlusion can approximate the supporting block for XYZ
+          offsets. Offset matching is manual.
         </p>
       </details>
     </div>

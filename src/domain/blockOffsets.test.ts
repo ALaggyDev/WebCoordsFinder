@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   modelLatticePoint,
   offsetBasis,
@@ -24,7 +25,10 @@ import {
 } from '../store/editorStore'
 import { createTestDocument } from '../test/createTestDocument'
 import type { BlockOffsetEvidence } from './types'
-import { offsetModelQuads } from './offsetRendering'
+import {
+  clipTexturedPolygonAtY,
+  offsetModelQuads,
+} from './offsetRendering'
 
 function cameraDocument() {
   const document = createTestDocument()
@@ -170,13 +174,65 @@ describe('Minecraft block offsets', () => {
     const bamboo = offsetProfiles.bamboo.variants.find((v) =>
       v.label.includes('leaves=large'),
     )!
-    expect(bamboo.parts.length).toBeGreaterThan(1)
-    expect(offsetProfiles.bamboo.variants.find((v) => v.label.includes('leaves=none'))!.parts).toHaveLength(1)
-    for (const texture of textures) expect(existsSync(new URL(`../../public${texture}`, import.meta.url))).toBe(true)
+    const bareBamboo = offsetProfiles.bamboo.variants.find((v) =>
+      v.label.includes('leaves=none'),
+    )!
+    expect(bamboo.parts).toHaveLength(1)
+    expect(bareBamboo.parts).toHaveLength(1)
+    expect(bamboo.parts[0].elements.length).toBeGreaterThan(
+      bareBamboo.parts[0].elements.length,
+    )
+    for (const texture of textures)
+      expect(
+        existsSync(
+          resolve('public', texture.slice(1)),
+        ),
+        texture,
+      ).toBe(true)
     const cross = offsetModelQuads(observation())[0]
     expect(cross.points[0].x).toBeCloseTo(0.95)
     expect(cross.points[0].y).toBe(1)
     expect(cross.points[0].z).toBeCloseTo(0.05)
+  })
+
+  it('bundles both halves of tall plants into one model', () => {
+    for (const blockId of [
+      'tall_seagrass',
+      'sunflower',
+      'lilac',
+      'rose_bush',
+      'peony',
+      'tall_grass',
+      'large_fern',
+      'pitcher_plant',
+    ]) {
+      expect(offsetProfiles[blockId].variants).toHaveLength(1)
+      const quads = offsetModelQuads({ ...observation(), blockId })
+      expect(Math.max(...quads.flatMap((quad) => quad.points.map((p) => p.y)))).toBeGreaterThan(1)
+    }
+    expect(offsetProfiles.small_dripleaf.variants).toHaveLength(4)
+    expect(
+      offsetProfiles.small_dripleaf.variants.every(
+        (variant) => variant.parts.length === 1,
+      ),
+    ).toBe(true)
+  })
+
+  it('clips shifted model geometry and texture coordinates at the block floor', () => {
+    const clipped = clipTexturedPolygonAtY(
+      [
+        { point: { x: 0, y: 1, z: 0 }, uv: { x: 0, y: 0 } },
+        { point: { x: 1, y: 1, z: 0 }, uv: { x: 16, y: 0 } },
+        { point: { x: 1, y: 0, z: 0 }, uv: { x: 16, y: 16 } },
+        { point: { x: 0, y: 0, z: 0 }, uv: { x: 0, y: 16 } },
+      ],
+      0.2,
+    )
+    expect(clipped).toHaveLength(4)
+    expect(clipped.every(({ point }) => point.y >= 0.2)).toBe(true)
+    const intersections = clipped.filter(({ point }) => point.y === 0.2)
+    expect(intersections).toHaveLength(2)
+    intersections.forEach(({ uv }) => expect(uv.y).toBeCloseTo(12.8))
   })
 })
 

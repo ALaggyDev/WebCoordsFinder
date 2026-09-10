@@ -1,5 +1,6 @@
 import {
   modelLatticePoint,
+  offsetFromNibbles,
   offsetProfiles,
   type ModelElement,
   type ModelFace,
@@ -130,10 +131,55 @@ export function offsetModelQuads(entry: BlockOffsetEvidence): Quad[] {
             -part.y,
             center,
           )
-          return { x: rotated.x / 16, y: rotated.y / 16, z: rotated.z / 16 }
+          return {
+            x: rotated.x / 16,
+            y: rotated.y / 16,
+            z: rotated.z / 16,
+          }
         }),
       })),
   )
+}
+
+interface TexturedPoint {
+  point: Point3
+  uv: Point2
+}
+
+/** Clip a textured polygon against the model's lower Y plane. */
+export function clipTexturedPolygonAtY(
+  vertices: TexturedPoint[],
+  minimumY: number,
+): TexturedPoint[] {
+  const result: TexturedPoint[] = []
+  for (let index = 0; index < vertices.length; index++) {
+    const current = vertices[index]
+    const previous = vertices[(index + vertices.length - 1) % vertices.length]
+    const currentInside = current.point.y >= minimumY
+    const previousInside = previous.point.y >= minimumY
+    if (currentInside !== previousInside) {
+      const amount =
+        (minimumY - previous.point.y) / (current.point.y - previous.point.y)
+      const interpolate = <T extends Point2>(from: T, to: T): T =>
+        Object.fromEntries(
+          Object.keys(from).map((key) => {
+            const k = key as keyof T
+            return [
+              key,
+              Number(from[k]) + (Number(to[k]) - Number(from[k])) * amount,
+            ]
+          }),
+        ) as T
+      const intersection = interpolate(previous.point, current.point) as Point3
+      intersection.y = minimumY
+      result.push({
+        point: intersection,
+        uv: interpolate(previous.uv, current.uv),
+      })
+    }
+    if (currentInside) result.push(current)
+  }
+  return result
 }
 
 /** Affine texture mapping of one small triangle; tessellation approximates perspective. */
@@ -175,6 +221,7 @@ export function drawOffsetModels(
   scene: SceneGeometry,
   entries: BlockOffsetEvidence[],
   textures: Map<string, HTMLCanvasElement>,
+  yOcclusion = false,
 ) {
   if (scene.projection?.kind !== 'camera') return
   const m = scene.projection.matrix
@@ -187,6 +234,7 @@ export function drawOffsetModels(
       offsetModelQuads(entry).map((quad) => ({
         ...quad,
         entry,
+        modelPoints: quad.points,
         points: quad.points.map((p) => modelLatticePoint(scene, entry, p)),
       })),
     )
@@ -231,19 +279,28 @@ export function drawOffsetModels(
           [(x + 1) / n, (y + 1) / n],
           [x / n, (y + 1) / n],
         ]
-        const points = samples.map(([u, v]) =>
-          projectScenePoint(scene, interpolate(quad.points, u, v))!,
+        let vertices = samples.map(([u, v]) => ({
+          point: interpolate(quad.modelPoints, u, v),
+          uv: interpolate(quad.uv, u, v),
+        }))
+        if (yOcclusion && offsetProfiles[quad.entry.blockId].type === 'XYZ')
+          vertices = clipTexturedPolygonAtY(
+            vertices,
+            -offsetFromNibbles(
+              offsetProfiles[quad.entry.blockId],
+              quad.entry.nibbles,
+            ).y,
+          )
+        const points = vertices.map(({ point }) =>
+          projectScenePoint(scene, modelLatticePoint(scene, quad.entry, point))!,
         )
-        const uv = samples.map(([u, v]) => interpolate(quad.uv, u, v))
-        for (const indices of [
-          [0, 1, 2],
-          [0, 2, 3],
-        ])
+        const uv = vertices.map((vertex) => vertex.uv)
+        for (let index = 1; index + 1 < vertices.length; index++)
           triangle(
             ctx,
             texture,
-            indices.map((i) => points[i]),
-            indices.map((i) => uv[i]),
+            [points[0], points[index], points[index + 1]],
+            [uv[0], uv[index], uv[index + 1]],
           )
       }
   }
