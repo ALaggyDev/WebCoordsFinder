@@ -137,7 +137,7 @@ function createDefaultScanner(): ScannerSettings {
     gpuTileSize: { x: 8192, z: 8192 },
     errorTolerance: 0,
     verbose: false,
-    confidenceThreshold: 0.08,
+    confidenceThreshold: 0.10,
     webSearch: null,
   }
 }

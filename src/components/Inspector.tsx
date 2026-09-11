@@ -1456,7 +1456,7 @@ function ReviewInspector({ busy, onAutoFill }: Pick<InspectorProps, 'busy' | 'on
         <input
           type="range"
           aria-label="Proposal threshold"
-          min="0.02"
+          min="0.05"
           max="0.35"
           step="0.01"
           value={document.scanner.confidenceThreshold}
