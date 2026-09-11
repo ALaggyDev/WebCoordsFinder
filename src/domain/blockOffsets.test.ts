@@ -29,6 +29,7 @@ import { createTestDocument } from '../test/createTestDocument'
 import type { BlockOffsetEvidence } from './types'
 import {
   clipTexturedPolygonAtY,
+  drawOffsetModels,
   offsetModelQuads,
 } from './offsetRendering'
 
@@ -263,6 +264,61 @@ describe('Minecraft block offsets', () => {
     const intersections = clipped.filter(({ point }) => point.y === 0.2)
     expect(intersections).toHaveLength(2)
     intersections.forEach(({ uv }) => expect(uv.y).toBeCloseTo(12.8))
+  })
+
+  it('depth-sorts crossed grass in tessellated patches', () => {
+    const elements = offsetProfiles.short_grass.variants[0].parts[0].elements
+    const originalTextures = elements.map((element) =>
+      Object.values(element.faces)[0].texture,
+    )
+    const textureA = { id: 'a' } as unknown as HTMLCanvasElement
+    const textureB = { id: 'b' } as unknown as HTMLCanvasElement
+    const draws: string[] = []
+    const context = {
+      save() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      closePath() {},
+      clip() {},
+      transform() {},
+      restore() {},
+      drawImage(texture: { id: string }) {
+        draws.push(texture.id)
+      },
+      imageSmoothingEnabled: true,
+    } as unknown as CanvasRenderingContext2D
+
+    try {
+      Object.values(elements[0].faces).forEach((face) => {
+        face.texture = '/plane-a.png'
+      })
+      Object.values(elements[1].faces).forEach((face) => {
+        face.texture = '/plane-b.png'
+      })
+      drawOffsetModels(
+        context,
+        cameraDocument().scene,
+        [observation()],
+        new Map([
+          [`/plane-a.png:${observation().tint}`, textureA],
+          [`/plane-b.png:${observation().tint}`, textureB],
+        ]),
+      )
+    } finally {
+      elements.forEach((element, index) =>
+        Object.values(element.faces).forEach((face) => {
+          face.texture = originalTextures[index]
+        }),
+      )
+    }
+
+    expect(draws).toContain('a')
+    expect(draws).toContain('b')
+    expect(draws.some((texture, index) => index > 0 && texture !== draws[index - 1])).toBe(true)
+    expect(new Set(draws.slice(0, draws.length / 2))).toEqual(
+      new Set(['a', 'b']),
+    )
   })
 })
 

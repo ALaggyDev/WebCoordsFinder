@@ -146,6 +146,13 @@ interface TexturedPoint {
   uv: Point2
 }
 
+interface TexturedPolygon {
+  points: Point2[]
+  uv: Point2[]
+  texture: CanvasImageSource
+  depth: number
+}
+
 /** Clip a textured polygon against the model's lower Y plane. */
 export function clipTexturedPolygonAtY(
   vertices: TexturedPoint[],
@@ -239,12 +246,7 @@ export function drawOffsetModels(
       })),
     )
     .filter((q) => q.points.every((p) => depth(p) * sign > 1e-8))
-  quads.sort(
-    (a, b) =>
-      b.points.reduce((s, p) => s + depth(p) * sign, 0) -
-      a.points.reduce((s, p) => s + depth(p) * sign, 0),
-  )
-  ctx.imageSmoothingEnabled = false
+  const polygons: TexturedPolygon[] = []
   for (const quad of quads) {
     const texture = textures.get(
       `${quad.face.texture}:${quad.face.tintindex === undefined ? '' : quad.entry.tint}`,
@@ -291,19 +293,38 @@ export function drawOffsetModels(
               quad.entry.nibbles,
             ).y,
           )
-        const points = vertices.map(({ point }) =>
-          projectScenePoint(scene, modelLatticePoint(scene, quad.entry, point))!,
+        if (vertices.length < 3) continue
+        const scenePoints = vertices.map(({ point }) =>
+          modelLatticePoint(scene, quad.entry, point),
         )
-        const uv = vertices.map((vertex) => vertex.uv)
-        for (let index = 1; index + 1 < vertices.length; index++)
-          triangle(
-            ctx,
-            texture,
-            [points[0], points[index], points[index + 1]],
-            [uv[0], uv[index], uv[index + 1]],
-          )
+        polygons.push({
+          points: scenePoints.map((point) => projectScenePoint(scene, point)!),
+          uv: vertices.map((vertex) => vertex.uv),
+          texture,
+          depth:
+            scenePoints.reduce((sum, point) => sum + depth(point) * sign, 0) /
+            scenePoints.length,
+        })
       }
   }
+
+  // Crossed plant planes intersect, so a whole-quad painter order is wrong on
+  // one side of the crossing. Sort the existing tessellation patches instead;
+  // their boundary at u=0.5 follows the intersection in vanilla cross models.
+  polygons.sort((a, b) => b.depth - a.depth)
+  ctx.imageSmoothingEnabled = false
+  for (const polygon of polygons)
+    for (let index = 1; index + 1 < polygon.points.length; index++)
+      triangle(
+        ctx,
+        polygon.texture,
+        [
+          polygon.points[0],
+          polygon.points[index],
+          polygon.points[index + 1],
+        ],
+        [polygon.uv[0], polygon.uv[index], polygon.uv[index + 1]],
+      )
 }
 
 /** Tint only marked faces, preserving the original alpha and nearest-neighbor pixels. */
