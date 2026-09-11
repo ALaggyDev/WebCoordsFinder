@@ -45,7 +45,7 @@ export function grassColorMapCoordinates(
   ]
 }
 
-async function grassTintColor(
+export async function grassTintColor(
   settings = defaultGrassTintSettings,
 ): Promise<RgbColor> {
   const colorMap = await loadImage(grassColorMapSource)

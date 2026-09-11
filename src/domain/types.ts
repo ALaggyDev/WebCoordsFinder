@@ -288,6 +288,8 @@ export interface BlockOffsetEvidence {
   /** Seed nibbles, 0..15. Dripstone clamping can make several values equivalent. */
   nibbles: Point3
   tint: string
+  /** Climate values used to derive the Minecraft grass colormap tint. */
+  grassTint?: GrassTintSettings
   /** Confirmation is valid only for the camera and compass used to align it. */
   confirmedBasis?: string
 }

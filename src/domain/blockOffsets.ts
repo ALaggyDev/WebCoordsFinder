@@ -59,6 +59,12 @@ export const offsetEvidenceSchema = z
     position: integerPoint,
     nibbles: z.object({ x: nibble, y: nibble, z: nibble }),
     tint: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    grassTint: z
+      .object({
+        temperature: z.number().min(0).max(1),
+        downfall: z.number().min(0).max(1),
+      })
+      .optional(),
     confirmedBasis: z.string().optional(),
   })
   .refine((entry) => {

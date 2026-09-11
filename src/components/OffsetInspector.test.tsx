@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDocument } from '../test/createTestDocument'
 import { useEditorStore } from '../store/editorStore'
@@ -31,6 +31,26 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('dripstone offset controls', () => {
+  it('opens decoration and observation settings in anchored popups', () => {
+    render(<OffsetInspector />)
+
+    expect(screen.queryByRole('dialog', { name: 'Add decoration' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add decoration' }))
+    expect(screen.getByRole('dialog', { name: 'Add decoration' })).toBeInTheDocument()
+
+    expect(screen.queryByLabelText('Decoration settings controls')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Decoration settings' }))
+    expect(screen.getByLabelText('Decoration settings controls')).toBeInTheDocument()
+    expect(screen.getByText('Model / block state')).toBeInTheDocument()
+  })
+
+  it('removes obsolete offset notices and model details', () => {
+    render(<OffsetInspector />)
+
+    expect(screen.queryByText(/Measurements are saved in your project/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('About these models')).not.toBeInTheDocument()
+  })
+
   it('documents the unified modifier-based drag handle', () => {
     render(<OffsetInspector />)
 
@@ -53,5 +73,30 @@ describe('dripstone offset controls', () => {
 
     expect(screen.getByText(/muted ends show clipped seed values/i))
       .toBeInTheDocument()
+  })
+})
+
+describe('grass offset settings', () => {
+  it('uses the climate slider input used by block-specific grass tint', () => {
+    const document = createTestDocument()
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+    document.scanner.compassResolved = true
+    document.offsets = [{
+      id: 'grass',
+      blockId: 'short_grass',
+      modelIndex: 0,
+      position: { x: 0, y: 0, z: 0 },
+      nibbles: { x: 7, y: 0, z: 7 },
+      tint: '#91bd59',
+    }]
+    useEditorStore.setState({ document, selectedOffsetId: 'grass' })
+    render(<OffsetInspector />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Decoration settings' }))
+    expect(screen.getByText('Grass tint')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Y occlusion' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Grass tint temperature' })).toHaveValue('0.8')
+    expect(screen.getByRole('slider', { name: 'Grass tint downfall' })).toHaveValue('0.4')
+    expect(screen.queryByLabelText('Foliage tint')).not.toBeInTheDocument()
   })
 })
