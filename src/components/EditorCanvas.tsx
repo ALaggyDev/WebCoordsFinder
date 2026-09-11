@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Check, Layers3 } from 'lucide-react'
+import { Check, Eye, EyeOff, Layers3 } from 'lucide-react'
 import { OffsetOverlay } from './OffsetOverlay'
 import type Konva from 'konva'
 import {
@@ -68,6 +68,7 @@ const CONFIRMED = '#53e6a5'
 const EDGE = '#d6e0e5'
 const HOVERED = '#d8c66b'
 const VISUALIZATION_SETTINGS_STORAGE_KEY = 'web-coords-finder:visualization-settings'
+const VISUALIZATIONS_VISIBLE_STORAGE_KEY = 'web-coords-finder:visualizations-visible'
 
 interface CanvasSize {
   width: number
@@ -112,6 +113,14 @@ function loadVisualizationSettings(): VisualizationSettings {
   } catch {
     // The editor remains usable when storage is unavailable or corrupt.
     return defaultVisualizationSettings
+  }
+}
+
+function loadVisualizationsVisible(): boolean {
+  try {
+    return localStorage.getItem(VISUALIZATIONS_VISIBLE_STORAGE_KEY) !== 'false'
+  } catch {
+    return true
   }
 }
 
@@ -621,6 +630,9 @@ export function EditorCanvas() {
   const [visualizations, setVisualizations] = useState<VisualizationSettings>(
     loadVisualizationSettings,
   )
+  const [visualizationsVisible, setVisualizationsVisible] = useState(
+    loadVisualizationsVisible,
+  )
 
   useEffect(() => {
     try {
@@ -632,6 +644,17 @@ export function EditorCanvas() {
       // Settings are optional; a storage failure should not disrupt editing.
     }
   }, [visualizations])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        VISUALIZATIONS_VISIBLE_STORAGE_KEY,
+        String(visualizationsVisible),
+      )
+    } catch {
+      // Visibility still works for this session when storage is unavailable.
+    }
+  }, [visualizationsVisible])
 
   const renderedScene = useMemo(() => {
     if (!draggedObservation) return document.scene
@@ -876,6 +899,24 @@ export function EditorCanvas() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      const isEditing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      if (
+        !isEditing &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.repeat &&
+        event.key.toLowerCase() === 'v'
+      ) {
+        event.preventDefault()
+        setVisualizationsVisible((visible) => !visible)
+        return
+      }
       if (event.key === 'Escape') {
         setDraft([])
         setDraftGridSize(undefined)
@@ -1252,32 +1293,46 @@ export function EditorCanvas() {
 
   return (
     <div className="canvas-shell" ref={containerRef}>
-      <div ref={visualizationMenuRef} className="visualization-menu">
+      <div className="visualization-controls">
         <button
           type="button"
-          className="visualization-trigger"
-          aria-label="Visualization options"
-          onMouseDown={(event) => event.preventDefault()}
+          className={`visualization-trigger visualization-toggle${
+            visualizationsVisible ? ' active' : ''
+          }`}
+          aria-label={`${visualizationsVisible ? 'Hide' : 'Show'} visualizations`}
+          aria-pressed={visualizationsVisible}
+          title={`${visualizationsVisible ? 'Hide' : 'Show'} visualizations (V)`}
+          onClick={() => setVisualizationsVisible((visible) => !visible)}
         >
-          <Layers3 size={14} />
+          {visualizationsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
         </button>
-        <div className="visualization-options">
-          {visualizationOptions.map((option) => (
-            <label className="visualization-option" key={option.key}>
-              <input
-                type="checkbox"
-                checked={visualizations[option.key]}
-                onChange={(event) =>
-                  setVisualizations((current) => ({
-                    ...current,
-                    [option.key]: event.target.checked,
-                  }))
-                }
-              />
-              <span><strong>{option.label}</strong></span>
-              <small className="visualization-tooltip">{option.description}</small>
-            </label>
-          ))}
+        <div ref={visualizationMenuRef} className="visualization-menu">
+          <button
+            type="button"
+            className="visualization-trigger"
+            aria-label="Visualization options"
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <Layers3 size={14} />
+          </button>
+          <div className="visualization-options">
+            {visualizationOptions.map((option) => (
+              <label className="visualization-option" key={option.key}>
+                <input
+                  type="checkbox"
+                  checked={visualizations[option.key]}
+                  onChange={(event) =>
+                    setVisualizations((current) => ({
+                      ...current,
+                      [option.key]: event.target.checked,
+                    }))
+                  }
+                />
+                <span><strong>{option.label}</strong></span>
+                <small className="visualization-tooltip">{option.description}</small>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
       <Stage
@@ -1335,7 +1390,7 @@ export function EditorCanvas() {
           )}
         </Layer>
         <Layer>
-          {visualizations.grid && sceneForRendering.faces.map((face) => {
+          {visualizationsVisible && visualizations.grid && sceneForRendering.faces.map((face) => {
             const isPreview = face.id.startsWith('__preview_')
             const evidence = evidenceMap.get(face.id)
             const selected = selectedEvidenceIds.includes(face.id)
@@ -1389,7 +1444,7 @@ export function EditorCanvas() {
               />
             )
           })}
-          {visualizations.grid && meshEdges.map(({ key, selection }) => {
+          {visualizationsVisible && visualizations.grid && meshEdges.map(({ key, selection }) => {
             const geometry = selectedEdgeGeometry(renderedScene, selection)
             if (!geometry) return null
             const start = projectScenePoint(renderedScene, geometry.start)
@@ -1447,6 +1502,7 @@ export function EditorCanvas() {
               )
             })}
           {fullCameraSolved &&
+            visualizationsVisible &&
             visualizations.faceNormals &&
             sceneForRendering.faces.map((face) => (
               <FaceNormalGizmo
@@ -1456,21 +1512,21 @@ export function EditorCanvas() {
                 scale={view.scale}
               />
             ))}
-          {visualizations.anchorMarker && anchorFace && (
+          {visualizationsVisible && visualizations.anchorMarker && anchorFace && (
             <AnchorGizmo
               scene={sceneForRendering}
               face={anchorFace}
               scale={view.scale}
             />
           )}
-          {visualizations.axisGizmo && anchorFace && (
+          {visualizationsVisible && visualizations.axisGizmo && anchorFace && (
             <GlobalAxisGizmo
               scene={sceneForRendering}
               face={anchorFace}
               scale={view.scale}
             />
           )}
-          {visualizations.calibrationResiduals &&
+          {visualizationsVisible && visualizations.calibrationResiduals &&
             document.scene.observations.map((observation) => {
               const actual =
                 draggedObservation?.id === observation.id
@@ -1493,7 +1549,7 @@ export function EditorCanvas() {
                 />
               )
             })}
-          {visualizations.calibrationPoints &&
+          {visualizationsVisible && visualizations.calibrationPoints &&
             document.scene.observations.map((observation) => (
               <Circle
                 key={observation.id}
@@ -1544,7 +1600,7 @@ export function EditorCanvas() {
                 }}
               />
             ))}
-          {visualizations.calibrationPoints &&
+          {visualizationsVisible && visualizations.calibrationPoints &&
             calibrationCandidates.map((lattice) => {
               const projected = projectScenePoint(renderedScene, lattice)
               if (!projected) return null
@@ -1683,7 +1739,7 @@ export function EditorCanvas() {
         </Layer>
         <OffsetOverlay
           scale={view.scale}
-          showModels={visualizations.blockModels}
+          showModels={visualizationsVisible && visualizations.blockModels}
         />
         {boxSelection && (
           <Layer listening={false}>
