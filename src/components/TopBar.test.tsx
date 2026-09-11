@@ -111,6 +111,7 @@ describe('top bar project actions', () => {
     expect(screen.getByRole('dialog', { name: 'Keybindings' })).toBeInTheDocument()
     expect(screen.getByText('Delete selected faces')).toBeInTheDocument()
     expect(screen.getByText('Delete white calibration point')).toBeInTheDocument()
+    expect(screen.getByText('Toggle visualizations')).toBeInTheDocument()
     expect(screen.getAllByText('Ctrl')).not.toHaveLength(0)
   })
 

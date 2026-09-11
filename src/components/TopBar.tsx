@@ -240,6 +240,7 @@ export function TopBar({
                   <div><kbd>G</kbd><span>Draw initial grid</span></div>
                   <div><kbd>E</kbd><span>Extrude selected edges</span></div>
                   <div><kbd>D</kbd><span>Set World Orientation</span></div>
+                  <div><kbd>V</kbd><span>Toggle visualizations</span></div>
                   <div><kbd>X</kbd> / <kbd>Backspace</kbd> / <kbd>Del</kbd><span>Delete selected faces</span></div>
                   <div><kbd>Ctrl</kbd><b>+</b><kbd>A</kbd><span>Select all faces</span></div>
                   <div><kbd>Ctrl</kbd><b>+</b><kbd>Z</kbd><span>Undo</span></div>

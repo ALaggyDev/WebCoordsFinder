@@ -627,11 +627,18 @@ button:disabled {
   background-size: 24px 24px;
 }
 
-.visualization-menu {
+.visualization-controls {
   position: absolute;
   z-index: 4;
   top: 12px;
   right: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.visualization-menu {
+  position: relative;
 }
 
 .visualization-trigger {
@@ -652,9 +659,16 @@ button:disabled {
 }
 
 .visualization-menu:hover .visualization-trigger,
-.visualization-menu:focus-within .visualization-trigger {
+.visualization-menu:focus-within .visualization-trigger,
+.visualization-toggle:hover,
+.visualization-toggle:focus-visible {
   color: var(--text);
   border-color: #3d4d56;
+}
+
+.visualization-toggle.active {
+  color: var(--accent);
+  border-color: rgb(var(--accent-rgb) / 0.52);
 }
 
 .visualization-options {
