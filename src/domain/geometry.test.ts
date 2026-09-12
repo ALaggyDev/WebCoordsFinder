@@ -131,6 +131,32 @@ describe('camera image metrics', () => {
     expect(metrics?.pitchDegrees).toBeCloseTo(0, 6)
   })
 
+  it.each([
+    [{ a: 'x-', b: 'y+', c: 'z-' }, { x: 1, y: 0, z: 1 }],
+    [{ a: 'x-', b: 'y-', c: 'z+' }, { x: 1, y: 1, z: 0 }],
+    [{ a: 'x+', b: 'y-', c: 'z-' }, { x: 0, y: 1, z: 1 }],
+  ] as const)(
+    'corrects continuous anchor offsets for negative cell axes in mapping %o',
+    (axisMapping, expected) => {
+      const anchorFace: MeshFace = {
+        ...face,
+        id: 'anchor',
+        normal: { x: 0, y: 0, z: -1 },
+      }
+      const metrics = cameraInfoMetrics(
+        { ...scene, faces: [anchorFace], axisMapping },
+        { width: 1600, height: 900 },
+        anchorFace.id,
+      )
+
+      expect(metrics?.eyePosition).toEqual(expected)
+      expect(metrics?.feetPosition).toEqual({
+        ...expected,
+        y: expected.y - 1.62,
+      })
+    },
+  )
+
   it('does not invent metrics for a planar or singular camera solve', () => {
     expect(
       cameraInfoMetrics(

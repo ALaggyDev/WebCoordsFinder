@@ -200,6 +200,29 @@ export function mappedAnchorOffset(
   )
 }
 
+/**
+ * Maps a continuous lattice point relative to the anchor block's world-space
+ * minimum corner. Unlike a block-to-block offset, this needs an affine cell
+ * correction when a local axis points toward a negative world direction: the
+ * mapped local minimum is then the block's maximum boundary on that axis.
+ */
+function mappedAnchorPointOffset(
+  scene: SceneGeometry,
+  anchorFaceId: string | null,
+  local: Point3,
+): Point3 | undefined {
+  const offset = mappedAnchorOffset(scene, anchorFaceId, local)
+  if (!offset) return undefined
+
+  const correction = { x: 0, y: 0, z: 0 }
+  for (const axis of ['a', 'b', 'c'] as const) {
+    const label = scene.axisMapping[axis]
+    if (!label.endsWith('-')) continue
+    correction[label[0] as 'x' | 'y' | 'z'] = 1
+  }
+  return add3(offset, correction)
+}
+
 export function faceForLocalNormal(
   mapping: AxisMapping,
   normal: Point3,
@@ -1007,7 +1030,7 @@ export function cameraInfoMetrics(
     sceneLatticeParity(scene),
   )
   const eyePosition = mappingComplete
-    ? mappedAnchorOffset(scene, anchorFaceId, camera)
+    ? mappedAnchorPointOffset(scene, anchorFaceId, camera)
     : undefined
   const worldRay =
     mappingComplete && orientedCenterRay
