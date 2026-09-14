@@ -7,6 +7,7 @@ import {
   chooseEdgeExtrusion,
   createEdgeExtrusionFaces,
   dot3,
+  faceForLocalNormal,
   flatConnectedFaceIds,
   inferInitialFaceNormal,
   initialCameraForPlanarExtrusion,
@@ -29,6 +30,7 @@ import {
   selectedEdgeGeometry,
   same3,
   validAxisMappingCompletions,
+  worldAlignedFaceCorners,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
 import {
@@ -610,6 +612,7 @@ function applyAxisMapping(
   document: EditorDocument,
   mapping: AxisMapping,
   compassResolved: boolean,
+  invalidateEvidence = true,
 ): void {
   const mappingChanged = (['a', 'b', 'c'] as const).some(
     (axis) => document.scene.axisMapping[axis] !== mapping[axis],
@@ -621,7 +624,7 @@ function applyAxisMapping(
   document.scanner.directions = compassResolved
     ? [0]
     : [...searchDirections]
-  if (!mappingChanged) return
+  if (!mappingChanged || !invalidateEvidence) return
   // World direction determines face support, crop orientation, and variant
   // meaning. Any mapping change invalidates all derived analysis together.
   document.evidence.forEach((entry) => {
@@ -633,7 +636,53 @@ function applyAxisMapping(
   })
 }
 
-function reconcilePersistedOrientation(document: EditorDocument): void {
+interface EvidenceVisualOrientation {
+  face: FaceDirection
+  corners: [Point3, Point3, Point3, Point3]
+}
+
+function evidenceVisualOrientations(
+  document: EditorDocument,
+): Map<string, EvidenceVisualOrientation | undefined> {
+  const orientations = new Map<
+    string,
+    EvidenceVisualOrientation | undefined
+  >()
+  document.evidence.forEach((entry) => {
+    const face = document.scene.faces.find(
+      (candidate) => candidate.id === entry.faceId,
+    )
+    const worldFace = faceForLocalNormal(
+      document.scene.axisMapping,
+      entry.localNormal,
+    )
+    const corners = face
+      ? worldAlignedFaceCorners(document.scene, face)
+      : undefined
+    orientations.set(
+      entry.id,
+      worldFace && corners ? { face: worldFace, corners } : undefined,
+    )
+  })
+  return orientations
+}
+
+function sameVisualOrientation(
+  left: EvidenceVisualOrientation | undefined,
+  right: EvidenceVisualOrientation | undefined,
+): boolean {
+  return Boolean(
+    left &&
+      right &&
+      left.face === right.face &&
+      left.corners.every((corner, index) => same3(corner, right.corners[index])),
+  )
+}
+
+function reconcilePersistedOrientation(
+  document: EditorDocument,
+  invalidateEvidence = true,
+): void {
   const parity = sceneLatticeParity(document.scene)
   const keepConfirmedMapping =
     document.scanner.compassResolved &&
@@ -658,10 +707,14 @@ function reconcilePersistedOrientation(document: EditorDocument): void {
     document,
     mapping,
     horizontalMapping !== undefined || keepConfirmedMapping,
+    invalidateEvidence,
   )
 }
 
-function reconcileCameraFacingGeometry(document: EditorDocument): void {
+function reconcileCameraFacingGeometry(
+  document: EditorDocument,
+  previousOrientations: Map<string, EvidenceVisualOrientation | undefined>,
+): void {
   if (document.scene.projection?.kind !== 'camera') return
   const changedFaceIds = new Set<string>()
   document.scene.faces.forEach((face) => {
@@ -680,19 +733,29 @@ function reconcileCameraFacingGeometry(document: EditorDocument): void {
       if (!face) return
       entry.latticeCoordinate = blockCoordinateForFace(face)
       entry.localNormal = face.normal
-      entry.selectedVariant = undefined
-      entry.reviewStatus = 'unlabeled'
-      entry.scores = undefined
-      entry.confidence = undefined
     })
 
-  reconcilePersistedOrientation(document)
+  // Compare the complete pre/post interpretation below so compensating normal
+  // and mapping flips do not discard evidence for an unchanged visible face.
+  reconcilePersistedOrientation(document, false)
 
-  if (changedFaceIds.size > 0) {
-    document.evidence.forEach((entry) => {
-      entry.stateCount = evidenceStateCount(document, entry) ?? 4
-    })
-  }
+  const currentOrientations = evidenceVisualOrientations(document)
+  document.evidence.forEach((entry) => {
+    entry.stateCount = evidenceStateCount(document, entry) ?? 4
+    if (
+      !previousOrientations.has(entry.id) ||
+      sameVisualOrientation(
+        previousOrientations.get(entry.id),
+        currentOrientations.get(entry.id),
+      )
+    ) {
+      return
+    }
+    entry.selectedVariant = undefined
+    entry.reviewStatus = 'unlabeled'
+    entry.scores = undefined
+    entry.confidence = undefined
+  })
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -919,6 +982,7 @@ export const useEditorStore = create<EditorState>((set) => ({
           ),
         )
         .find((evidence) => evidence !== undefined)
+      const previousOrientations = evidenceVisualOrientations(state.document)
       const outerEdges = faces
         .filter((_, index) => index % extrusion.blocks === extrusion.blocks - 1)
         .flatMap((face) => {
@@ -946,7 +1010,7 @@ export const useEditorStore = create<EditorState>((set) => ({
               })
             })
             document.scene.projection = planarCamera.projection
-            reconcileCameraFacingGeometry(document)
+            reconcileCameraFacingGeometry(document, previousOrientations)
             document.anchorFaceId ??= document.scene.faces[0]?.id ?? null
           }
         }),

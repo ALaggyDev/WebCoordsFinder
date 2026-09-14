@@ -279,6 +279,44 @@ describe('unit-face geometry', () => {
     }
   })
 
+  it('preserves variants when first-extrusion normal and mapping flips cancel out', () => {
+    for (const pointer of [{ x: 300, y: 100 }, { x: 300, y: 300 }]) {
+      useEditorStore.setState({ document: createEmptyDocument() })
+      useEditorStore.getState().addBaseFaces(
+        [
+          { x: 100, y: 200 },
+          { x: 500, y: 200 },
+          { x: 550, y: 500 },
+          { x: 50, y: 500 },
+        ],
+        4,
+        4,
+      )
+      const base = useEditorStore.getState().document.scene.faces[0]
+      useEditorStore.getState().startUpOrientation()
+      useEditorStore.getState().setOrientationFace(base.id)
+      useEditorStore.getState().setOrientationSurfaceKind('top')
+      useEditorStore.getState().startHorizontalOrientation()
+      useEditorStore.getState().setOrientationFace(base.id)
+      useEditorStore.getState().setOrientationEdge('right')
+      useEditorStore.getState().setOrientationHorizontalDirection('north')
+      useEditorStore.getState().selectFace(base.id, false)
+      useEditorStore.getState().setVariant(base.id, 2)
+      const before = structuredClone(useEditorStore.getState().document)
+      useEditorStore.getState().selectEdge({ faceId: base.id, edge: 'top' }, false)
+      useEditorStore.getState().extrudeSelectedEdges(pointer)
+      const after = useEditorStore.getState().document
+      expect(after.evidence.find((entry) => entry.id === base.id)).toMatchObject({
+        selectedVariant: 2,
+        reviewStatus: 'confirmed',
+      })
+      if (pointer.y === 300) {
+        expect(after.scene.faces[0].normal).not.toEqual(before.scene.faces[0].normal)
+        expect(after.scene.axisMapping).not.toEqual(before.scene.axisMapping)
+      }
+    }
+  })
+
   it('removes an extra calibration anchor and refits the camera in one transaction', () => {
     const state = useEditorStore.getState()
     const extra = {
