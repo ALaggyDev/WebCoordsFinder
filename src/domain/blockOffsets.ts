@@ -65,6 +65,7 @@ export const offsetEvidenceSchema = z
         downfall: z.number().min(0).max(1),
       })
       .optional(),
+    ignored: z.boolean().optional(),
     confirmedBasis: z.string().optional(),
   })
   .refine((entry) => {
@@ -127,14 +128,19 @@ export function nearestOffsetNibble(
   axis: 'x' | 'y' | 'z',
   value: number,
 ): number {
+  // Dripstone's outer horizontal seeds all produce the same clipped endpoint.
+  // Dragging should select the first and last usable slider seeds instead.
+  const clipped = axis !== 'y' && profile.horizontal === 0.125
+  const min = clipped ? 3 : 0
+  const max = clipped ? 12 : 15
   const valueFor = (n: number) =>
     offsetFromNibbles(profile, {
       x: axis === 'x' ? n : 0,
       y: axis === 'y' ? n : 0,
       z: axis === 'z' ? n : 0,
     })[axis]
-  let best = 0
-  for (let n = 1; n < 16; n++) {
+  let best = min
+  for (let n = min + 1; n <= max; n++) {
     if (Math.abs(valueFor(n) - value) < Math.abs(valueFor(best) - value))
       best = n
   }

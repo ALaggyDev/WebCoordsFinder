@@ -81,6 +81,10 @@ describe('Minecraft block offsets', () => {
         z: 12,
       }),
     ).toEqual({ x: -0.125, y: 0, z: 0.125 })
+    expect(nearestOffsetNibble(offsetProfiles.pointed_dripstone, 'x', -0.125))
+      .toBe(3)
+    expect(nearestOffsetNibble(offsetProfiles.pointed_dripstone, 'z', 0.125))
+      .toBe(12)
   })
 
   it('requires a full camera and a parity-consistent confirmed compass', () => {
@@ -326,7 +330,7 @@ describe('offset persistence and editing', () => {
   it('round-trips offsets in schema 1 and keeps old projects loadable', async () => {
     const document = cameraDocument()
     document.offsets = [
-      { ...observation(), confirmedBasis: offsetBasis(document) },
+      { ...observation(), ignored: true, confirmedBasis: offsetBasis(document) },
     ]
     const imported = await readProjectBundle(await buildProjectBundle(document))
     expect(normalizeEditorDocument(imported.document).offsets).toEqual(

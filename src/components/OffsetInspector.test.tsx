@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('dripstone offset controls', () => {
-  it('opens decoration and observation settings in anchored popups', () => {
+  it('opens decoration settings in anchored popups', () => {
     render(<OffsetInspector />)
 
     expect(screen.queryByRole('dialog', { name: 'Add decoration' })).not.toBeInTheDocument()
@@ -51,15 +51,19 @@ describe('dripstone offset controls', () => {
     expect(screen.queryByText('About these models')).not.toBeInTheDocument()
   })
 
-  it('documents the unified modifier-based drag handle', () => {
+  it('explains the handle and model clipping', () => {
     render(<OffsetInspector />)
 
-    expect(screen.getByText(/hold shift for within-block y/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Move block' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Fit offset' })).not.toBeInTheDocument()
+    expect(screen.getByText('Handle')).toBeInTheDocument()
+    expect(screen.getByText('Move vertically')).toBeInTheDocument()
+    expect(screen.getByText('Move across blocks')).toBeInTheDocument()
+    expect(screen.getByText('XZ Clipped:')).toBeInTheDocument()
+    expect(screen.getByText('±0.125')).toBeInTheDocument()
+    expect(screen.getByText('Y Scaled:')).toBeInTheDocument()
+    expect(screen.getByText('No')).toBeInTheDocument()
   })
 
-  it('shows the full track but caps X/Z at the equivalent clipped seeds', () => {
+  it('uses the clipped seed range and displays its usable endpoint seeds', () => {
     render(<OffsetInspector />)
 
     for (const axis of ['X', 'Z']) {
@@ -68,11 +72,25 @@ describe('dripstone offset controls', () => {
       })
       expect(slider).toHaveAttribute('min', '3')
       expect(slider).toHaveAttribute('max', '12')
-      expect(slider.parentElement).toHaveClass('clamped')
+      expect(slider.parentElement).toHaveClass('offset-slider')
     }
 
-    expect(screen.getByText(/muted ends show clipped seed values/i))
-      .toBeInTheDocument()
+    expect(screen.getByText('seed 3 / 15')).toBeInTheDocument()
+    expect(screen.getByText('seed 12 / 15')).toBeInTheDocument()
+    expect(screen.queryByText(/muted ends show clipped seed values/i))
+      .not.toBeInTheDocument()
+  })
+
+  it('persists ignore state without hiding the decoration from the list', () => {
+    render(<OffsetInspector />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ignore model' }))
+    expect(useEditorStore.getState().document.offsets?.[0].ignored).toBe(true)
+    expect(screen.getByText('Ignored')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use model' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use model' }))
+    expect(useEditorStore.getState().document.offsets?.[0].ignored).toBe(false)
   })
 })
 

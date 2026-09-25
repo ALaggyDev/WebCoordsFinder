@@ -4,7 +4,6 @@ import type Konva from 'konva'
 import {
   modelLatticePoint,
   nearestOffsetNibble,
-  offsetBasis,
   offsetFromNibbles,
   offsetHandlePoint,
   offsetProfiles,
@@ -332,11 +331,7 @@ export function OffsetOverlay({
         const active = entry.id === selectedOffsetId
         const controlPosition =
           dragHandle?.id === entry.id ? dragHandle.position : center
-        const color =
-          entry.confirmedBasis === offsetBasis(document) &&
-          preview?.id !== entry.id
-            ? '#53e6a5'
-            : '#e6c56e'
+        const color = entry.ignored ? '#929da2' : '#e6c56e'
         return (
           <Group
             key={entry.id}

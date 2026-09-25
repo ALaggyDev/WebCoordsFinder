@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Check,
   Copy,
   Crosshair,
   Info,
@@ -11,7 +10,6 @@ import {
   Trash2,
 } from 'lucide-react'
 import {
-  offsetBasis,
   offsetFromNibbles,
   offsetProfiles,
   offsetReadiness,
@@ -84,7 +82,6 @@ export function OffsetInspector() {
     ? ((storedAnimationTick - 1) % animationCycle) + 1
     : storedAnimationTick
   const blocked = offsetReadiness(document)
-  const basis = offsetBasis(document)
   const face = document.scene.faces.find(
     (face) => face.id === selectedEvidenceIds[0],
   )
@@ -184,8 +181,7 @@ export function OffsetInspector() {
         <span className="offset-badge">{entries.length}</span>
       </div>
       <p className="field-help">
-        Place a decoration, align its model with the screenshot, then confirm
-        its offset.
+        Place a decoration and align its model with the screenshot.
       </p>
       {blocked && (
         <div className="offset-prerequisites">
@@ -199,7 +195,7 @@ export function OffsetInspector() {
         </div>
       )}
       <div className="offset-observations-heading">
-        <h3>Observations</h3>
+        <h3>Decorations</h3>
         <button
           ref={addButtonRef}
           type="button"
@@ -317,11 +313,7 @@ export function OffsetInspector() {
                   {index + 1}. {offsetProfiles[entry.blockId].label}
                 </span>
                 <small>
-                  {!blocked && entry.confirmedBasis === basis
-                    ? 'Confirmed'
-                    : entry.confirmedBasis
-                      ? 'Review again'
-                      : 'Draft'}
+                  {entry.ignored ? 'Ignored' : 'Active'}
                 </small>
               </button>
             ))}
@@ -350,10 +342,32 @@ export function OffsetInspector() {
             <div className="offset-selection-heading">
               <h3>{profile.label}</h3>
               <InfoTip label="Drag handle information">
-                Drag the base handle to fit X/Z within its block. Hold Shift for
-                within-block Y (XYZ models), Ctrl for whole-block X/Z, or both
-                for whole-block Y. Pressing a modifier applies it to the current
-                drag; releasing it preserves the snapped placement.
+                <div className="offset-tip-section">
+                  <strong>Handle</strong>
+                  <p>Drag the base handle to move the block model.</p>
+                  <div className="offset-tip-shortcut">
+                    <kbd>Shift</kbd>
+                    <span>Move vertically</span>
+                  </div>
+                  <div className="offset-tip-shortcut">
+                    <kbd>Ctrl</kbd>
+                    <span>Move across blocks</span>
+                  </div>
+                </div>
+                <div className="offset-tip-section">
+                  <strong>{profile.label}</strong>
+                  <dl className="offset-tip-properties">
+                    <div><dt>Type:</dt><dd>{profile.type}</dd></div>
+                    <div>
+                      <dt>XZ Clipped:</dt>
+                      <dd>{profile.horizontal < 0.25 ? `±${profile.horizontal}` : 'No'}</dd>
+                    </div>
+                    <div>
+                      <dt>Y Scaled:</dt>
+                      <dd>{profile.vertical > 0 ? profile.vertical : 'No'}</dd>
+                    </div>
+                  </dl>
+                </div>
               </InfoTip>
               <button
                 ref={settingsButtonRef}
@@ -500,7 +514,13 @@ export function OffsetInspector() {
                 </div>
               )}
             </div>
-            <h4>Block position</h4>
+            <div className="offset-position-heading">
+              <h4>
+                Block position{anchorOffset && (
+                  <span> ({anchorOffset.x}, {anchorOffset.y}, {anchorOffset.z})</span>
+                )}
+              </h4>
+            </div>
             <div className="offset-nudges">
               {(['x', 'y', 'z'] as const).map((axis) => (
                 <div key={axis}>
@@ -522,11 +542,6 @@ export function OffsetInspector() {
                 </div>
               ))}
             </div>
-            <p className="field-help">
-              {anchorOffset
-                ? `From anchor: X ${anchorOffset.x}, Y ${anchorOffset.y}, Z ${anchorOffset.z}`
-                : 'Set an anchor in Geometry to see relative world coordinates.'}
-            </p>
             <h4>Offset within block</h4>
             {(['x', 'y', 'z'] as const)
               .filter((axis) => axis !== 'y' || profile.type === 'XYZ')
@@ -540,9 +555,6 @@ export function OffsetInspector() {
                   min,
                   Math.min(max, selected.nibbles[axis]),
                 )
-                const progress = clamped
-                  ? 25 + ((value - min) / (max - min)) * 50
-                  : ((value - min) / (max - min)) * 100
                 return (
                   <label className="offset-slider" key={axis}>
                     <span>
@@ -550,50 +562,32 @@ export function OffsetInspector() {
                       <small>seed {value} / 15</small>
                     </span>
                     <output>{offset[axis].toFixed(4)} blocks</output>
-                    <div
-                      className={`offset-slider-track${clamped ? ' clamped' : ''}`}
-                      style={
-                        {
-                          '--offset-progress': `${progress}%`,
-                        } as CSSProperties
+                    <input
+                      aria-label={`${axis.toUpperCase()} offset seed`}
+                      type="range"
+                      min={min}
+                      max={max}
+                      step="1"
+                      value={value}
+                      onChange={(e) =>
+                        state.updateOffset(selected.id, {
+                          nibbles: {
+                            ...selected.nibbles,
+                            [axis]: Number(e.target.value),
+                          },
+                        })
                       }
-                    >
-                      <input
-                        aria-label={`${axis.toUpperCase()} offset seed`}
-                        type="range"
-                        min={min}
-                        max={max}
-                        step="1"
-                        value={value}
-                        onChange={(e) =>
-                          state.updateOffset(selected.id, {
-                            nibbles: {
-                              ...selected.nibbles,
-                              [axis]: Number(e.target.value),
-                            },
-                          })
-                        }
-                      />
-                    </div>
+                    />
                   </label>
                 )
               })}
-            {profile.horizontal === 0.125 && (
-              <p className="field-help">
-                Dripstone clamps at ±0.125 blocks. The muted ends show clipped
-                seed values; the slider stops at the equivalent endpoints.
-              </p>
-            )}
             <button
               type="button"
-              className="primary-button full"
-              disabled={selected.confirmedBasis === basis}
-              onClick={() => state.confirmOffset(selected.id)}
+              className="secondary-button full"
+              aria-pressed={Boolean(selected.ignored)}
+              onClick={() => state.updateOffset(selected.id, { ignored: !selected.ignored })}
             >
-              <Check size={15} />
-              {selected.confirmedBasis === basis
-                ? 'Offset confirmed'
-                : 'Confirm alignment'}
+              {selected.ignored ? 'Use model' : 'Ignore model'}
             </button>
             <button
               type="button"
@@ -603,6 +597,7 @@ export function OffsetInspector() {
                   ...selected,
                   id: crypto.randomUUID(),
                   confirmedBasis: undefined,
+                  ignored: false,
                 })
               }
             >
@@ -616,7 +611,7 @@ export function OffsetInspector() {
             onClick={() => state.deleteOffset(selected.id)}
           >
             <Trash2 size={14} />
-            Delete observation
+            Delete decoration
           </button>
         </>
       )}

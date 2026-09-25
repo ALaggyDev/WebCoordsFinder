@@ -292,6 +292,8 @@ export interface BlockOffsetEvidence {
   tint: string
   /** Climate values used to derive the Minecraft grass colormap tint. */
   grassTint?: GrassTintSettings
+  /** Keep the placement visible while marking its handle as ignored. */
+  ignored?: boolean
   /** Confirmation is valid only for the camera and compass used to align it. */
   confirmedBasis?: string
 }
