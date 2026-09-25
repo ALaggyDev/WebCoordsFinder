@@ -182,9 +182,23 @@ export function OffsetInspector() {
         <h2>Block offsets</h2>
         <span className="offset-badge">{entries.length}</span>
       </div>
-      <p className="field-help">
-        Place a decoration and align its model with the screenshot.
-      </p>
+      <div className="offset-intro">
+        <p className="field-help">
+          Place a decoration and align its model with the screenshot.
+        </p>
+        <InfoTip label="What are block offsets?">
+          <strong>What are block offsets?</strong>
+          <p>
+            Block offsets (a.k.a. grass offsets) are the random placement offsets
+            of decorations such as grass, flowers and dripstones. Similar to
+            texture rotations, block offsets can also be used to crack coordinates.
+          </p>
+          <p>
+            For workflows only related to texture rotations, you may simply skip
+            this tab.
+          </p>
+        </InfoTip>
+      </div>
       {blocked && (
         <div className="offset-prerequisites">
           <p>{blocked}</p>

@@ -5474,6 +5474,11 @@ button:disabled {
 /* Decoration alignment uses the workbench's theme and compact inspector rhythm. */
 .offset-inspector { display: flex; flex-direction: column; gap: 14px; }
 .offset-inspector .field-help { font-size: 12px; color: var(--muted); }
+.offset-intro { position: relative; display: flex; align-items: baseline; gap: 7px; }
+.offset-intro .info-tip { flex-shrink: 0; align-self: center; }
+.offset-intro .info-tip-content { left: auto; right: 0; width: min(292px, 100%); }
+.offset-intro .info-tip-content strong { display: block; margin-bottom: 8px; color: var(--accent); font-size: 12px; }
+.offset-intro .info-tip-content p + p { margin-top: 8px; }
 .offset-catalog img { width: 24px; height: 24px; object-fit: cover; object-position: top; image-rendering: pixelated; flex-shrink: 0; }
 .offset-catalog img.grass-tinted { filter: url(#offset-catalog-grass-tint); }
 .offset-catalog-filter { position: absolute; width: 0; height: 0; overflow: hidden; }
