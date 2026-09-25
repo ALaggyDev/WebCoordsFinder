@@ -847,6 +847,8 @@ describe('unit-face geometry', () => {
     const legacy = structuredClone(createTestDocument()) as unknown as {
       scanner: Record<string, unknown>
     }
+    delete legacy.scanner.crackMode
+    delete legacy.scanner.offsetBounds
     delete legacy.scanner.scanOrder
     delete legacy.scanner.cpuTileSize
     delete legacy.scanner.gpuTileSize
@@ -859,6 +861,13 @@ describe('unit-face geometry', () => {
 
     const normalized = normalizeEditorDocument(legacy)
     expect(normalized.scanner).toMatchObject({
+      crackMode: 'texture-rotations',
+      offsetBounds: {
+        xStart: -30_000_000,
+        xEnd: 30_000_000,
+        zStart: -30_000_000,
+        zEnd: 30_000_000,
+      },
       scanOrder: 'spiral',
       cpuTileSize: { x: 1024, z: 1024 },
       gpuTileSize: { x: 8192, z: 8192 },

@@ -2287,6 +2287,11 @@ button:disabled {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
 }
 
+.search-presets-menu.xz-only {
+  width: 150px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .search-presets-group {
   display: grid;
   gap: 4px;

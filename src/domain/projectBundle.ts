@@ -35,6 +35,13 @@ const projectSchema = z
     animationTicks: z.record(z.string(), z.number().int().positive()).optional(),
     scanner: z
       .object({
+        crackMode: z.enum(['texture-rotations', 'block-offsets']).optional(),
+        offsetBounds: z.object({
+          xStart: z.number().int(),
+          xEnd: z.number().int(),
+          zStart: z.number().int(),
+          zEnd: z.number().int(),
+        }).optional(),
         textureAlgorithm: z.enum(textureAlgorithms),
         directions: z
           .array(searchDirectionSchema)

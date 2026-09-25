@@ -3,6 +3,23 @@ import { createTestDocument } from '../test/createTestDocument'
 import { buildProjectBundle, readProjectBundle } from './projectBundle'
 
 describe('project bundle web-search checkpoints', () => {
+  it('round-trips block offset mode and its output filter in schema 1', async () => {
+    const document = createTestDocument()
+    document.scanner.crackMode = 'block-offsets'
+    document.scanner.offsetBounds = {
+      xStart: -1234,
+      xEnd: 5678,
+      zStart: -9876,
+      zEnd: 4321,
+    }
+
+    const imported = await readProjectBundle(await buildProjectBundle(document))
+
+    expect(imported.document.schemaVersion).toBe(1)
+    expect(imported.document.scanner.crackMode).toBe('block-offsets')
+    expect(imported.document.scanner.offsetBounds).toEqual(document.scanner.offsetBounds)
+  })
+
   it('round-trips version 5 shard cursors and result ordinals without changing schema version 1', async () => {
     const document = createTestDocument()
     document.scanner.webSearch = {

@@ -110,6 +110,55 @@ describe('Export / Run workspace', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps block offset settings separate and shows the pending scanner', () => {
+    render(
+      <Inspector busy={false} onAutoFill={vi.fn()} onOpenImage={vi.fn()} />,
+    )
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Crack mode' }), {
+      target: { value: 'block-offsets' },
+    })
+
+    expect(screen.queryByLabelText('Texture algorithm')).not.toBeInTheDocument()
+    expect(screen.queryByText('Scan order')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Error tolerance')).not.toBeInTheDocument()
+    expect(screen.queryByText('CoordsFinder settings (advanced)')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('Start')).toHaveLength(2)
+    expect(screen.getAllByLabelText('End')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Start')[0]).toHaveValue(-30_000_000)
+    expect(screen.getAllByLabelText('End')[1]).toHaveValue(30_000_000)
+    expect(screen.getByText(/scanner always scan the entire world/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search area presets' }))
+    expect(screen.getByRole('dialog', { name: 'Search area presets' })).toHaveClass('xz-only')
+    expect(screen.getByText('XZ')).toBeInTheDocument()
+    expect(screen.queryByText('Y')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /World Border/ }))
+    expect(useEditorStore.getState().document.scanner.offsetBounds.xEnd).toBe(30_000_000)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    expect(screen.queryByText('Runtime comparison')).not.toBeInTheDocument()
+    expect(screen.queryByText('Estimated hits')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Download config' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run block offsets search' })).toBeDisabled()
+    expect(screen.getByText(/scanner is not implemented yet/)).toBeInTheDocument()
+  })
+
+  it('preserves texture bounds when switching crack modes', () => {
+    render(
+      <Inspector busy={false} onAutoFill={vi.fn()} onOpenImage={vi.fn()} />,
+    )
+    const mode = screen.getByRole('combobox', { name: 'Crack mode' })
+    fireEvent.change(mode, { target: { value: 'block-offsets' } })
+    fireEvent.change(screen.getAllByLabelText('Start')[0], {
+      target: { value: '-1000' },
+    })
+    expect(useEditorStore.getState().document.scanner.offsetBounds.xStart).toBe(-1000)
+    fireEvent.change(mode, { target: { value: 'texture-rotations' } })
+    expect(screen.getAllByLabelText('Start')[0]).toHaveValue(-2000)
+    expect(useEditorStore.getState().document.scanner.bounds.xStart).toBe(-2000)
+  })
+
   it('adds optional compass rotations to the scanner settings', () => {
     render(
       <Inspector

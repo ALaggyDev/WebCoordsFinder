@@ -123,6 +123,13 @@ function createDefaultScanner(): ScannerSettings {
   // Defaults target current CoordsFinder behavior while leaving compass
   // orientation unresolved until the user supplies a valid world mapping.
   return {
+    crackMode: 'texture-rotations',
+    offsetBounds: {
+      xStart: -30_000_000,
+      xEnd: 30_000_000,
+      zStart: -30_000_000,
+      zEnd: 30_000_000,
+    },
     textureAlgorithm: 'Vanilla-3',
     scanOrder: 'spiral',
     directions: [0],
@@ -336,6 +343,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   normalized.scanner = {
     ...defaults,
     ...normalized.scanner,
+    offsetBounds: { ...defaults.offsetBounds, ...normalized.scanner.offsetBounds },
     bounds: { ...defaults.bounds, ...normalized.scanner.bounds },
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
     gpuTileSize: { ...defaults.gpuTileSize, ...normalized.scanner.gpuTileSize },

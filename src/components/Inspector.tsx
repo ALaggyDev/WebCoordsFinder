@@ -21,6 +21,7 @@ import {
   LoaderCircle,
   RotateCcw,
   ScanSearch,
+  X,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -66,12 +67,14 @@ import {
   type EditorDocument,
   type FaceEvidence,
   type SearchBounds,
+  type ScannerSettings,
   type SearchDirection,
   type ScanOrder,
   type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { animationCycleTicks } from '../domain/textureAnimation'
+import { offsetBasis } from '../domain/blockOffsets'
 import { useEditorStore } from '../store/editorStore'
 import { ExportRunDialog } from './ExportRunDialog'
 
@@ -163,8 +166,10 @@ const verticalSearchPresets = [
 function SearchAreaPresets({
   bounds,
   updateBounds,
+  showVertical = true,
 }: {
   bounds: SearchBounds
+  showVertical?: boolean
   updateBounds: (patch: Partial<SearchBounds>) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -212,7 +217,7 @@ function SearchAreaPresets({
       {open && (
         <div
           ref={menuRef}
-          className="search-presets-menu"
+          className={showVertical ? 'search-presets-menu' : 'search-presets-menu xz-only'}
           role="dialog"
           aria-label="Search area presets"
         >
@@ -247,7 +252,7 @@ function SearchAreaPresets({
               })}
             </div>
           </div>
-          <div className="search-presets-group">
+          {showVertical && <div className="search-presets-group">
             <div className="search-presets-heading">
               <span>Y</span>
             </div>
@@ -271,7 +276,7 @@ function SearchAreaPresets({
                 )
               })}
             </div>
-          </div>
+          </div>}
         </div>
       )}
     </div>
@@ -1617,6 +1622,78 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   )
 }
 
+function BlockOffsetsRunDialog({
+  document,
+  open,
+  onClose,
+}: {
+  document: EditorDocument
+  open: boolean
+  onClose: () => void
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    globalThis.document.addEventListener('keydown', onKeyDown)
+    globalThis.document.body.classList.add('export-run-dialog-open')
+    return () => {
+      globalThis.document.removeEventListener('keydown', onKeyDown)
+      globalThis.document.body.classList.remove('export-run-dialog-open')
+    }
+  }, [onClose, open])
+
+  if (!open) return null
+
+  const confirmed = (document.offsets ?? []).filter(
+    (offset) => !offset.ignored && offset.confirmedBasis === offsetBasis(document),
+  ).length
+  const { xStart, xEnd, zStart, zEnd } = document.scanner.offsetBounds
+
+  return createPortal(
+    <div className="export-run-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose()
+    }}>
+      <section aria-labelledby="export-run-title" aria-modal="true"
+        className="export-run-dialog" role="dialog">
+        <header className="export-run-header">
+          <h2 id="export-run-title">Export or Run Search</h2>
+          <button aria-label="Close Export / Run" className="icon-button"
+            onClick={onClose} type="button"><X size={18} /></button>
+        </header>
+        <div className="export-run-content">
+          <div className="export-run-readiness">
+            <strong>Block Offsets</strong>
+            <span className="export-run-status blocked">Scanner unavailable</span>
+          </div>
+          <div className="export-run-metrics">
+            <div><span>Confirmed offsets</span><strong>{confirmed}</strong></div>
+            <div>
+              <span>Output filter X/Z</span>
+              <strong>{xStart.toLocaleString()} to {xEnd.toLocaleString()}</strong>
+              <small>Z: {zStart.toLocaleString()} to {zEnd.toLocaleString()}</small>
+            </div>
+          </div>
+          <div className="export-run-actions">
+            <article className="run-target">
+              <div className="run-target-heading">
+                <ScanSearch size={18} />
+                <h3>Run in this browser</h3>
+              </div>
+              <p>The Block Offsets scanner is not implemented yet. Search will be available here in a later update.</p>
+              <button className="primary-button full" disabled type="button">
+                Run block offsets search
+              </button>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>,
+    globalThis.document.body,
+  )
+}
+
 function ExportInspector() {
   const document = useEditorStore((state) => state.document)
   const updateScanner = useEditorStore((state) => state.updateScanner)
@@ -1624,7 +1701,17 @@ function ExportInspector() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const validation = validateForExport(document)
   const config = generateCoordsFinderConfig(document)
-  const bounds = document.scanner.bounds
+  const isOffsets = document.scanner.crackMode === 'block-offsets'
+  const bounds = isOffsets
+    ? { ...document.scanner.offsetBounds, yStart: 0, yEnd: 0 }
+    : document.scanner.bounds
+  const updateVisibleBounds = (patch: Partial<SearchBounds>) => {
+    if (isOffsets) {
+      updateScanner({ offsetBounds: { ...document.scanner.offsetBounds, ...patch } })
+    } else {
+      updateBounds(patch)
+    }
+  }
 
   const downloadConfig = () => {
     if (validation.errors.length > 0) return
@@ -1637,6 +1724,20 @@ function ExportInspector() {
   return (
     <div className="export-inspector">
       <SectionTitle icon={Download} title="Export" />
+      <label className="field crack-mode-field">
+        <div className="field-label"><span>Crack mode</span></div>
+        <select
+          aria-label="Crack mode"
+          value={document.scanner.crackMode}
+          onChange={(event) => updateScanner({
+            crackMode: event.target.value as ScannerSettings['crackMode'],
+          })}
+        >
+          <option value="texture-rotations">Texture Rotations</option>
+          <option value="block-offsets">Block Offsets</option>
+        </select>
+      </label>
+      {!isOffsets && <>
       <div className="field">
         <div className="field-label">
           <span>Texture algorithm</span>
@@ -1743,33 +1844,38 @@ function ExportInspector() {
           })}
         </div>
       </div>
+      </>}
       <div className="subsection">
         <div className="field-label subsection-label search-area-heading">
           <span>Search area</span>
-          <SearchAreaPresets bounds={bounds} updateBounds={updateBounds} />
+          <SearchAreaPresets bounds={bounds} updateBounds={updateVisibleBounds} showVertical={!isOffsets} />
         </div>
         <div className="bounds-grid">
-          {(['x', 'y', 'z'] as const).map((axis) => (
+          {(isOffsets ? ['x', 'z'] as const : ['x', 'y', 'z'] as const).map((axis) => (
             <div key={axis} className="bounds-row">
               <b>{axis.toUpperCase()}</b>
               <NumberField
                 label="Start"
                 value={bounds[`${axis}Start`]}
                 onChange={(value) =>
-                  updateBounds({ [`${axis}Start`]: value } as Partial<typeof bounds>)
+                  updateVisibleBounds({ [`${axis}Start`]: value } as Partial<SearchBounds>)
                 }
               />
               <NumberField
                 label="End"
                 value={bounds[`${axis}End`]}
                 onChange={(value) =>
-                  updateBounds({ [`${axis}End`]: value } as Partial<typeof bounds>)
+                  updateVisibleBounds({ [`${axis}End`]: value } as Partial<SearchBounds>)
                 }
               />
             </div>
           ))}
         </div>
+        {isOffsets && <p className="field-help">
+          The scanner always scan the entire world regardless of the settings. The search area setting is only used for filtering out the final coordinates outputs.
+        </p>}
       </div>
+      {!isOffsets && <>
       <div className="subsection">
         <NumberField
           label="Error tolerance"
@@ -1795,6 +1901,7 @@ function ExportInspector() {
           </label>
         </div>
       </details>
+      </>}
       <div className="export-inspector-footer">
         <button
           className="primary-button full"
@@ -1804,11 +1911,16 @@ function ExportInspector() {
           <ScanSearch size={16} /> Export / Run
         </button>
       </div>
+      <BlockOffsetsRunDialog
+        document={document}
+        onClose={() => setDialogOpen(false)}
+        open={dialogOpen && isOffsets}
+      />
       <ExportRunDialog
         document={document}
         onClose={() => setDialogOpen(false)}
         onDownload={downloadConfig}
-        open={dialogOpen}
+        open={dialogOpen && !isOffsets}
       />
     </div>
   )

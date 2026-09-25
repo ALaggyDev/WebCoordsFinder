@@ -491,6 +491,10 @@ body.export-run-dialog-open {
   flex-direction: column;
 }
 
+.export-inspector > .crack-mode-field {
+  margin-bottom: 10px;
+}
+
 .export-inspector .inspector-heading span {
   font-size: 11px;
 }

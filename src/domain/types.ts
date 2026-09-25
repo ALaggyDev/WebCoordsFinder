@@ -209,6 +209,15 @@ export interface SearchBounds {
   zEnd: number
 }
 
+export interface OffsetSearchBounds {
+  xStart: number
+  xEnd: number
+  zStart: number
+  zEnd: number
+}
+
+export type CrackMode = 'texture-rotations' | 'block-offsets'
+
 export interface WebSearchResult {
   x: number
   y: number
@@ -253,6 +262,8 @@ export interface WebSearchCheckpoint {
 }
 
 export interface ScannerSettings {
+  crackMode: CrackMode
+  offsetBounds: OffsetSearchBounds
   textureAlgorithm: TextureAlgorithm
   scanOrder: ScanOrder
   directions: SearchDirection[]
