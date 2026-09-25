@@ -16,6 +16,7 @@ import {
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
 const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
+let grassColorMapPixels: Promise<ImageData> | undefined
 
 export type RgbColor = { red: number; green: number; blue: number }
 
@@ -49,20 +50,27 @@ export function grassColorMapCoordinates(
 export async function grassTintColor(
   settings = defaultGrassTintSettings,
 ): Promise<RgbColor> {
-  const colorMap = await loadImage(grassColorMapSource)
-  const canvas = document.createElement('canvas')
-  canvas.width = colorMap.naturalWidth
-  canvas.height = colorMap.naturalHeight
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error('Grass colormap extraction is unavailable.')
-  context.drawImage(colorMap, 0, 0)
+  grassColorMapPixels ??= loadImage(grassColorMapSource).then((colorMap) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = colorMap.naturalWidth
+    canvas.height = colorMap.naturalHeight
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Grass colormap extraction is unavailable.')
+    context.drawImage(colorMap, 0, 0)
+    return context.getImageData(0, 0, canvas.width, canvas.height)
+  })
+  const pixels = await grassColorMapPixels
   const [x, y] = grassColorMapCoordinates(
     settings,
-    canvas.width,
-    canvas.height,
+    pixels.width,
+    pixels.height,
   )
-  const pixel = context.getImageData(x, y, 1, 1).data
-  return { red: pixel[0], green: pixel[1], blue: pixel[2] }
+  const offset = (y * pixels.width + x) * 4
+  return {
+    red: pixels.data[offset],
+    green: pixels.data[offset + 1],
+    blue: pixels.data[offset + 2],
+  }
 }
 
 export function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {

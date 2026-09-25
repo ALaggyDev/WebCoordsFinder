@@ -254,7 +254,12 @@ export function drawOffsetModels(
     }`
     const texture =
       textures.get(`${quad.entry.blockId}:${textureSuffix}`) ??
-      textures.get(textureSuffix)
+      textures.get(textureSuffix) ??
+      // Keep the previous tint visible while its replacement texture loads.
+      (quad.face.tintindex === undefined ? undefined : [...textures].find(([key]) =>
+        key.startsWith(`${quad.entry.blockId}:${quad.face.texture}:`) ||
+        key.startsWith(`${quad.face.texture}:`),
+      )?.[1])
     if (!texture) continue
     const projected = quad.points.map((p) => projectScenePoint(scene, p)!)
     const [a, b, c] = projected

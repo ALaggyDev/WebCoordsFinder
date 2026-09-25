@@ -1,10 +1,10 @@
 import { OffsetInspector } from './OffsetInspector'
+import { GrassTintPicker } from './GrassTintPicker'
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -870,9 +870,6 @@ function FaceInspector({
   const grassTintIsDefault =
     temperature === defaultGrassTintSettings.temperature &&
     downfall === defaultGrassTintSettings.downfall
-  const tintSliderStyle = (value: number) => ({
-    '--tint-position': `${value * 100}%`,
-  }) as CSSProperties
   const renderedReferenceUrl = displayReferenceUrl || referenceUrl
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const variantTransforms = evidenceFace
@@ -1055,7 +1052,7 @@ function FaceInspector({
               : 'Animation controls'}
           >
             {selectedAnimationCycle !== undefined && (
-              <label className="tint-slider">
+              <label className="range-field">
                 <span>
                   Animation time{' '}
                   <output>{animationTick} / {selectedAnimationCycle} ticks</output>
@@ -1067,7 +1064,6 @@ function FaceInspector({
                   max={selectedAnimationCycle}
                   step="1"
                   value={animationTick}
-                  style={tintSliderStyle((animationTick - 1) / (selectedAnimationCycle - 1))}
                   onChange={(event) =>
                     setAnimationTick(evidence.blockId, Number(event.target.value))
                   }
@@ -1089,42 +1085,10 @@ function FaceInspector({
                     <RotateCcw size={12} /> Reset
                   </button>
                 </div>
-                <label className="tint-slider">
-                  <span>Temperature <output>{temperature?.toFixed(2) ?? 'Mixed'}</output></span>
-                  <input
-                    type="range"
-                    aria-label="Temperature"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={resolvedTemperature}
-                    style={tintSliderStyle(resolvedTemperature)}
-                    onChange={(event) => updateBlockSettingsForSelection({
-                      grassTint: {
-                        temperature: Number(event.target.value),
-                        downfall: resolvedDownfall,
-                      },
-                    })}
-                  />
-                </label>
-                <label className="tint-slider">
-                  <span>Downfall <output>{downfall?.toFixed(2) ?? 'Mixed'}</output></span>
-                  <input
-                    type="range"
-                    aria-label="Downfall"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={resolvedDownfall}
-                    style={tintSliderStyle(resolvedDownfall)}
-                    onChange={(event) => updateBlockSettingsForSelection({
-                      grassTint: {
-                        temperature: resolvedTemperature,
-                        downfall: Number(event.target.value),
-                      },
-                    })}
-                  />
-                </label>
+                <GrassTintPicker
+                  value={{ temperature: resolvedTemperature, downfall: resolvedDownfall }}
+                  onChange={(grassTint) => updateBlockSettingsForSelection({ grassTint })}
+                />
               </>
             )}
           </div>

@@ -95,7 +95,7 @@ describe('dripstone offset controls', () => {
 })
 
 describe('grass offset settings', () => {
-  it('uses the climate slider input used by block-specific grass tint', () => {
+  it('uses the grass colormap picker for decoration tint', () => {
     const document = createTestDocument()
     document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
     document.scanner.compassResolved = true
@@ -113,8 +113,8 @@ describe('grass offset settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decoration settings' }))
     expect(screen.getByText('Grass tint')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Y occlusion' })).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Grass tint temperature' })).toHaveValue('0.8')
-    expect(screen.getByRole('slider', { name: 'Grass tint downfall' })).toHaveValue('0.4')
+    expect(screen.getByRole('img', { name: 'Grass tint color map' })).toBeInTheDocument()
+    expect(screen.queryByText('Hides the part shifted below the supporting block.')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Foliage tint')).not.toBeInTheDocument()
   })
 })

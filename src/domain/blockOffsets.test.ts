@@ -270,7 +270,7 @@ describe('Minecraft block offsets', () => {
     intersections.forEach(({ uv }) => expect(uv.y).toBeCloseTo(12.8))
   })
 
-  it('depth-sorts crossed grass in tessellated patches', () => {
+  it('depth-sorts crossed grass and keeps its previous tint while a new one loads', () => {
     const elements = offsetProfiles.short_grass.variants[0].parts[0].elements
     const originalTextures = elements.map((element) =>
       Object.values(element.faces)[0].texture,
@@ -300,15 +300,26 @@ describe('Minecraft block offsets', () => {
       Object.values(elements[1].faces).forEach((face) => {
         face.texture = '/plane-b.png'
       })
+      const textures = new Map([
+        [`/plane-a.png:${observation().tint}`, textureA],
+        [`/plane-b.png:${observation().tint}`, textureB],
+      ])
       drawOffsetModels(
         context,
         cameraDocument().scene,
         [observation()],
-        new Map([
-          [`/plane-a.png:${observation().tint}`, textureA],
-          [`/plane-b.png:${observation().tint}`, textureB],
-        ]),
+        textures,
       )
+      const firstDrawCount = draws.length
+      drawOffsetModels(
+        context,
+        cameraDocument().scene,
+        [{ ...observation(), tint: '#77aa44' }],
+        textures,
+      )
+      expect(draws.length).toBeGreaterThan(firstDrawCount)
+      expect(draws.slice(firstDrawCount)).toContain('a')
+      expect(draws.slice(firstDrawCount)).toContain('b')
     } finally {
       elements.forEach((element, index) =>
         Object.values(element.faces).forEach((face) => {

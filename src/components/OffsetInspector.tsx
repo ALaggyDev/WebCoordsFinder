@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
   Copy,
   Crosshair,
@@ -20,6 +20,7 @@ import { grassTintColor } from '../domain/imageAnalysis'
 import { defaultGrassTintSettings } from '../domain/types'
 import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
+import { GrassTintPicker } from './GrassTintPicker'
 
 function InfoTip({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -69,6 +70,7 @@ export function OffsetInspector() {
   const addMenuRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const settingsMenuRef = useRef<HTMLDivElement>(null)
+  const tintRequestRef = useRef(0)
   const entries = document.offsets ?? []
   const selected = entries.find((entry) => entry.id === selectedOffsetId)
   const profile = selected ? offsetProfiles[selected.blockId] : undefined
@@ -100,8 +102,6 @@ export function OffsetInspector() {
   const grassTintIsDefault =
     grassTint.temperature === defaultGrassTintSettings.temperature &&
     grassTint.downfall === defaultGrassTintSettings.downfall
-  const tintSliderStyle = (value: number) =>
-    ({ '--tint-position': `${value * 100}%` }) as CSSProperties
 
   useEffect(() => {
     if (!catalogOpen && !settingsOpen) return
@@ -125,8 +125,10 @@ export function OffsetInspector() {
 
   async function updateGrassTint(temperature: number, downfall: number) {
     if (!selected) return
+    const request = ++tintRequestRef.current
     const settings = { temperature, downfall }
     const color = await grassTintColor(settings)
+    if (request !== tintRequestRef.current) return
     state.updateOffset(selected.id, {
       grassTint: settings,
       tint: rgbToHex(color),
@@ -411,7 +413,7 @@ export function OffsetInspector() {
                     </select>
                   </label>
                   {animationCycle !== undefined && (
-                    <label className="tint-slider">
+                    <label className="range-field">
                       <span>
                         Animation time{' '}
                         <output>{animationTick} / {animationCycle} ticks</output>
@@ -423,7 +425,6 @@ export function OffsetInspector() {
                         max={animationCycle}
                         step="1"
                         value={animationTick}
-                        style={tintSliderStyle((animationTick - 1) / (animationCycle - 1))}
                         onChange={(event) =>
                           state.setAnimationTick(
                             selected.blockId,
@@ -445,9 +446,6 @@ export function OffsetInspector() {
                       >
                         Y occlusion
                       </button>
-                      <p className="field-help">
-                        Hides the part shifted below the supporting block.
-                      </p>
                     </>
                   )}
                   {supportsGrassTint(profile) && (
@@ -468,47 +466,10 @@ export function OffsetInspector() {
                           <RotateCcw size={12} /> Reset
                         </button>
                       </div>
-                      <label className="tint-slider">
-                        <span>
-                          Temperature{' '}
-                          <output>{grassTint.temperature.toFixed(2)}</output>
-                        </span>
-                        <input
-                          type="range"
-                          aria-label="Grass tint temperature"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={grassTint.temperature}
-                          style={tintSliderStyle(grassTint.temperature)}
-                          onChange={(event) =>
-                            updateGrassTint(
-                              Number(event.target.value),
-                              grassTint.downfall,
-                            )
-                          }
-                        />
-                      </label>
-                      <label className="tint-slider">
-                        <span>
-                          Downfall <output>{grassTint.downfall.toFixed(2)}</output>
-                        </span>
-                        <input
-                          type="range"
-                          aria-label="Grass tint downfall"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={grassTint.downfall}
-                          style={tintSliderStyle(grassTint.downfall)}
-                          onChange={(event) =>
-                            updateGrassTint(
-                              grassTint.temperature,
-                              Number(event.target.value),
-                            )
-                          }
-                        />
-                      </label>
+                      <GrassTintPicker
+                        value={grassTint}
+                        onChange={(value) => updateGrassTint(value.temperature, value.downfall)}
+                      />
                     </>
                   )}
                 </div>
