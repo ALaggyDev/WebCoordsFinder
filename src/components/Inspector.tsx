@@ -71,6 +71,7 @@ import {
   type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
+import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
 import { ExportRunDialog } from './ExportRunDialog'
 
@@ -664,6 +665,7 @@ function FaceInspector({
   const updateBlockSettingsForSelection = useEditorStore(
     (state) => state.updateBlockSettingsForSelection,
   )
+  const setAnimationTick = useEditorStore((state) => state.setAnimationTick)
   const setVariant = useEditorStore((state) => state.setVariant)
   const selectedEvidence = document.evidence.filter((entry) =>
     selectedIds.includes(entry.id),
@@ -703,6 +705,15 @@ function FaceInspector({
   const supportsGrassSettings =
     selectedEvidence.length > 0 &&
     selectedEvidence.every((entry) => blockProfileMap.get(entry.blockId)?.settings?.grassTint)
+  const selectedAnimationCycle = evidence && selectedEvidence.every(
+    (entry) => entry.blockId === evidence.blockId,
+  )
+    ? animationCycleTicks(
+        Object.values(blockProfileMap.get(evidence.blockId)?.referenceTextures ?? {})
+          .filter((source): source is string => Boolean(source)),
+      )
+    : undefined
+  const supportsBlockSettings = supportsGrassSettings || selectedAnimationCycle !== undefined
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -719,8 +730,8 @@ function FaceInspector({
   }, [settingsOpen])
 
   useEffect(() => {
-    if (!supportsGrassSettings) setSettingsOpen(false)
-  }, [supportsGrassSettings])
+    if (!supportsBlockSettings) setSettingsOpen(false)
+  }, [supportsBlockSettings])
 
   useEffect(() => {
     let active = true
@@ -783,13 +794,19 @@ function FaceInspector({
         )
     : undefined
   const grassTint = evidence?.blockSettings?.grassTint ?? defaultGrassTintSettings
+  const storedAnimationTick = evidence
+    ? document.animationTicks?.[evidence.blockId] ?? 1
+    : 1
+  const animationTick = selectedAnimationCycle
+    ? ((storedAnimationTick - 1) % selectedAnimationCycle) + 1
+    : storedAnimationTick
   const [displayReferenceUrl, setDisplayReferenceUrl] = useState('')
 
   useEffect(() => {
     let active = true
     setDisplayReferenceUrl('')
     if (!referenceUrl) return
-    colorizedReferenceTexture(referenceUrl, grassTint)
+    colorizedReferenceTexture(referenceUrl, grassTint, animationTick)
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
       })
@@ -799,7 +816,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [grassTint, referenceUrl])
+  }, [animationTick, grassTint, referenceUrl])
 
   if (!document.scene.projection) {
     return (
@@ -977,12 +994,14 @@ function FaceInspector({
       <div className="field block-profile-field">
         <div className="block-profile-heading">
           <label htmlFor="block-profile">Block profile</label>
-          {profile?.settings?.grassTint && (
+          {supportsBlockSettings && (
             <button
               ref={settingsButtonRef}
               type="button"
               className={settingsOpen ? 'profile-settings-button active' : 'profile-settings-button'}
-              aria-label="Grass tint settings"
+              aria-label={selectedAnimationCycle === undefined
+                ? 'Grass tint settings'
+                : 'Animation settings'}
               aria-expanded={settingsOpen}
               onClick={() => setSettingsOpen((open) => !open)}
             >
@@ -1027,61 +1046,87 @@ function FaceInspector({
             </option>
           ))}
         </select>
-        {settingsOpen && profile?.settings?.grassTint && (
+        {settingsOpen && supportsBlockSettings && (
           <div
             ref={settingsMenuRef}
             className="block-settings-menu"
-            aria-label="Grass tint controls"
+            aria-label={selectedAnimationCycle === undefined
+              ? 'Grass tint controls'
+              : 'Animation controls'}
           >
-            <div className="block-settings-menu-header">
-              <div className="block-settings-title">Grass tint</div>
-              <button
-                type="button"
-                className="reset-tint-button"
-                disabled={grassTintIsDefault}
-                onClick={() => updateBlockSettingsForSelection({
-                  grassTint: { ...defaultGrassTintSettings },
-                })}
-              >
-                <RotateCcw size={12} /> Reset
-              </button>
-            </div>
-            <label className="tint-slider">
-              <span>Temperature <output>{temperature?.toFixed(2) ?? 'Mixed'}</output></span>
-              <input
-                type="range"
-                aria-label="Temperature"
-                min="0"
-                max="1"
-                step="0.01"
-                value={resolvedTemperature}
-                style={tintSliderStyle(resolvedTemperature)}
-                onChange={(event) => updateBlockSettingsForSelection({
-                  grassTint: {
-                    temperature: Number(event.target.value),
-                    downfall: resolvedDownfall,
-                  },
-                })}
-              />
-            </label>
-            <label className="tint-slider">
-              <span>Downfall <output>{downfall?.toFixed(2) ?? 'Mixed'}</output></span>
-              <input
-                type="range"
-                aria-label="Downfall"
-                min="0"
-                max="1"
-                step="0.01"
-                value={resolvedDownfall}
-                style={tintSliderStyle(resolvedDownfall)}
-                onChange={(event) => updateBlockSettingsForSelection({
-                  grassTint: {
-                    temperature: resolvedTemperature,
-                    downfall: Number(event.target.value),
-                  },
-                })}
-              />
-            </label>
+            {selectedAnimationCycle !== undefined && (
+              <label className="tint-slider">
+                <span>
+                  Animation time{' '}
+                  <output>{animationTick} / {selectedAnimationCycle} ticks</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label="Animation time"
+                  min="1"
+                  max={selectedAnimationCycle}
+                  step="1"
+                  value={animationTick}
+                  style={tintSliderStyle((animationTick - 1) / (selectedAnimationCycle - 1))}
+                  onChange={(event) =>
+                    setAnimationTick(evidence.blockId, Number(event.target.value))
+                  }
+                />
+              </label>
+            )}
+            {profile?.settings?.grassTint && (
+              <>
+                <div className="block-settings-menu-header">
+                  <div className="block-settings-title">Grass tint</div>
+                  <button
+                    type="button"
+                    className="reset-tint-button"
+                    disabled={grassTintIsDefault}
+                    onClick={() => updateBlockSettingsForSelection({
+                      grassTint: { ...defaultGrassTintSettings },
+                    })}
+                  >
+                    <RotateCcw size={12} /> Reset
+                  </button>
+                </div>
+                <label className="tint-slider">
+                  <span>Temperature <output>{temperature?.toFixed(2) ?? 'Mixed'}</output></span>
+                  <input
+                    type="range"
+                    aria-label="Temperature"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={resolvedTemperature}
+                    style={tintSliderStyle(resolvedTemperature)}
+                    onChange={(event) => updateBlockSettingsForSelection({
+                      grassTint: {
+                        temperature: Number(event.target.value),
+                        downfall: resolvedDownfall,
+                      },
+                    })}
+                  />
+                </label>
+                <label className="tint-slider">
+                  <span>Downfall <output>{downfall?.toFixed(2) ?? 'Mixed'}</output></span>
+                  <input
+                    type="range"
+                    aria-label="Downfall"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={resolvedDownfall}
+                    style={tintSliderStyle(resolvedDownfall)}
+                    onChange={(event) => updateBlockSettingsForSelection({
+                      grassTint: {
+                        temperature: resolvedTemperature,
+                        downfall: Number(event.target.value),
+                      },
+                    })}
+                  />
+                </label>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1293,6 +1338,7 @@ function ReviewFacePreview({
     colorizedReferenceTexture(
       referenceUrl,
       evidence.blockSettings?.grassTint ?? defaultGrassTintSettings,
+      document.animationTicks?.[evidence.blockId] ?? 1,
     )
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
@@ -1303,7 +1349,7 @@ function ReviewFacePreview({
     return () => {
       active = false
     }
-  }, [evidence.blockSettings?.grassTint, referenceUrl])
+  }, [document.animationTicks, evidence.blockId, evidence.blockSettings?.grassTint, referenceUrl])
 
   return createPortal(
     <aside

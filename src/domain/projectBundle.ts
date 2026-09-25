@@ -32,6 +32,7 @@ const projectSchema = z
     scene: z.unknown(),
     evidence: z.array(z.unknown()),
     offsets: offsetEvidenceListSchema.optional(),
+    animationTicks: z.record(z.string(), z.number().int().positive()).optional(),
     scanner: z
       .object({
         textureAlgorithm: z.enum(textureAlgorithms),

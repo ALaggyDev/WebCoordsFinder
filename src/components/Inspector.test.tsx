@@ -247,6 +247,31 @@ describe('face inspector batch selection', () => {
     ).toBe(true)
   })
 
+  it('shows and persists the global sculk animation time', () => {
+    const first = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().setBlockForSelection('sculk')
+    useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Animation settings' }))
+    const slider = screen.getByRole('slider', { name: 'Animation time' })
+    expect(slider).toHaveAttribute('min', '1')
+    expect(slider).toHaveAttribute('max', '80')
+    expect(slider).toHaveValue('1')
+    fireEvent.change(slider, { target: { value: '35' } })
+    expect(useEditorStore.getState().document.animationTicks?.sculk).toBe(35)
+    fireEvent.change(slider, { target: { value: '80' } })
+    expect(useEditorStore.getState().document.animationTicks?.sculk).toBe(80)
+  })
+
   it('only auto analyzes unlabeled faces and only confirms proposed faces', () => {
     const [first, second] = useEditorStore.getState().document.scene.faces
     useEditorStore.getState().selectFace(first.id, false)

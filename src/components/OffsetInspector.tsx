@@ -20,6 +20,7 @@ import {
 import { blockCoordinateForFace, mappedAnchorOffset } from '../domain/geometry'
 import { grassTintColor } from '../domain/imageAnalysis'
 import { defaultGrassTintSettings } from '../domain/types'
+import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
 
 function InfoTip({ label, children }: { label: string; children: ReactNode }) {
@@ -38,6 +39,16 @@ function supportsGrassTint(profile: (typeof offsetProfiles)[string]) {
         Object.values(element.faces).some(
           (face) => face.tintindex !== undefined,
         ),
+      ),
+    ),
+  )
+}
+
+function profileTextureSources(profile: (typeof offsetProfiles)[string]) {
+  return profile.variants.flatMap((variant) =>
+    variant.parts.flatMap((part) =>
+      part.elements.flatMap((element) =>
+        Object.values(element.faces).map((face) => face.texture),
       ),
     ),
   )
@@ -63,6 +74,15 @@ export function OffsetInspector() {
   const entries = document.offsets ?? []
   const selected = entries.find((entry) => entry.id === selectedOffsetId)
   const profile = selected ? offsetProfiles[selected.blockId] : undefined
+  const animationCycle = profile
+    ? animationCycleTicks(profileTextureSources(profile))
+    : undefined
+  const storedAnimationTick = selected
+    ? document.animationTicks?.[selected.blockId] ?? 1
+    : 1
+  const animationTick = animationCycle
+    ? ((storedAnimationTick - 1) % animationCycle) + 1
+    : storedAnimationTick
   const blocked = offsetReadiness(document)
   const basis = offsetBasis(document)
   const face = document.scene.faces.find(
@@ -376,6 +396,29 @@ export function OffsetInspector() {
                       ))}
                     </select>
                   </label>
+                  {animationCycle !== undefined && (
+                    <label className="tint-slider">
+                      <span>
+                        Animation time{' '}
+                        <output>{animationTick} / {animationCycle} ticks</output>
+                      </span>
+                      <input
+                        type="range"
+                        aria-label="Animation time"
+                        min="1"
+                        max={animationCycle}
+                        step="1"
+                        value={animationTick}
+                        style={tintSliderStyle((animationTick - 1) / (animationCycle - 1))}
+                        onChange={(event) =>
+                          state.setAnimationTick(
+                            selected.blockId,
+                            Number(event.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
                   {profile.type === 'XYZ' && (
                     <>
                       <button

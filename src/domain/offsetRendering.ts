@@ -6,6 +6,7 @@ import {
   type ModelFace,
 } from './blockOffsets'
 import { projectScenePoint } from './geometry'
+import { textureAnimationFrame } from './textureAnimation'
 import type {
   BlockOffsetEvidence,
   Point2,
@@ -248,9 +249,12 @@ export function drawOffsetModels(
     .filter((q) => q.points.every((p) => depth(p) * sign > 1e-8))
   const polygons: TexturedPolygon[] = []
   for (const quad of quads) {
-    const texture = textures.get(
-      `${quad.face.texture}:${quad.face.tintindex === undefined ? '' : quad.entry.tint}`,
-    )
+    const textureSuffix = `${quad.face.texture}:${
+      quad.face.tintindex === undefined ? '' : quad.entry.tint
+    }`
+    const texture =
+      textures.get(`${quad.entry.blockId}:${textureSuffix}`) ??
+      textures.get(textureSuffix)
     if (!texture) continue
     const projected = quad.points.map((p) => projectScenePoint(scene, p)!)
     const [a, b, c] = projected
@@ -330,19 +334,21 @@ export function drawOffsetModels(
 /** Tint only marked faces, preserving the original alpha and nearest-neighbor pixels. */
 export async function loadOffsetTextures(
   entries: BlockOffsetEvidence[],
+  animationTicks: Record<string, number> = {},
 ): Promise<Map<string, HTMLCanvasElement>> {
-  const requests = new Map<string, { url: string; tint?: string }>()
+  const requests = new Map<string, { url: string; tint?: string; tick: number }>()
   for (const entry of entries)
     for (const quad of offsetModelQuads(entry)) {
       const tint = quad.face.tintindex === undefined ? undefined : entry.tint
-      requests.set(`${quad.face.texture}:${tint ?? ''}`, {
+      requests.set(`${entry.blockId}:${quad.face.texture}:${tint ?? ''}`, {
         url: quad.face.texture,
         tint,
+        tick: animationTicks[entry.blockId] ?? 1,
       })
     }
   return new Map(
     await Promise.all(
-      [...requests].map(async ([key, { url, tint }]) => {
+      [...requests].map(async ([key, { url, tint, tick }]) => {
         const image = new Image()
         image.src = url
         await image.decode()
@@ -350,7 +356,37 @@ export async function loadOffsetTextures(
         canvas.width = canvas.height = 16
         const ctx = canvas.getContext('2d')!
         ctx.imageSmoothingEnabled = false
-        ctx.drawImage(image, 0, 0, image.width, image.width, 0, 0, 16, 16)
+        const frame = textureAnimationFrame(url, tick)
+        if (frame) {
+          ctx.drawImage(
+            image,
+            0,
+            frame.current * image.width,
+            image.width,
+            image.width,
+            0,
+            0,
+            16,
+            16,
+          )
+          if (frame.blend > 0) {
+            ctx.globalAlpha = frame.blend
+            ctx.drawImage(
+              image,
+              0,
+              frame.next * image.width,
+              image.width,
+              image.width,
+              0,
+              0,
+              16,
+              16,
+            )
+            ctx.globalAlpha = 1
+          }
+        } else {
+          ctx.drawImage(image, 0, 0, image.width, image.width, 0, 0, 16, 16)
+        }
         if (tint) {
           const pixels = ctx.getImageData(0, 0, 16, 16)
           const rgb = [1, 3, 5].map(

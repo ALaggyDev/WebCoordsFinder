@@ -719,6 +719,7 @@ function App() {
           evidenceId: entry.id,
           quad,
           referenceUrl,
+          animationTick: state.document.animationTicks?.[entry.blockId] ?? 1,
           grassTint: entry.blockSettings?.grassTint,
           transforms: variantTransformsForFace(entry.blockId, face),
         }]

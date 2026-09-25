@@ -21,4 +21,5 @@ supplied `BlockBehaviour.Properties.offsetType` implementation: X/Z use seed
 nibbles 0 and 8, Y uses nibble 4, with the dripstone and small-dripleaf limits.
 
 The overlays assist manual alignment. They do not simulate scene occlusion,
-biome lighting, water, or animated texture frames. Models use the first frame.
+biome lighting or water. Bundled animated texture strips use their vanilla
+frame timing and share the selected animation time across each block type.

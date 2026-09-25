@@ -305,6 +305,16 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
       ? scene.projection !== null
       : !isValidCommittedProjection(scene.projection)) ||
     !Array.isArray(directions) ||
+    (candidate.animationTicks !== undefined &&
+      (!candidate.animationTicks ||
+        typeof candidate.animationTicks !== 'object' ||
+        Array.isArray(candidate.animationTicks) ||
+        Object.values(candidate.animationTicks).some(
+          (tick) =>
+            typeof tick !== 'number' ||
+            !Number.isInteger(tick) ||
+            tick < 1,
+        ))) ||
     new Set(directions).size !== directions.length ||
     directions.some(
       (direction) =>
@@ -568,6 +578,7 @@ interface EditorState {
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
   updateBlockSettingsForSelection: (patch: Partial<BlockSettings>) => void
+  setAnimationTick: (blockId: string, tick: number) => void
   setVariant: (evidenceId: string, variant: number) => void
   setEvidenceStatus: (
     evidenceIds: string[],
@@ -1393,6 +1404,23 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.blockSettings = { ...entry.blockSettings, ...patch }
             // Proposals contain scores for the previous reference pixels.
             // Confirmed evidence has already been explicitly reviewed.
+            if (entry.reviewStatus === 'proposed') {
+              entry.selectedVariant = undefined
+              entry.reviewStatus = 'unlabeled'
+            }
+            entry.scores = undefined
+            entry.confidence = undefined
+          })
+      }),
+    ),
+  setAnimationTick: (blockId, tick) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const animationTicks = (document.animationTicks ??= {})
+        animationTicks[blockId] = Math.max(1, Math.floor(tick))
+        document.evidence
+          .filter((entry) => entry.blockId === blockId)
+          .forEach((entry) => {
             if (entry.reviewStatus === 'proposed') {
               entry.selectedVariant = undefined
               entry.reviewStatus = 'unlabeled'

@@ -276,6 +276,8 @@ export interface EditorDocument {
   evidence: FaceEvidence[]
   /** Optional addition to schema 1; older projects have no offset observations. */
   offsets?: BlockOffsetEvidence[]
+  /** Global game tick per block type for previewing bundled animated textures. */
+  animationTicks?: Record<string, number>
   scanner: ScannerSettings
 }
 

@@ -63,18 +63,20 @@ export function OffsetOverlay({
   const previewRef = useRef<BlockOffsetEvidence | undefined>(undefined)
   const entries = document.offsets ?? []
   // Offset/position edits do not reload image assets during a drag.
-  const textureKey = JSON.stringify(
+  const textureSources = JSON.stringify(
     entries.map(({ blockId, modelIndex, tint }) => ({
       blockId,
       modelIndex,
       tint,
     })),
   )
+  const animationTicksKey = JSON.stringify(document.animationTicks ?? {})
   useEffect(() => {
     if (!showModels) return
     let cancelled = false
-    const sources = JSON.parse(textureKey) as BlockOffsetEvidence[]
-    loadOffsetTextures(sources)
+    const sources = JSON.parse(textureSources) as BlockOffsetEvidence[]
+    const animationTicks = JSON.parse(animationTicksKey) as Record<string, number>
+    loadOffsetTextures(sources, animationTicks)
       .then((loaded) => {
         if (!cancelled) {
           setTextures(loaded)
@@ -87,7 +89,7 @@ export function OffsetOverlay({
     return () => {
       cancelled = true
     }
-  }, [showModels, textureKey])
+  }, [animationTicksKey, showModels, textureSources])
   const rendered = entries.map((entry) =>
     preview?.id === entry.id ? preview : entry,
   )

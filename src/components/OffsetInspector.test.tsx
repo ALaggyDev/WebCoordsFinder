@@ -100,3 +100,44 @@ describe('grass offset settings', () => {
     expect(screen.queryByLabelText('Foliage tint')).not.toBeInTheDocument()
   })
 })
+
+describe('animated offset settings', () => {
+  it('shares tall seagrass animation time by block type', () => {
+    const document = createTestDocument()
+    document.scene.axisMapping = { a: 'x+', b: 'z-', c: 'y+' }
+    document.scanner.compassResolved = true
+    document.offsets = [
+      {
+        id: 'first-seagrass',
+        blockId: 'tall_seagrass',
+        modelIndex: 0,
+        position: { x: 0, y: 0, z: 0 },
+        nibbles: { x: 7, y: 0, z: 7 },
+        tint: '#ffffff',
+      },
+      {
+        id: 'second-seagrass',
+        blockId: 'tall_seagrass',
+        modelIndex: 0,
+        position: { x: 1, y: 0, z: 0 },
+        nibbles: { x: 7, y: 0, z: 7 },
+        tint: '#ffffff',
+      },
+    ]
+    useEditorStore.setState({ document, selectedOffsetId: 'first-seagrass' })
+    render(<OffsetInspector />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Decoration settings' }))
+    const slider = screen.getByRole('slider', { name: 'Animation time' })
+    expect(slider).toHaveAttribute('min', '1')
+    expect(slider).toHaveAttribute('max', '38')
+    expect(slider).toHaveValue('1')
+    fireEvent.change(slider, { target: { value: '17' } })
+
+    expect(useEditorStore.getState().document.animationTicks?.tall_seagrass)
+      .toBe(17)
+    fireEvent.change(slider, { target: { value: '38' } })
+    expect(useEditorStore.getState().document.animationTicks?.tall_seagrass)
+      .toBe(38)
+  })
+})
