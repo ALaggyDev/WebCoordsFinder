@@ -28,6 +28,7 @@ import {
 import { createTestDocument } from '../test/createTestDocument'
 import type { BlockOffsetEvidence } from './types'
 import {
+  clipTexturedPolygonAtDepth,
   clipTexturedPolygonAtY,
   drawOffsetModels,
   offsetModelQuads,
@@ -268,6 +269,23 @@ describe('Minecraft block offsets', () => {
     const intersections = clipped.filter(({ point }) => point.y === 0.2)
     expect(intersections).toHaveLength(2)
     intersections.forEach(({ uv }) => expect(uv.y).toBeCloseTo(12.8))
+  })
+
+  it('keeps and retextures the visible part of a plane crossing camera depth', () => {
+    const clipped = clipTexturedPolygonAtDepth(
+      [
+        { point: { x: 0, y: 0, z: 0 }, uv: { x: 0, y: 0 } },
+        { point: { x: 2, y: 0, z: 0 }, uv: { x: 16, y: 0 } },
+        { point: { x: 2, y: 1, z: 0 }, uv: { x: 16, y: 16 } },
+        { point: { x: 0, y: 1, z: 0 }, uv: { x: 0, y: 16 } },
+      ],
+      (point) => 1 - point.x,
+      0.25,
+    )
+    expect(clipped).toHaveLength(4)
+    expect(clipped.every(({ point }) => point.x <= 0.75)).toBe(true)
+    expect(clipped.filter(({ point }) => point.x === 0.75).map(({ uv }) => uv.x))
+      .toEqual([6, 6])
   })
 
   it('depth-sorts crossed grass and keeps its previous tint while a new one loads', () => {

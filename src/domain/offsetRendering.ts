@@ -190,6 +190,39 @@ export function clipTexturedPolygonAtY(
   return result
 }
 
+/** Keep the visible portion of a textured polygon in front of the camera. */
+export function clipTexturedPolygonAtDepth(
+  vertices: TexturedPoint[],
+  depth: (point: Point3) => number,
+  minimumDepth: number,
+): TexturedPoint[] {
+  const result: TexturedPoint[] = []
+  for (let index = 0; index < vertices.length; index++) {
+    const current = vertices[index]
+    const previous = vertices[(index + vertices.length - 1) % vertices.length]
+    const currentDepth = depth(current.point)
+    const previousDepth = depth(previous.point)
+    const currentInside = currentDepth >= minimumDepth
+    const previousInside = previousDepth >= minimumDepth
+    if (currentInside !== previousInside) {
+      const amount = (minimumDepth - previousDepth) / (currentDepth - previousDepth)
+      result.push({
+        point: {
+          x: previous.point.x + (current.point.x - previous.point.x) * amount,
+          y: previous.point.y + (current.point.y - previous.point.y) * amount,
+          z: previous.point.z + (current.point.z - previous.point.z) * amount,
+        },
+        uv: {
+          x: previous.uv.x + (current.uv.x - previous.uv.x) * amount,
+          y: previous.uv.y + (current.uv.y - previous.uv.y) * amount,
+        },
+      })
+    }
+    if (currentInside) result.push(current)
+  }
+  return result
+}
+
 /** Affine texture mapping of one small triangle; tessellation approximates perspective. */
 function triangle(
   ctx: CanvasRenderingContext2D,
@@ -237,18 +270,32 @@ export function drawOffsetModels(
   const reference = scene.observations[0]?.lattice
   if (!reference) return
   const sign = Math.sign(depth(reference))
+  if (!sign) return
+  const minimumDepth = Math.max(1e-8, Math.abs(depth(reference)) * 1e-6)
   const quads = entries
     .flatMap((entry) =>
       offsetModelQuads(entry).map((quad) => ({
         ...quad,
         entry,
         modelPoints: quad.points,
-        points: quad.points.map((p) => modelLatticePoint(scene, entry, p)),
       })),
     )
-    .filter((q) => q.points.every((p) => depth(p) * sign > 1e-8))
   const polygons: TexturedPolygon[] = []
   for (const quad of quads) {
+    const visible = clipTexturedPolygonAtDepth(
+      quad.modelPoints.map((point, index) => ({ point, uv: quad.uv[index] })),
+      (point) => depth(modelLatticePoint(scene, quad.entry, point)) * sign,
+      minimumDepth,
+    )
+    if (visible.length < 3) continue
+    const projected = visible.map(({ point }) =>
+      projectScenePoint(scene, modelLatticePoint(scene, quad.entry, point))!,
+    )
+    const area = projected.reduce((sum, point, index) => {
+      const next = projected[(index + 1) % projected.length]
+      return sum + point.x * next.y - point.y * next.x
+    }, 0)
+    if (area <= 0) continue
     const textureSuffix = `${quad.face.texture}:${
       quad.face.tintindex === undefined ? '' : quad.entry.tint
     }`
@@ -261,9 +308,6 @@ export function drawOffsetModels(
         key.startsWith(`${quad.face.texture}:`),
       )?.[1])
     if (!texture) continue
-    const projected = quad.points.map((p) => projectScenePoint(scene, p)!)
-    const [a, b, c] = projected
-    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 0) continue
     const interpolate = <T extends Point2>(
       values: T[],
       u: number,
@@ -302,6 +346,11 @@ export function drawOffsetModels(
               quad.entry.nibbles,
             ).y,
           )
+        vertices = clipTexturedPolygonAtDepth(
+          vertices,
+          (point) => depth(modelLatticePoint(scene, quad.entry, point)) * sign,
+          minimumDepth,
+        )
         if (vertices.length < 3) continue
         const scenePoints = vertices.map(({ point }) =>
           modelLatticePoint(scene, quad.entry, point),
