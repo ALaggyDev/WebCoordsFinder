@@ -21,7 +21,6 @@ import {
   LoaderCircle,
   RotateCcw,
   ScanSearch,
-  X,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -74,9 +73,9 @@ import {
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
 import { animationCycleTicks } from '../domain/textureAnimation'
-import { offsetBasis } from '../domain/blockOffsets'
 import { useEditorStore } from '../store/editorStore'
 import { ExportRunDialog } from './ExportRunDialog'
+import { BlockOffsetsRunDialog } from './BlockOffsetsRunDialog'
 
 // The right-hand inspector mirrors the four workflow stages. It derives UI
 // state from the document while delegating all persisted mutations to Zustand.
@@ -1622,78 +1621,6 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
   )
 }
 
-function BlockOffsetsRunDialog({
-  document,
-  open,
-  onClose,
-}: {
-  document: EditorDocument
-  open: boolean
-  onClose: () => void
-}) {
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    globalThis.document.addEventListener('keydown', onKeyDown)
-    globalThis.document.body.classList.add('export-run-dialog-open')
-    return () => {
-      globalThis.document.removeEventListener('keydown', onKeyDown)
-      globalThis.document.body.classList.remove('export-run-dialog-open')
-    }
-  }, [onClose, open])
-
-  if (!open) return null
-
-  const confirmed = (document.offsets ?? []).filter(
-    (offset) => !offset.ignored && offset.confirmedBasis === offsetBasis(document),
-  ).length
-  const { xStart, xEnd, zStart, zEnd } = document.scanner.offsetBounds
-
-  return createPortal(
-    <div className="export-run-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose()
-    }}>
-      <section aria-labelledby="export-run-title" aria-modal="true"
-        className="export-run-dialog" role="dialog">
-        <header className="export-run-header">
-          <h2 id="export-run-title">Export or Run Search</h2>
-          <button aria-label="Close Export / Run" className="icon-button"
-            onClick={onClose} type="button"><X size={18} /></button>
-        </header>
-        <div className="export-run-content">
-          <div className="export-run-readiness">
-            <strong>Block Offsets</strong>
-            <span className="export-run-status blocked">Scanner unavailable</span>
-          </div>
-          <div className="export-run-metrics">
-            <div><span>Confirmed offsets</span><strong>{confirmed}</strong></div>
-            <div>
-              <span>Output filter X/Z</span>
-              <strong>{xStart.toLocaleString()} to {xEnd.toLocaleString()}</strong>
-              <small>Z: {zStart.toLocaleString()} to {zEnd.toLocaleString()}</small>
-            </div>
-          </div>
-          <div className="export-run-actions">
-            <article className="run-target">
-              <div className="run-target-heading">
-                <ScanSearch size={18} />
-                <h3>Run in this browser</h3>
-              </div>
-              <p>The Block Offsets scanner is not implemented yet. Search will be available here in a later update.</p>
-              <button className="primary-button full" disabled type="button">
-                Run block offsets search
-              </button>
-            </article>
-          </div>
-        </div>
-      </section>
-    </div>,
-    globalThis.document.body,
-  )
-}
-
 function ExportInspector() {
   const document = useEditorStore((state) => state.document)
   const updateScanner = useEditorStore((state) => state.updateScanner)
@@ -1872,7 +1799,7 @@ function ExportInspector() {
           ))}
         </div>
         {isOffsets && <p className="field-help">
-          The scanner always scan the entire world regardless of the settings. The search area setting is only used for filtering out the final coordinates outputs.
+          The scanner prunes coordinate candidates outside these inclusive X/Z bounds.
         </p>}
       </div>
       {!isOffsets && <>

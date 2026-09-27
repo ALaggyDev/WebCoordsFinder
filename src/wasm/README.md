@@ -28,3 +28,20 @@ zig cc -target wasm32-freestanding -O3 -nostdlib \
   -Wl,--no-entry -Wl,--strip-all \
   -o coords_search.wasm coords_search.c
 ```
+
+## Block offset solver
+
+`offset_search.c` implements fanda857's 16-to-28-bit coordinate lifting
+algorithm. It starts from every 16-bit X/Z prefix, checks the known seed bits
+as each new bit is lifted, and prunes branches that cannot reach the user's
+inclusive X/Z bounds. One Web Worker and WASM instance own each disjoint X
+prefix range. Workers yield between prefixes so the search can be stopped.
+The exact match count includes results beyond the displayed 1,000 per worker.
+
+Build with Clang in WSL:
+
+```sh
+clang --target=wasm32-unknown-unknown -O3 -nostdlib \
+  -Wl,--no-entry -Wl,--strip-all \
+  -o offset_search.wasm offset_search.c
+```

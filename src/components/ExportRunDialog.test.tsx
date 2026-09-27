@@ -110,7 +110,7 @@ describe('Export / Run workspace', () => {
     ).toBeInTheDocument()
   })
 
-  it('keeps block offset settings separate and shows the pending scanner', () => {
+  it('keeps block offset settings separate and requires confirmed evidence', () => {
     render(
       <Inspector busy={false} onAutoFill={vi.fn()} onOpenImage={vi.fn()} />,
     )
@@ -127,7 +127,7 @@ describe('Export / Run workspace', () => {
     expect(screen.getAllByLabelText('End')).toHaveLength(2)
     expect(screen.getAllByLabelText('Start')[0]).toHaveValue(-30_000_000)
     expect(screen.getAllByLabelText('End')[1]).toHaveValue(30_000_000)
-    expect(screen.getByText(/scanner always scan the entire world/)).toBeInTheDocument()
+    expect(screen.getByText(/prunes coordinate candidates outside/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Search area presets' }))
     expect(screen.getByRole('dialog', { name: 'Search area presets' })).toHaveClass('xz-only')
@@ -141,7 +141,7 @@ describe('Export / Run workspace', () => {
     expect(screen.queryByText('Estimated hits')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Download config' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run block offsets search' })).toBeDisabled()
-    expect(screen.getByText(/scanner is not implemented yet/)).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
   it('preserves texture bounds when switching crack modes', () => {

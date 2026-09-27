@@ -158,4 +158,16 @@ describe('animated offset settings', () => {
     expect(useEditorStore.getState().document.animationTicks?.tall_seagrass)
       .toBe(38)
   })
+
+  it('treats a new model as active without confirmation', () => {
+    render(<OffsetInspector />)
+
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Confirm for search/ })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('slider', { name: 'X offset seed' }), {
+      target: { value: '4' },
+    })
+    expect(screen.getByText('Active')).toBeInTheDocument()
+  })
 })
