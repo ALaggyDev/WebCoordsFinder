@@ -80,6 +80,7 @@ interface VisualizationSettings {
   anchorMarker: boolean
   calibrationPoints: boolean
   calibrationResiduals: boolean
+  imageSmoothing: boolean
 }
 
 const defaultVisualizationSettings: VisualizationSettings = {
@@ -89,6 +90,7 @@ const defaultVisualizationSettings: VisualizationSettings = {
   calibrationPoints: true,
   calibrationResiduals: true,
   faceNormals: false,
+  imageSmoothing: false,
 }
 
 function loadVisualizationSettings(): VisualizationSettings {
@@ -252,6 +254,11 @@ const visualizationOptions: Array<{
     key: 'faceNormals',
     label: 'Face normals',
     description: 'Show visible-side normals from the solved 3D camera.',
+  },
+  {
+    key: 'imageSmoothing',
+    label: 'Image Smoothing',
+    description: 'Smooth the image when zoomed in.',
   },
 ]
 
@@ -1303,7 +1310,7 @@ export function EditorCanvas() {
           cursor: isDraggingCanvas ? 'grabbing' : hoverCursor ?? idleCursor,
         }}
       >
-        <Layer>
+        <Layer imageSmoothingEnabled={visualizations.imageSmoothing}>
           <Rect
             x={0}
             y={0}
