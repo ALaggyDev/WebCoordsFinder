@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Circle, Group, Layer, Line, Shape, Text } from 'react-konva'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { Circle, Group, Image, Layer, Line, Text } from 'react-konva'
 import type Konva from 'konva'
 import {
   modelLatticePoint,
@@ -12,7 +12,12 @@ import {
   worldToLocal,
   worldVerticalDelta,
 } from '../domain/blockOffsets'
-import { drawOffsetModels, loadOffsetTextures } from '../domain/offsetRendering'
+import {
+  loadOffsetTextures,
+  prepareOffsetModels,
+  rasterizeOffsetModelPatch,
+  rasterizeOffsetModels,
+} from '../domain/offsetRendering'
 import { projectScenePoint } from '../domain/geometry'
 import type { BlockOffsetEvidence } from '../domain/types'
 import { useEditorStore } from '../store/editorStore'
@@ -28,7 +33,9 @@ function dragKind(shiftKey: boolean, ctrlKey: boolean): OffsetDragKind {
   return ctrlKey ? 'block-horizontal' : 'within-horizontal'
 }
 
-export function OffsetOverlay({
+const emptyEntries: BlockOffsetEvidence[] = []
+
+export const OffsetOverlay = memo(function OffsetOverlay({
   scale,
   showModels,
 }: {
@@ -60,7 +67,13 @@ export function OffsetOverlay({
     { x: number; y: number } | undefined
   >(undefined)
   const previewRef = useRef<BlockOffsetEvidence | undefined>(undefined)
-  const entries = document.offsets ?? []
+  const entries = document.offsets ?? emptyEntries
+  const [rasterScale, setRasterScale] = useState(scale)
+  useEffect(() => {
+    // Reuse the bitmap during wheel gestures, then restore detail at the new zoom.
+    const timeout = window.setTimeout(() => setRasterScale(scale), 120)
+    return () => window.clearTimeout(timeout)
+  }, [scale])
   // Offset/position edits do not reload image assets during a drag.
   const textureSources = JSON.stringify(
     entries.map(({ blockId, modelIndex, tint }) => ({
@@ -89,11 +102,41 @@ export function OffsetOverlay({
       cancelled = true
     }
   }, [animationTicksKey, showModels, textureSources])
-  const rendered = entries.map((entry) =>
-    preview?.id === entry.id ? preview : entry,
+  const rendered = useMemo(
+    () => entries.map((entry) => preview?.id === entry.id ? preview : entry),
+    [entries, preview],
   )
   const interactive = step === 'offsets'
   const scene = document.scene
+  const ready = !offsetReadiness(document)
+  const draggedId = dragHandle?.id
+  const stationary = useMemo(
+    () => draggedId ? entries.filter((entry) => entry.id !== draggedId) : entries,
+    [entries, draggedId],
+  )
+  const moving = preview ?? entries.find((entry) => entry.id === draggedId)
+  const polygons = useMemo(
+    () => showModels && ready
+      ? prepareOffsetModels(scene, stationary, textures, offsetYOcclusion)
+      : [],
+    [showModels, ready, scene, stationary, textures, offsetYOcclusion],
+  )
+  const raster = useMemo(
+    () => rasterizeOffsetModels(polygons, rasterScale * (window.devicePixelRatio || 1)),
+    [polygons, rasterScale],
+  )
+  const movingPolygons = useMemo(
+    () => showModels && ready && moving
+      ? prepareOffsetModels(scene, [moving], textures, offsetYOcclusion)
+      : [],
+    [showModels, ready, scene, moving, textures, offsetYOcclusion],
+  )
+  const patch = useMemo(
+    () => rasterizeOffsetModelPatch(
+      polygons, movingPolygons, rasterScale * (window.devicePixelRatio || 1),
+    ),
+    [polygons, movingPolygons, rasterScale],
+  )
   const selected = rendered.find((entry) => entry.id === selectedOffsetId)
 
   function updateDrag(
@@ -177,6 +220,11 @@ export function OffsetOverlay({
         }
       }
     }
+    const previous = previewRef.current ?? start
+    if ((['x', 'y', 'z'] as const).every((axis) => {
+      return previous.position[axis] === next.position[axis] &&
+        previous.nibbles[axis] === next.nibbles[axis]
+    })) return
     previewRef.current = next
     setPreview(next)
   }
@@ -243,7 +291,7 @@ export function OffsetOverlay({
     }
   })
 
-  if ((!showModels && !interactive) || offsetReadiness(document)) return null
+  if ((!showModels && !interactive) || !ready) return null
 
   // An unshifted footprint shows how the observed offset relates to
   // the lattice, even while the model is made transparent for comparison.
@@ -284,26 +332,38 @@ export function OffsetOverlay({
     ]
   })()
   return (
-    <Layer>
-      {showModels && (
-        <Shape
+    <Layer imageSmoothingEnabled={false}>
+      {raster && (
+        <Group
           listening={false}
-          // Konva buffers translucent shapes with both fill and stroke before
-          // applying opacity. These inert paints make the custom texture
-          // renderer use that path, so crossed model planes are flattened once
-          // instead of blending every tessellated triangle independently.
-          fill="transparent"
-          stroke="transparent"
+          clipFunc={patch ? (context) => {
+            // Replace this rectangle, rather than drawing a second translucent
+            // layer over it. The patch includes stationary geometry behind/in front.
+            context.rect(raster.x, raster.y, raster.width, raster.height)
+            context.rect(patch.x, patch.y, patch.width, patch.height)
+            return ['evenodd']
+          } : undefined}
+        >
+          <Image
+            listening={false}
+            image={raster.canvas}
+            x={raster.x}
+            y={raster.y}
+            width={raster.width}
+            height={raster.height}
+            opacity={offsetOpacity}
+          />
+        </Group>
+      )}
+      {patch && (
+        <Image
+          listening={false}
+          image={patch.canvas}
+          x={patch.x}
+          y={patch.y}
+          width={patch.width}
+          height={patch.height}
           opacity={offsetOpacity}
-          sceneFunc={(context) =>
-            drawOffsetModels(
-              context._context,
-              scene,
-              rendered,
-              textures,
-              offsetYOcclusion,
-            )
-          }
         />
       )}
       {interactive && footprint.length > 0 && footprint.every((p) => p) && (
@@ -422,4 +482,4 @@ export function OffsetOverlay({
       )}
     </Layer>
   )
-}
+})

@@ -2,6 +2,7 @@ import {
   modelLatticePoint,
   offsetFromNibbles,
   offsetProfiles,
+  worldToLocal,
   type ModelElement,
   type ModelFace,
 } from './blockOffsets'
@@ -257,39 +258,51 @@ function triangle(
   ctx.restore()
 }
 
-export function drawOffsetModels(
-  ctx: CanvasRenderingContext2D,
+/** Project and depth-sort once per model edit, independently of viewport movement. */
+export function prepareOffsetModels(
   scene: SceneGeometry,
   entries: BlockOffsetEvidence[],
   textures: Map<string, HTMLCanvasElement>,
   yOcclusion = false,
-) {
-  if (scene.projection?.kind !== 'camera') return
+): TexturedPolygon[] {
+  if (scene.projection?.kind !== 'camera' || !entries.length) return []
   const m = scene.projection.matrix
   const depth = (p: Point3) => m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11]
   const reference = scene.observations[0]?.lattice
-  if (!reference) return
+  if (!reference) return []
   const sign = Math.sign(depth(reference))
-  if (!sign) return
+  if (!sign) return []
   const minimumDepth = Math.max(1e-8, Math.abs(depth(reference)) * 1e-6)
+  // This mapping is affine. Resolve its basis once, rather than repeatedly
+  // resolving the world axes for every vertex of every tessellation patch.
+  const basisX = worldToLocal(scene, { x: 1, y: 0, z: 0 })
+  const basisY = worldToLocal(scene, { x: 0, y: 1, z: 0 })
+  const basisZ = worldToLocal(scene, { x: 0, y: 0, z: 1 })
   const quads = entries
-    .flatMap((entry) =>
-      offsetModelQuads(entry).map((quad) => ({
+    .flatMap((entry) => {
+      const origin = modelLatticePoint(scene, entry, { x: 0, y: 0, z: 0 })
+      const latticePoint = (p: Point3): Point3 => ({
+        x: origin.x + basisX.x * p.x + basisY.x * p.y + basisZ.x * p.z,
+        y: origin.y + basisX.y * p.x + basisY.y * p.y + basisZ.y * p.z,
+        z: origin.z + basisX.z * p.x + basisY.z * p.y + basisZ.z * p.z,
+      })
+      return offsetModelQuads(entry).map((quad) => ({
         ...quad,
         entry,
         modelPoints: quad.points,
-      })),
-    )
+        latticePoint,
+      }))
+    })
   const polygons: TexturedPolygon[] = []
   for (const quad of quads) {
     const visible = clipTexturedPolygonAtDepth(
       quad.modelPoints.map((point, index) => ({ point, uv: quad.uv[index] })),
-      (point) => depth(modelLatticePoint(scene, quad.entry, point)) * sign,
+      (point) => depth(quad.latticePoint(point)) * sign,
       minimumDepth,
     )
     if (visible.length < 3) continue
     const projected = visible.map(({ point }) =>
-      projectScenePoint(scene, modelLatticePoint(scene, quad.entry, point))!,
+      projectScenePoint(scene, quad.latticePoint(point))!,
     )
     const area = projected.reduce((sum, point, index) => {
       const next = projected[(index + 1) % projected.length]
@@ -348,12 +361,12 @@ export function drawOffsetModels(
           )
         vertices = clipTexturedPolygonAtDepth(
           vertices,
-          (point) => depth(modelLatticePoint(scene, quad.entry, point)) * sign,
+          (point) => depth(quad.latticePoint(point)) * sign,
           minimumDepth,
         )
         if (vertices.length < 3) continue
         const scenePoints = vertices.map(({ point }) =>
-          modelLatticePoint(scene, quad.entry, point),
+          quad.latticePoint(point),
         )
         polygons.push({
           points: scenePoints.map((point) => projectScenePoint(scene, point)!),
@@ -370,6 +383,13 @@ export function drawOffsetModels(
   // one side of the crossing. Sort the existing tessellation patches instead;
   // their boundary at u=0.5 follows the intersection in vanilla cross models.
   polygons.sort((a, b) => b.depth - a.depth)
+  return polygons
+}
+
+function drawOffsetPolygons(
+  ctx: CanvasRenderingContext2D,
+  polygons: TexturedPolygon[],
+) {
   ctx.imageSmoothingEnabled = false
   for (const polygon of polygons)
     for (let index = 1; index + 1 < polygon.points.length; index++)
@@ -383,6 +403,84 @@ export function drawOffsetModels(
         ],
         [polygon.uv[0], polygon.uv[index], polygon.uv[index + 1]],
       )
+}
+
+export function drawOffsetModels(
+  ctx: CanvasRenderingContext2D,
+  scene: SceneGeometry,
+  entries: BlockOffsetEvidence[],
+  textures: Map<string, HTMLCanvasElement>,
+  yOcclusion = false,
+) {
+  drawOffsetPolygons(ctx, prepareOffsetModels(scene, entries, textures, yOcclusion))
+}
+
+interface RasterBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function polygonBounds(polygons: TexturedPolygon[]): RasterBounds | undefined {
+  if (!polygons.length) return undefined
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+  for (const polygon of polygons)
+    for (const point of polygon.points) {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return undefined
+      left = Math.min(left, point.x)
+      top = Math.min(top, point.y)
+      right = Math.max(right, point.x)
+      bottom = Math.max(bottom, point.y)
+    }
+  // Include edge pixels, including models outside the screenshot bounds.
+  const x = Math.floor(left) - 1, y = Math.floor(top) - 1
+  const width = Math.ceil(right) - x + 1, height = Math.ceil(bottom) - y + 1
+  return { x, y, width, height }
+}
+
+/** Flatten the sorted models once; pan frames then need just one image draw. */
+export function rasterizeOffsetModels(
+  polygons: TexturedPolygon[],
+  scale: number,
+  bounds = polygonBounds(polygons),
+) {
+  if (!bounds) return undefined
+  const { x, y, width, height } = bounds
+  // Bound memory even for very large projects or geometry near the camera plane.
+  const ratio = Math.min(
+    scale,
+    4096 / width,
+    4096 / height,
+    Math.sqrt(4_194_304 / (width * height)),
+  )
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.floor(width * ratio))
+  canvas.height = Math.max(1, Math.floor(height * ratio))
+  const ctx = canvas.getContext('2d')!
+  const sx = canvas.width / width, sy = canvas.height / height
+  ctx.setTransform(sx, 0, 0, sy, -x * sx, -y * sy)
+  drawOffsetPolygons(ctx, polygons)
+  return { canvas, x, y, width, height }
+}
+
+/** Redraw only the moving model's rectangle, preserving inter-model depth order. */
+export function rasterizeOffsetModelPatch(
+  stationary: TexturedPolygon[],
+  moving: TexturedPolygon[],
+  scale: number,
+) {
+  const bounds = polygonBounds(moving)
+  if (!bounds) return undefined
+  const { x, y, width, height } = bounds
+  const overlapping = stationary.filter((polygon) => {
+    // A bounding-box check is conservative: never omit a patch that may overlap.
+    const box = polygonBounds([polygon])
+    return box && box.x <= x + width && box.x + box.width >= x &&
+      box.y <= y + height && box.y + box.height >= y
+  })
+  const polygons = [...overlapping, ...moving].sort((a, b) => b.depth - a.depth)
+  return rasterizeOffsetModels(polygons, scale, bounds)
 }
 
 /** Tint only marked faces, preserving the original alpha and nearest-neighbor pixels. */
