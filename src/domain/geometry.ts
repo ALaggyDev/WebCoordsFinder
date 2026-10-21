@@ -1618,6 +1618,8 @@ export function selectedEdgeEndpoints(
     : [geometries[0].start, geometries[0].end]
 }
 
+const MAX_EXTRUSION_BLOCKS = 10
+
 const extrusionDirections: Point3[] = [
   { x: 1, y: 0, z: 0 },
   { x: -1, y: 0, z: 0 },
@@ -1667,15 +1669,17 @@ function extrusionMovesIntoSelectedFace(
 
 /**
  * Returns how many whole extrusion steps can be added before the generated
- * surface reaches an existing face.  A collision caps the extension instead
+ * surface reaches an existing face or the per-extrusion distance limit.
+ * A collision caps the extension instead
  * of allowing it to pass through and create duplicate evidence geometry.
  */
 export function availableExtrusionBlocks(
   scene: SceneGeometry,
   selections: SelectedEdge[],
   axis: Point3,
-  maxBlocks = 64,
+  maxBlocks = MAX_EXTRUSION_BLOCKS,
 ): number {
+  maxBlocks = Math.min(maxBlocks, MAX_EXTRUSION_BLOCKS)
   if (extrusionMovesIntoSelectedFace(scene, selections, axis)) return 0
 
   const occupied = new Set(scene.faces.map(faceSurfaceKey))
@@ -1747,7 +1751,7 @@ export function chooseEdgeExtrusion(
   scene: SceneGeometry,
   selections: SelectedEdge[],
   pointer: Point2,
-  maxBlocks = 64,
+  maxBlocks = MAX_EXTRUSION_BLOCKS,
 ): EdgeExtrusion | undefined {
   const geometries = selections
     .map((selection) => selectedEdgeGeometry(scene, selection))

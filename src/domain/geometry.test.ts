@@ -597,6 +597,34 @@ describe('global perspective geometry', () => {
     })
   })
 
+  it('caps extrusion distance at ten blocks even when a higher limit is requested', () => {
+    const matrix: Matrix3x4 = [
+      800, 0, 320, 100,
+      0, 700, -100, 200,
+      0.1, 0.05, 1, 5,
+    ]
+    const scene: SceneGeometry = {
+      faces: [face],
+      observations: [],
+      projection: { kind: 'camera', matrix, rmsError: 0, maxError: 0 },
+      axisMapping: { a: 'unknown', b: 'unknown', c: 'unknown' },
+    }
+    const selection = [{ faceId: face.id, edge: 'top' as const }]
+
+    for (const limit of [undefined, 64]) {
+      expect(availableExtrusionBlocks(scene, selection, { x: 0, y: 0, z: 1 }, limit))
+        .toBe(10)
+      expect(
+        chooseEdgeExtrusion(
+          scene,
+          selection,
+          projectCamera(matrix, { x: 0.5, y: 0, z: 20 }),
+          limit,
+        ),
+      ).toEqual({ axis: { x: 0, y: 0, z: 1 }, blocks: 10, createsAxis: false })
+    }
+  })
+
   it('rejects an extrusion direction that would recreate the selected face', () => {
     const scene: SceneGeometry = {
       faces: [face],
