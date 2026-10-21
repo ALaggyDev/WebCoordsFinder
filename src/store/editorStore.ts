@@ -123,13 +123,8 @@ function createDefaultScanner(): ScannerSettings {
   // Defaults target current CoordsFinder behavior while leaving compass
   // orientation unresolved until the user supplies a valid world mapping.
   return {
-    crackMode: 'texture-rotations',
-    offsetBounds: {
-      xStart: -30_000_000,
-      xEnd: 30_000_000,
-      zStart: -30_000_000,
-      zEnd: 30_000_000,
-    },
+    textureEnabled: true,
+    offsetsEnabled: true,
     textureAlgorithm: 'Vanilla-3',
     scanOrder: 'spiral',
     directions: [0],
@@ -338,13 +333,21 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   normalized.scene.worldUpIntent ??= null
   normalized.scene.horizontalOrientationIntent ??= null
   const defaults = createDefaultScanner()
+  // Convert the old exclusive mode and its X/Z bounds once, then drop them.
+  const { crackMode, offsetBounds, ...migratedScanner } = normalized.scanner as ScannerSettings & {
+    crackMode?: 'texture-rotations' | 'block-offsets'
+    offsetBounds?: Partial<ScannerSettings['bounds']>
+  }
+  const legacyOffsets = migratedScanner.textureEnabled === undefined && crackMode === 'block-offsets'
   // Current-format fields default independently so existing project bundles
   // remain usable without interpreting superseded scanner settings.
   normalized.scanner = {
     ...defaults,
-    ...normalized.scanner,
-    offsetBounds: { ...defaults.offsetBounds, ...normalized.scanner.offsetBounds },
-    bounds: { ...defaults.bounds, ...normalized.scanner.bounds },
+    ...migratedScanner,
+    textureEnabled: migratedScanner.textureEnabled ?? !legacyOffsets,
+    offsetsEnabled: migratedScanner.offsetsEnabled ?? legacyOffsets,
+    bounds: { ...defaults.bounds, ...normalized.scanner.bounds,
+      ...(legacyOffsets ? offsetBounds : {}) },
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
     gpuTileSize: { ...defaults.gpuTileSize, ...normalized.scanner.gpuTileSize },
   }

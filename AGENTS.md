@@ -73,13 +73,17 @@ The top navigation has four stages:
    Select a supporting mesh face, add a bundled decoration, and drag its base
    handle to move whole blocks or fit discrete X/Z offsets. World-axis nudges,
    XYZ vertical offsets, model states, tint, and opacity assist manual alignment.
-   Confirmed measurements become stale when the camera or mapping changes.
+   Alignment depends on the current camera and axis mapping; Active/Ignore
+   controls whether an observation participates in browser search.
    Optional `EditorDocument.offsets` preserves schema-1 compatibility and is
-   autosaved, undoable, and included in portable projects. Neither the browser
-   scanner nor the native configuration consumes these observations yet.
+   autosaved, undoable, and included in portable projects. Active, non-ignored
+   observations are strict browser-search constraints;
+   confirmation is not required. Native configurations omit them and report
+   the omitted observation count in comments.
 4. **Export** — choose the texture algorithm, scan order, optional quarter-turn
    directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
-   settings. Review readiness and estimates, run the browser search, or export
+   settings. Enable texture and offset cracking independently, review readiness
+   and exact intermediate/final counts, run the browser search, or export
    / copy the generated configuration.
 
 Projects are autosaved in IndexedDB. The project library supports multiple
@@ -237,8 +241,11 @@ Texture algorithms are chosen directly by the user:
 The local web scanner is a freestanding C-to-WASM port of CoordsFinder's
 texture sampling and brute-force loop. `src/workers/search.worker.ts` owns one
 scanner instance and runs short adaptive batches so pause and stop commands
-remain responsive. It is single-threaded and caps retained result rows at
-1,000; total match counts remain exact. Treat the native scanner parity tests
+remain responsive. A pool of independent single-threaded instances caps retained result rows at
+1,000; total match counts remain exact. Active offsets use low-bit X/Z lifting in the same WASM engine, followed by
+texture checks over Y. Offset-only results leave Y unconstrained. Search bounds
+are limited to ±30,000,000 on X/Z. Intermediate counts report X/Z-and-direction
+pairs passing offsets. Treat the native scanner parity tests
 as the compatibility contract when changing this code.
 
 ## Current Implementation

@@ -37,6 +37,11 @@ interface SearchExports extends WebAssembly.Exports {
     z: number,
     acceptedIndices: number,
   ) => number
+  search_configure_offsets: (bits: number) => number
+  search_set_offset: (direction: number, index: number, dx: number, dz: number, x: number, y: number, z: number) => number
+  search_set_range_end: (end: bigint) => number
+  search_restore_offset_matches: (count: bigint) => void
+  search_get_offset_matches: () => bigint
   search_restore: (processed: bigint, matchCount: bigint) => number
   search_scan_batch: (maxPositions: number, captureLimit: number) => number
   search_is_finished: () => number
@@ -126,6 +131,7 @@ function postState(
     phase,
     next: searchExports.search_get_processed(),
     matchCount: searchExports.search_get_match_count(),
+    offsetMatchCount: searchExports.search_get_offset_matches(),
     checksPerSecond,
     results,
     error,
@@ -202,6 +208,7 @@ async function startSearch(
   command: Extract<WebSearchShardWorkerCommand, { type: 'start' }>,
 ) {
   activeRequestId = command.requestId
+  searchExports = undefined
   pauseRequested = false
   stopRequested = false
   // Every shard retains at most its first 1,000 matches in this run. That is
@@ -218,7 +225,6 @@ async function startSearch(
   try {
     const module = await loadSearchExports()
     if (activeRequestId !== command.requestId) return
-    searchExports = module
     const request = command.request
     const configureError = module.search_configure(
       request.mode,
@@ -249,6 +255,17 @@ async function startSearch(
       }
     })
 
+    if (request.offsetBits) {
+      if (module.search_configure_offsets(request.offsetBits) !== 0) throw new Error('Invalid offset traversal bounds.')
+      request.offsetConstraintsByDirection?.forEach((constraints, direction) => {
+        constraints.forEach((c, index) => {
+          if (module.search_set_offset(direction, index, c.dx, c.dz, c.acceptedX, c.acceptedY, c.acceptedZ)) {
+            throw new Error('Invalid offset constraint.')
+          }
+        })
+      })
+    }
+
     request.constraintsByDirection.forEach((constraints, directionIndex) => {
       constraints.forEach((constraint, index) => {
         const filterError = module.search_set_filter(
@@ -277,6 +294,11 @@ async function startSearch(
       throw new Error(`WASM scanner rejected the saved checkpoint (${restoreError}).`)
     }
 
+    if (module.search_set_range_end(shardEnd)) throw new Error('Invalid shard boundary.')
+    module.search_restore_offset_matches(command.checkpoint?.offsetMatchCount ?? 0n)
+    searchExports = module
+    if (stopRequested) { finishSearch('stopped'); return }
+    if (pauseRequested) { postState('paused'); return }
     if (module.search_is_finished() || module.search_get_processed() >= shardEnd) {
       postState('completed')
       activeRequestId = undefined
@@ -285,6 +307,8 @@ async function startSearch(
     postState('running')
     scheduleBatch()
   } catch (error) {
+    if (activeRequestId !== command.requestId) return
+    exportsPromise = undefined
     if (!searchExports) {
       /*
        * Loading failed before an instance existed, so construct an error
@@ -297,6 +321,7 @@ async function startSearch(
         phase: 'error',
         next: command.checkpoint?.next ?? shardStart,
         matchCount: command.checkpoint?.matchCount ?? 0n,
+        offsetMatchCount: command.checkpoint?.offsetMatchCount ?? 0n,
         checksPerSecond: 0,
         results: [],
         error: error instanceof Error ? error.message : 'Web search failed.',

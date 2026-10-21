@@ -868,6 +868,7 @@ function App() {
             <ToolRail />
             <EditorCanvas />
             <Inspector
+              key={activeProjectId}
               busy={busy}
               onAutoFill={autoFill}
             />

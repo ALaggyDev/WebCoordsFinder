@@ -66,7 +66,6 @@ import {
   type EditorDocument,
   type FaceEvidence,
   type SearchBounds,
-  type ScannerSettings,
   type SearchDirection,
   type ScanOrder,
   type TextureAlgorithm,
@@ -75,7 +74,6 @@ import { downloadBlob } from '../domain/projectBundle'
 import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
 import { ExportRunDialog } from './ExportRunDialog'
-import { BlockOffsetsRunDialog } from './BlockOffsetsRunDialog'
 
 // The right-hand inspector mirrors the four workflow stages. It derives UI
 // state from the document while delegating all persisted mutations to Zustand.
@@ -103,6 +101,8 @@ function NumberField({
   min,
   max,
   info,
+  disabled = false,
+  disabledReason,
 }: {
   label: string
   value: number
@@ -110,6 +110,8 @@ function NumberField({
   min?: number
   max?: number
   info?: ReactNode
+  disabled?: boolean
+  disabledReason?: string
 }) {
   const [draft, setDraft] = useState(() => String(value))
 
@@ -122,14 +124,16 @@ function NumberField({
   }
 
   return (
-    <label className="field">
+    <label className={disabled ? 'field setting-disabled' : 'field'} title={disabled ? disabledReason : undefined}>
       <div className="field-label">
         <span>{label}</span>
-        {info ? <InfoTip label={`${label} information`}>{info}</InfoTip> : null}
+        {info ? <InfoTip label={`${label} information`}>{disabled && disabledReason ? disabledReason : info}</InfoTip> : null}
       </div>
       <input
         aria-label={label}
         type="number"
+        disabled={disabled}
+        title={disabled ? disabledReason : undefined}
         value={draft}
         min={min}
         max={max}
@@ -165,10 +169,10 @@ const verticalSearchPresets = [
 function SearchAreaPresets({
   bounds,
   updateBounds,
-  showVertical = true,
+  verticalEnabled = true,
 }: {
   bounds: SearchBounds
-  showVertical?: boolean
+  verticalEnabled?: boolean
   updateBounds: (patch: Partial<SearchBounds>) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -216,7 +220,7 @@ function SearchAreaPresets({
       {open && (
         <div
           ref={menuRef}
-          className={showVertical ? 'search-presets-menu' : 'search-presets-menu xz-only'}
+          className="search-presets-menu"
           role="dialog"
           aria-label="Search area presets"
         >
@@ -251,7 +255,8 @@ function SearchAreaPresets({
               })}
             </div>
           </div>
-          {showVertical && <div className="search-presets-group">
+          <div className={verticalEnabled ? 'search-presets-group' : 'search-presets-group setting-disabled'}
+            title={verticalEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}>
             <div className="search-presets-heading">
               <span>Y</span>
             </div>
@@ -262,6 +267,8 @@ function SearchAreaPresets({
                   <button
                     key={preset.label}
                     type="button"
+                    disabled={!verticalEnabled}
+                    title={verticalEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}
                     className={active ? 'search-preset-option active' : 'search-preset-option'}
                     aria-pressed={active}
                     onClick={() => updateBounds({
@@ -275,7 +282,7 @@ function SearchAreaPresets({
                 )
               })}
             </div>
-          </div>}
+          </div>
         </div>
       )}
     </div>
@@ -1628,17 +1635,9 @@ function ExportInspector() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const validation = validateForExport(document)
   const config = generateCoordsFinderConfig(document)
-  const isOffsets = document.scanner.crackMode === 'block-offsets'
-  const bounds = isOffsets
-    ? { ...document.scanner.offsetBounds, yStart: 0, yEnd: 0 }
-    : document.scanner.bounds
-  const updateVisibleBounds = (patch: Partial<SearchBounds>) => {
-    if (isOffsets) {
-      updateScanner({ offsetBounds: { ...document.scanner.offsetBounds, ...patch } })
-    } else {
-      updateBounds(patch)
-    }
-  }
+  const bounds = document.scanner.bounds
+  const hasOffsets = document.scanner.offsetsEnabled &&
+    (document.offsets ?? []).some((entry) => !entry.ignored)
 
   const downloadConfig = () => {
     if (validation.errors.length > 0) return
@@ -1651,25 +1650,48 @@ function ExportInspector() {
   return (
     <div className="export-inspector">
       <SectionTitle icon={Download} title="Export" />
-      <label className="field crack-mode-field">
-        <div className="field-label"><span>Crack mode</span></div>
-        <select
-          aria-label="Crack mode"
-          value={document.scanner.crackMode}
-          onChange={(event) => updateScanner({
-            crackMode: event.target.value as ScannerSettings['crackMode'],
-          })}
-        >
-          <option value="texture-rotations">Texture Rotations</option>
-          <option value="block-offsets">Block Offsets</option>
-        </select>
-      </label>
-      {!isOffsets && <>
-      <div className="field">
+      <div className="search-evidence">
+        <div className="field-label search-evidence-heading">
+          Search evidence
+          <InfoTip label="Search evidence information">
+            Enable either evidence type or combine both. Active block offsets
+            must match exactly; error tolerance applies only to textures.
+          </InfoTip>
+        </div>
+        <div className="search-evidence-options">
+          <div className="search-evidence-option">
+            <label className="check-field" title={[
+              'Search using confirmed texture variants on labeled block faces.',
+              'Choose the algorithm for your Minecraft version or renderer.',
+              'Error tolerance allows texture mismatches; unconfirmed proposals are excluded.',
+            ].join('\n')}>
+              Texture rotations
+              <input type="checkbox" checked={document.scanner.textureEnabled}
+                onChange={(event) => updateScanner({ textureEnabled: event.target.checked })} />
+            </label>
+          </div>
+          <div className="search-evidence-option">
+            <label className="check-field" title={[
+              'Search using the measured displacement of decorations such as grass and flowers.',
+              'All Active observations are strict constraints; Ignore observations are excluded.',
+              'Offsets constrain X/Z, so Y is unconstrained unless textures are also enabled.',
+              'Horizontal rotations rotate both the block positions and their displacements.',
+              'Block offsets are supported by the browser search only.',
+            ].join('\n')}>
+              Block offsets
+              <input type="checkbox" checked={document.scanner.offsetsEnabled}
+                onChange={(event) => updateScanner({ offsetsEnabled: event.target.checked })} />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className={document.scanner.textureEnabled ? 'field' : 'field setting-disabled'}
+        title={document.scanner.textureEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}>
         <div className="field-label">
           <span>Texture algorithm</span>
           <InfoTip label="Algorithm version reference">
-            <div className="algorithm-reference-content">
+            {!document.scanner.textureEnabled ? 'This setting is only relevant when texture rotations are used.' : <div className="algorithm-reference-content">
               <table>
                 <thead>
                   <tr>
@@ -1696,10 +1718,12 @@ function ExportInspector() {
                   <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>Sodium-2</td></tr>
                 </tbody>
               </table>
-            </div>
+            </div>}
           </InfoTip>
         </div>
         <select
+          disabled={!document.scanner.textureEnabled}
+          title={document.scanner.textureEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}
           aria-label="Texture algorithm"
           value={document.scanner.textureAlgorithm}
           onChange={(event) =>
@@ -1711,23 +1735,33 @@ function ExportInspector() {
           ))}
         </select>
       </div>
-      <label className="field">
+      <label className={hasOffsets ? 'field setting-disabled' : 'field'}
+        title={hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}>
         <div className="field-label">
           <span>Scan order</span>
           <InfoTip label="Scan order information">
+            {hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : <>
+            Active block offsets use an automatic traversal to prune candidates.
+            Otherwise, the selected scan order applies.
+            <br />
             "Linear" starts from -X and end in +X, then -Z to +Z.
             <br />
             "Spiral" starts from the center and spirals outward clockwise.
             <br />
             "Reverse spiral" follows the same path from the outside inward.
+            </>}
           </InfoTip>
         </div>
         <select
-          value={document.scanner.scanOrder}
+          aria-label="Scan order"
+          disabled={hasOffsets}
+          title={hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}
+          value={hasOffsets ? 'offsets' : document.scanner.scanOrder}
           onChange={(event) =>
             updateScanner({ scanOrder: event.target.value as ScanOrder })
           }
         >
+          <option value="offsets" disabled>Fast bit lifting (block offsets)</option>
           {scanOrders.map((scanOrder) => (
             <option key={scanOrder} value={scanOrder}>{scanOrder}</option>
           ))}
@@ -1739,12 +1773,14 @@ function ExportInspector() {
           <InfoTip label="XZ rotations to search information">
             This setting is necessary when the cardinal direction of the camera is unknown.
             <br />
-            The scanner will automatically rotate the coordinates and variants of each block clockwise by either 0°, 90°, 180°, and 270° horizontally.
+            The scanner searches each selected rotation around the anchor: 0°, 90°, 180°, or 270°.
+            This rotates texture constraints, block positions, and measured X/Z displacements together. Vertical displacements stay unchanged.
             <br />
             If the camera is known to be facing a specific direction, uncheck the other directions to reduce search time.
             <br />
             <br />
-            Note: For stone/deepslate/bedrock/sculk textures, only 0° and 180° are enough.
+            For stone/deepslate/bedrock/sculk textures alone, 0° and 180° are enough.
+            With block offsets enabled, keep all four rotations if the compass direction is unknown.
           </InfoTip>
         </div>
         <div className="direction-list" aria-label="Directions to search">
@@ -1771,64 +1807,66 @@ function ExportInspector() {
           })}
         </div>
       </div>
-      </>}
       <div className="subsection">
         <div className="field-label subsection-label search-area-heading">
           <span>Search area</span>
-          <SearchAreaPresets bounds={bounds} updateBounds={updateVisibleBounds} showVertical={!isOffsets} />
+          <SearchAreaPresets bounds={bounds} updateBounds={updateBounds} verticalEnabled={document.scanner.textureEnabled} />
         </div>
         <div className="bounds-grid">
-          {(isOffsets ? ['x', 'z'] as const : ['x', 'y', 'z'] as const).map((axis) => (
-            <div key={axis} className="bounds-row">
+          {(['x', 'y', 'z'] as const).map((axis) => (
+            <div key={axis} className={axis === 'y' && !document.scanner.textureEnabled ? 'bounds-row setting-disabled' : 'bounds-row'}
+              title={axis === 'y' && !document.scanner.textureEnabled ? 'This setting is only relevant when texture rotations are used.' : undefined}>
               <b>{axis.toUpperCase()}</b>
               <NumberField
                 label="Start"
+                disabled={axis === 'y' && !document.scanner.textureEnabled}
+                disabledReason="This setting is only relevant when texture rotations are used."
                 value={bounds[`${axis}Start`]}
                 onChange={(value) =>
-                  updateVisibleBounds({ [`${axis}Start`]: value } as Partial<SearchBounds>)
+                  updateBounds({ [`${axis}Start`]: value } as Partial<typeof bounds>)
                 }
               />
               <NumberField
                 label="End"
+                disabled={axis === 'y' && !document.scanner.textureEnabled}
+                disabledReason="This setting is only relevant when texture rotations are used."
                 value={bounds[`${axis}End`]}
                 onChange={(value) =>
-                  updateVisibleBounds({ [`${axis}End`]: value } as Partial<SearchBounds>)
+                  updateBounds({ [`${axis}End`]: value } as Partial<typeof bounds>)
                 }
               />
             </div>
           ))}
         </div>
-        {isOffsets && <p className="field-help">
-          The scanner prunes coordinate candidates outside these inclusive X/Z bounds.
-        </p>}
       </div>
-      {!isOffsets && <>
       <div className="subsection">
         <NumberField
           label="Error tolerance"
+          disabled={!document.scanner.textureEnabled}
+          disabledReason="This setting is only relevant when texture rotations are used."
           value={document.scanner.errorTolerance}
           min={0}
           info={<>The maximum amount of texture mismatches allowed by the scanner.<br />High error tolerance increases search time.</>}
           onChange={(errorTolerance) => updateScanner({ errorTolerance })}
         />
       </div>
-      <details className="advanced-settings">
+      <details className={document.scanner.textureEnabled ? 'advanced-settings' : 'advanced-settings setting-disabled'}
+        title={document.scanner.textureEnabled ? undefined : 'These settings are only relevant when texture rotations are used.'}>
         <summary>CoordsFinder settings (advanced)</summary>
         <p className="field-help">
           These options only affect the CoordsFinder configuration.
         </p>
         <div className="field-grid two">
-          <NumberField label="CPU tile size X" value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
-          <NumberField label="CPU tile size Z" value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
-          <NumberField label="GPU tile size X" value={document.scanner.gpuTileSize.x} min={1} onChange={(x) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, x } })} />
-          <NumberField label="GPU tile size Z" value={document.scanner.gpuTileSize.z} min={1} onChange={(z) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, z } })} />
+          <NumberField label="CPU tile size X" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
+          <NumberField label="CPU tile size Z" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
+          <NumberField label="GPU tile size X" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.gpuTileSize.x} min={1} onChange={(x) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, x } })} />
+          <NumberField label="GPU tile size Z" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.gpuTileSize.z} min={1} onChange={(z) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, z } })} />
           <label className="check-field">
-            <input type="checkbox" checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
+            <input type="checkbox" disabled={!document.scanner.textureEnabled} checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
             verbose logging
           </label>
         </div>
       </details>
-      </>}
       <div className="export-inspector-footer">
         <button
           className="primary-button full"
@@ -1838,16 +1876,11 @@ function ExportInspector() {
           <ScanSearch size={16} /> Export / Run
         </button>
       </div>
-      <BlockOffsetsRunDialog
-        document={document}
-        onClose={() => setDialogOpen(false)}
-        open={dialogOpen && isOffsets}
-      />
       <ExportRunDialog
         document={document}
         onClose={() => setDialogOpen(false)}
         onDownload={downloadConfig}
-        open={dialogOpen && !isOffsets}
+        open={dialogOpen}
       />
     </div>
   )

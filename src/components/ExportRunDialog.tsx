@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertTriangle,
@@ -35,31 +35,19 @@ import {
 } from '../domain/searchEstimates'
 import type { EditorDocument, WebSearchResult } from '../domain/types'
 import {
-  createWebSearchCheckpoint,
   createWebSearchRequest,
   formatSearchCount,
-  initialWebSearchState,
   MAX_WEB_SEARCH_RESULTS,
   maximumSearchWorkerCount,
   recommendedSearchWorkerCount,
-  restoreWebSearchCheckpoint,
   searchProgressPercent,
   webSearchRequestKey,
-  webSearchRequestVolume,
   type WebSearchPhase,
-  type WebSearchViewState,
-  type WebSearchWorkerCommand,
-  type WebSearchWorkerState,
 } from '../domain/webSearch'
-import { useEditorStore } from '../store/editorStore'
+import { useCoordinateSearch } from '../hooks/useCoordinateSearch'
 import './ExportRunDialog.css'
 
-/*
- * This component owns the browser-search worker lifecycle. React state drives
- * the UI, refs provide exact current values to asynchronous callbacks, and
- * compact checkpoints are persisted through the editor document without undo
- * entries.
- */
+// The search controller persists independently of dialog visibility.
 interface ExportRunDialogProps {
   document: EditorDocument
   open: boolean
@@ -111,27 +99,27 @@ const phaseLabels: Record<WebSearchPhase, string> = {
   error: 'Search failed',
 }
 
-function formatRate(rate: number): string {
+function formatRate(rate: number, offsets = false): string {
   if (!Number.isFinite(rate) || rate <= 0) return 'Measuring...'
   return `${new Intl.NumberFormat('en-US', {
     maximumFractionDigits: rate < 100 ? 1 : 0,
     notation: rate >= 1_000_000 ? 'compact' : 'standard',
-  }).format(rate)}/sec`
+  }).format(rate)}${offsets ? ' steps/sec' : '/sec'}`
 }
-
-const checkpointIntervalMilliseconds = 1_500
 
 const SearchResultTable = memo(function SearchResultTable({
   results,
   hasMore,
+  yUnconstrained,
 }: {
   results: WebSearchResult[]
   hasMore: boolean
+  yUnconstrained: boolean
 }) {
   return (
     <div className="web-search-results">
       <div className="web-search-results-heading">
-        <strong>Candidate coordinates</strong>
+        <strong>{yUnconstrained ? 'Candidate X/Z columns' : 'Candidate coordinates'}</strong>
         <span>
           Showing {results.length.toLocaleString()}
           {hasMore && ' earliest'} match{results.length === 1 ? '' : 'es'}
@@ -144,8 +132,8 @@ const SearchResultTable = memo(function SearchResultTable({
               <th>X</th>
               <th>Y</th>
               <th>Z</th>
-              <th>Direction</th>
-              <th>Errors</th>
+              <th>Rotation</th>
+              {!yUnconstrained && <th>Texture errors</th>}
             </tr>
           </thead>
           <tbody>
@@ -154,19 +142,20 @@ const SearchResultTable = memo(function SearchResultTable({
                 key={`${result.x}:${result.y}:${result.z}:${result.direction}`}
               >
                 <td>{result.x}</td>
-                <td>{result.y}</td>
+                <td>{yUnconstrained ? 'Any' : result.y}</td>
                 <td>{result.z}</td>
                 <td>{result.direction}°</td>
-                <td>{result.badBlocks}</td>
+                {!yUnconstrained && <td>{result.badBlocks}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {yUnconstrained && <small>Y is unconstrained. Candidates include separate rotation hypotheses.</small>}
       {hasMore && (
         <small>
           Result display is capped at the first{' '}
-          {MAX_WEB_SEARCH_RESULTS.toLocaleString()} coordinates; the total match
+          {MAX_WEB_SEARCH_RESULTS.toLocaleString()} matches; the total match
           count remains exact.
         </small>
       )}
@@ -181,15 +170,6 @@ export function ExportRunDialog({
   onDownload,
 }: ExportRunDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
-  const workerRef = useRef<Worker | null>(null)
-  const requestIdRef = useRef<string | null>(null)
-  const setWebSearchCheckpoint = useEditorStore(
-    (state) => state.setWebSearchCheckpoint,
-  )
-  const savedCheckpoint = document.scanner.webSearch
-  const [webSearch, setWebSearch] = useState(() =>
-    restoreWebSearchCheckpoint(savedCheckpoint),
-  )
   const maximumWorkerCount = maximumSearchWorkerCount(
     globalThis.navigator.hardwareConcurrency,
   )
@@ -199,47 +179,60 @@ export function ExportRunDialog({
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
   )
-  // Worker callbacks can outlive the render that installed them; mirror state
-  // in a ref to merge progress and result batches without stale closures.
-  const webSearchRef = useRef(webSearch)
-  const requestKeyRef = useRef(savedCheckpoint?.requestKey ?? null)
-  const lastCheckpointUpdateRef = useRef(0)
-  const validation = useMemo(() => validateForExport(document), [document])
+  const nativeValidation = useMemo(() => validateForExport(document), [document])
+  const browserValidation = useMemo(() => validateForExport(document, 'browser'), [document])
   const config = useMemo(() => generateCoordsFinderConfig(document), [document])
-  const searchVolume = useMemo(() => estimateSearchVolume(document), [document])
-  const estimatedHits = useMemo(() => estimateHitCount(document), [document])
-  const hitPrecision = useMemo(() => estimateHitPrecision(document), [document])
-  const validationWarnings = useMemo(
-    () => hitPrecision < 0.8
-      ? [
-          ...validation.warnings,
-          `This search may return many false positives. Add more confirmed faces to improve the result (estimated precision: ${formatHitPrecision(hitPrecision)}; recommended: 80% or higher).`,
-        ]
-      : validation.warnings,
-    [hitPrecision, validation.warnings],
-  )
-  const minimumBitsFor80Percent = useMemo(
-    () => minimumBitsForPrecision(document, 0.8),
-    [document],
-  )
-  const currentSearch = useMemo(() => {
+  const prepared = useMemo(() => {
     try {
       const request = createWebSearchRequest(document)
       return { request, requestKey: webSearchRequestKey(request) }
-    } catch {
-      // Detailed readiness errors are already rendered from validateForExport.
-      return undefined
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Invalid search settings.' }
     }
   }, [document])
-  const estimates = useMemo(
-    () => estimateSearchTimes(
-      document,
-      requestKeyRef.current === currentSearch?.requestKey
-        ? webSearch.checksPerSecond
-        : undefined,
-    ),
-    [currentSearch?.requestKey, document, webSearch.checksPerSecond],
-  )
+  const currentSearch = prepared.request ? prepared : undefined
+  const search = useCoordinateSearch(prepared.request, prepared.requestKey)
+  const webSearch = search.state
+  const hasOffsets = Boolean(prepared.request?.offsetBits)
+  const resultHasOffsets = Boolean(webSearch.offsetBits)
+  const resultHasTextures = !webSearch.yUnconstrained
+  const texturesEnabled = document.scanner.textureEnabled !== false
+  const activeOffsets = (document.offsets ?? []).filter((entry) => !entry.ignored).length
+  // Constraint errors must not hide the offset layout. With no active offsets,
+  // retain texture estimates when the browser can still search textures alone.
+  const offsetSummary = (document.scanner.offsetsEnabled && activeOffsets > 0) || !texturesEnabled
+  const validation = {
+    rowCount: texturesEnabled ? browserValidation.rowCount : 0,
+    errors: prepared.error ? [prepared.error] : [],
+  }
+  const yUnconstrained = prepared.request?.yUnconstrained ?? validation.rowCount === 0
+  const browserMode = [
+    (prepared.request ? hasOffsets : document.scanner.offsetsEnabled) && 'Offsets',
+    (prepared.request ? !yUnconstrained : texturesEnabled) && 'Textures',
+  ].filter(Boolean).join(' + ') || 'No evidence enabled'
+  const { bounds, directions } = document.scanner
+  const yLevels = Number.isSafeInteger(bounds.yStart) && Number.isSafeInteger(bounds.yEnd)
+    && bounds.yStart <= bounds.yEnd ? bounds.yEnd - bounds.yStart + 1 : undefined
+  // This is the bounded area, not the padded traversal domain used for coverage.
+  const xzArea = [bounds.xStart, bounds.xEnd, bounds.zStart, bounds.zEnd].every(Number.isSafeInteger)
+    && bounds.xStart <= bounds.xEnd && bounds.zStart <= bounds.zEnd
+    ? (BigInt(bounds.xEnd) - BigInt(bounds.xStart) + 1n) *
+      (BigInt(bounds.zEnd) - BigInt(bounds.zStart) + 1n)
+    : undefined
+  const searchVolume = estimateSearchVolume(document)
+  const estimatedHits = estimateHitCount(document)
+  const hitPrecision = estimateHitPrecision(document)
+  const minimumBitsFor80Percent = minimumBitsForPrecision(document, 0.8)
+  const validationWarnings = texturesEnabled ? [
+    ...browserValidation.warnings,
+    ...(!offsetSummary && hitPrecision < 0.8 ? [
+      `This search may return many false positives. Add more confirmed faces to improve the result (estimated precision: ${formatHitPrecision(hitPrecision)}; recommended: 80% or higher).`,
+    ] : []),
+  ] : []
+  // Texture estimates assume brute-force traversal. Offset pruning has no
+  // comparable static runtime or independence estimate.
+  const estimates = estimateSearchTimes(document,
+    !hasOffsets && !search.stale ? webSearch.checksPerSecond : undefined)
 
   useEffect(() => {
     setCopyStatus('idle')
@@ -257,203 +250,19 @@ export function ExportRunDialog({
     webSearch.processed,
     webSearch.total,
   )
-  const remainingSeconds =
-    webSearch.checksPerSecond > 0
-      ? Number(webSearch.total - webSearch.processed) /
-        webSearch.checksPerSecond
-      : undefined
-  const workerIsAttached = workerRef.current !== null
-  const searchIsActive =
-    workerIsAttached &&
-    ['loading', 'running', 'pausing', 'paused', 'stopping'].includes(
-      webSearch.phase,
-    )
-  const checkpointIsStale = Boolean(
-    // Preserve stale results for inspection, but never resume them against a
-    // configuration with a different deterministic request key.
-    savedCheckpoint &&
-      (!currentSearch || savedCheckpoint.requestKey !== currentSearch.requestKey),
-  )
-  const canResumeSavedSearch = Boolean(
-    !workerIsAttached &&
-      savedCheckpoint &&
-      currentSearch &&
-      !checkpointIsStale &&
-      webSearch.processed < webSearch.total &&
-      (webSearch.phase === 'paused' ||
-        webSearch.phase === 'stopped' ||
-        webSearch.phase === 'error'),
-  )
-
-  const terminateWorker = useCallback(() => {
-    workerRef.current?.terminate()
-    workerRef.current = null
-    requestIdRef.current = null
-  }, [])
-
-  const applyWebSearchState = useCallback((next: WebSearchViewState) => {
-    webSearchRef.current = next
-    setWebSearch(next)
-  }, [])
-
-  const persistWebSearchState = useCallback(
-    (next: WebSearchViewState, force = false) => {
-      const requestKey = requestKeyRef.current
-      if (!requestKey) return
-      const now = Date.now()
-      if (
-        !force &&
-        now - lastCheckpointUpdateRef.current < checkpointIntervalMilliseconds
-      ) {
-        return
-      }
-      // Progress events arrive frequently; periodic snapshots protect IndexedDB
-      // while terminal and result milestones can still force an immediate save.
-      lastCheckpointUpdateRef.current = now
-      setWebSearchCheckpoint(createWebSearchCheckpoint(requestKey, next, now))
-    },
-    [setWebSearchCheckpoint],
-  )
-
-  const startWebSearch = (resume: boolean) => {
-    try {
-      const search = currentSearch
-      if (!search) throw new Error('The search configuration is not ready.')
-      const { request, requestKey } = search
-      const previous = webSearchRef.current
-      terminateWorker()
-      const worker = new Worker(
-        new URL('../workers/search.pool.worker.ts', import.meta.url),
-        { type: 'module' },
-      )
-      const requestId = globalThis.crypto.randomUUID()
-      workerRef.current = worker
-      requestIdRef.current = requestId
-      requestKeyRef.current = requestKey
-      lastCheckpointUpdateRef.current = 0
-      const loadingState: WebSearchViewState = resume
-        ? { ...previous, phase: 'loading', error: undefined }
-        : {
-            ...initialWebSearchState,
-            phase: 'loading',
-            total: webSearchRequestVolume(request),
-          }
-      applyWebSearchState(loadingState)
-      persistWebSearchState(loadingState, true)
-
-      worker.onmessage = (event: MessageEvent<WebSearchWorkerState>) => {
-        const message = event.data
-        if (
-          message.type !== 'state' ||
-          message.requestId !== requestIdRef.current
-        ) {
-          return
-        }
-        const current = webSearchRef.current
-        const next: WebSearchViewState = {
-          phase: message.phase,
-          processed: message.processed,
-          total: message.total,
-          matchCount: message.matchCount,
-          checksPerSecond: message.checksPerSecond,
-          // A supplied snapshot is complete and ordinal-sorted, allowing lower
-          // matches to displace faster later shards. Counter-only progress
-          // publications retain the same array identity and avoid table work.
-          results: message.results ?? current.results,
-          shards: message.shards,
-          error: message.error,
-        }
-        const terminal =
-          message.phase === 'completed' ||
-          message.phase === 'stopped' ||
-          message.phase === 'error'
-        if (terminal) {
-          worker.terminate()
-          if (workerRef.current === worker) workerRef.current = null
-        }
-        applyWebSearchState(next)
-        const resultMilestone =
-          // Persist the first visible result and the moment the capture cap is
-          // reached, even if the normal checkpoint interval has not elapsed.
-          (current.results.length === 0 && next.results.length > 0) ||
-          (current.results.length < MAX_WEB_SEARCH_RESULTS &&
-            next.results.length === MAX_WEB_SEARCH_RESULTS)
-        persistWebSearchState(
-          next,
-          terminal || message.phase === 'paused' || resultMilestone,
-        )
-      }
-      worker.onerror = () => {
-        const next: WebSearchViewState = {
-          ...webSearchRef.current,
-          phase: 'error',
-          error: 'The web search worker stopped unexpectedly.',
-        }
-        worker.terminate()
-        if (workerRef.current === worker) workerRef.current = null
-        applyWebSearchState(next)
-        persistWebSearchState(next, true)
-      }
-
-      const command: WebSearchWorkerCommand = {
-        type: 'start',
-        requestId,
-        request,
-        checkpoint: resume
-          ? {
-              processed: previous.processed,
-              matchCount: previous.matchCount,
-              results: previous.results,
-              shards: previous.shards,
-            }
-          : undefined,
-        workerCount,
-      }
-      worker.postMessage(command)
-    } catch (error) {
-      const next: WebSearchViewState = {
-        ...webSearchRef.current,
-        phase: 'error',
-        error:
-          error instanceof Error ? error.message : 'Unable to start web search.',
-      }
-      applyWebSearchState(next)
-      persistWebSearchState(next, true)
-    }
-  }
-
-  const sendWorkerCommand = (
-    type: Extract<
-      WebSearchWorkerCommand,
-      { type: 'pause' | 'resume' | 'stop' }
-    >['type'],
-  ) => {
-    const worker = workerRef.current
-    const requestId = requestIdRef.current
-    if (!worker || !requestId) return
-    const command: WebSearchWorkerCommand = { type, requestId }
-    worker.postMessage(command)
-    // Transitional phases disable repeated commands until the worker reports
-    // the authoritative paused/stopped state.
-    let next: WebSearchViewState
-    if (type === 'pause') {
-      next = { ...webSearchRef.current, phase: 'pausing' }
-    } else if (type === 'resume') {
-      next = { ...webSearchRef.current, phase: 'running' }
-    } else {
-      next = { ...webSearchRef.current, phase: 'stopping' }
-    }
-    applyWebSearchState(next)
-    if (type === 'stop') persistWebSearchState(next, true)
-  }
-
-  const clearSavedSearch = () => {
-    terminateWorker()
-    requestKeyRef.current = null
-    lastCheckpointUpdateRef.current = 0
-    setWebSearchCheckpoint(null)
-    applyWebSearchState(initialWebSearchState)
-  }
+  const remainingSeconds = !resultHasOffsets && webSearch.checksPerSecond > 0
+    ? Number(webSearch.total - webSearch.processed) / webSearch.checksPerSecond
+    : undefined
+  const searchRate = webSearch.checksPerSecond > 0
+    ? formatRate(webSearch.checksPerSecond, resultHasOffsets)
+    : ['loading', 'running'].includes(webSearch.phase) ? 'Measuring...' : '—'
+  const workerIsAttached = search.attached
+  const searchIsActive = workerIsAttached
+  const checkpointIsStale = search.stale
+  const canResumeSavedSearch = search.canResume
+  const startWebSearch = (resume: boolean) => search.start(workerCount, resume)
+  const sendWorkerCommand = search.command
+  const clearSavedSearch = search.clear
 
   useEffect(() => {
     if (!open) return
@@ -472,14 +281,6 @@ export function ExportRunDialog({
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus()
     }
   }, [onClose, open])
-
-  useEffect(() => {
-    if (savedCheckpoint?.phase === 'running') {
-      persistWebSearchState(webSearchRef.current, true)
-    }
-  }, [persistWebSearchState, savedCheckpoint?.phase])
-
-  useEffect(() => () => terminateWorker(), [terminateWorker])
 
   if (!open) return null
 
@@ -516,9 +317,10 @@ export function ExportRunDialog({
             <div>
               <strong>
                 {validation.errors.length === 0
-                  ? 'Ready to search'
+                  ? 'Ready to search in browser'
                   : 'Configuration needs attention'}
               </strong>
+              <small className="export-run-mode">Browser search · {browserMode}</small>
             </div>
             <span
               className={
@@ -538,9 +340,36 @@ export function ExportRunDialog({
 
           <div className="export-run-metrics">
             <div>
-              <span>Confirmed constraints</span>
-              <strong>{validation.rowCount}</strong>
+              <span>Texture constraints</span>
+              <strong>{texturesEnabled ? validation.rowCount : 'Off'}</strong>
+              {offsetSummary && <small>{texturesEnabled ? 'Confirmed filter rows' : 'Not used in browser search'}</small>}
+              {!offsetSummary && document.scanner.offsetsEnabled && <small>No active block offsets</small>}
             </div>
+            {offsetSummary ? <>
+              <div>
+                <span>Block offsets</span>
+                <strong>{document.scanner.offsetsEnabled ? activeOffsets : 'Off'}</strong>
+                <small>{document.scanner.offsetsEnabled ? 'Active · exact matches' : 'Not used in browser search'}</small>
+              </div>
+              <div>
+                <span>X/Z search area</span>
+                <strong title={xzArea === undefined ? undefined : formatSearchCount(xzArea)}>
+                  {xzArea === undefined ? 'Invalid bounds' : xzArea < 1_000_000_000n
+                    ? formatSearchCount(xzArea) : formatEstimatedCount(Number(xzArea))}
+                </strong>
+                <small>Block columns · before filtering</small>
+              </div>
+              <div>
+                <span>Y range</span>
+                <strong>{yUnconstrained ? 'Any' : yLevels === undefined ? 'Invalid bounds' : `${bounds.yStart}–${bounds.yEnd}`}</strong>
+                <small>{yUnconstrained ? 'Offsets do not determine Y' : yLevels === undefined ? 'Review the Y bounds' : `${yLevels} levels after offset filtering`}</small>
+              </div>
+              <div>
+                <span>Search rotations</span>
+                <strong>{directions.length}</strong>
+                <small>{directions.map((direction) => `${direction}°`).join(' · ') || 'Select at least one rotation'}</small>
+              </div>
+            </> : <>
             <div>
               <span>Information</span>
               <strong>{constraintBits(document)} bits</strong>
@@ -563,9 +392,21 @@ export function ExportRunDialog({
               <strong>{formatHitPrecision(hitPrecision)}</strong>
               <small>Chance a hit is correct</small>
             </div>
+            </>}
           </div>
 
-          <section className="export-run-section">
+          {offsetSummary ? <p className="export-run-summary-note">
+            {document.scanner.offsetsEnabled && activeOffsets > 0 ? <>
+              {yUnconstrained
+                ? 'Offsets search X/Z only; every match leaves Y unconstrained.'
+                : 'Offsets filter X/Z first; textures check the surviving columns across Y.'}
+              <br />
+              Runtime and {yUnconstrained ? 'offset' : 'combined'} hit counts are not estimated.
+              {!yUnconstrained && ` Texture mismatch tolerance: ${document.scanner.errorTolerance}.`}
+            </> : document.scanner.offsetsEnabled
+              ? 'No active block offsets participate in this browser search.'
+              : 'Enable texture rotations or block offsets to search.'}
+          </p> : <section className="export-run-section">
             <div className="export-run-section-heading">
               <div>
                 <h3>Runtime comparison</h3>
@@ -591,13 +432,13 @@ export function ExportRunDialog({
                 )
               })}
             </div>
-          </section>
+          </section>}
 
           {(validation.errors.length > 0 ||
             validationWarnings.length > 0) && (
             <div className="export-run-validation">
               {validation.errors.map((message) => (
-                <div className="validation error" key={message}>
+                <div className="validation error" role="alert" key={message}>
                   <X size={14} />
                   {message}
                 </div>
@@ -617,7 +458,7 @@ export function ExportRunDialog({
                 <Globe2 size={18} />
                 <div>
                   <h3>Run in this browser</h3>
-                  <span>Local web search</span>
+                  <span>{offsetSummary && browserMode !== 'No evidence enabled' ? `Includes ${browserMode.toLowerCase()}` : 'Local web search'}</span>
                 </div>
               </div>
               <p>
@@ -712,6 +553,7 @@ export function ExportRunDialog({
                         <Gauge size={13} />
                       )}
                       {phaseLabels[webSearch.phase]}
+                      {resultHasOffsets && ' · Search coverage'}
                     </span>
                     <strong>{progressPercent.toFixed(2)}%</strong>
                   </div>
@@ -721,7 +563,10 @@ export function ExportRunDialog({
                     value={progressPercent}
                   />
                   <div className="web-search-stats">
-                    <div>
+                    {resultHasOffsets ? <div>
+                      <span>{resultHasTextures ? 'Offset candidates (X/Z + rotation)' : 'X/Z candidates (+ rotation)'}</span>
+                      <strong>{formatSearchCount(resultHasTextures ? webSearch.offsetMatchCount ?? 0n : webSearch.matchCount)}</strong>
+                    </div> : <div>
                       <span>Checked</span>
                       <strong>
                         {formatSearchCount(webSearch.processed)}
@@ -730,17 +575,17 @@ export function ExportRunDialog({
                           {formatSearchCount(webSearch.total)}
                         </small>
                       </strong>
-                    </div>
-                    <div>
-                      <span>Matches</span>
+                    </div>}
+                    {resultHasTextures && <div>
+                      <span>{resultHasOffsets ? 'Texture matches (X/Y/Z + rotation)' : 'Matches'}</span>
                       <strong>{formatSearchCount(webSearch.matchCount)}</strong>
+                    </div>}
+                    <div>
+                      <span>{resultHasOffsets ? 'Traversal speed' : 'Speed'}</span>
+                      <strong>{searchRate}</strong>
                     </div>
                     <div>
-                      <span>Speed</span>
-                      <strong>{formatRate(webSearch.checksPerSecond)}</strong>
-                    </div>
-                    <div>
-                      <span>Remaining</span>
+                      <span>{resultHasOffsets ? 'Time remaining' : 'Remaining'}</span>
                       <strong>
                         {webSearch.phase === 'stopped'
                           ? 'Stopped'
@@ -748,6 +593,10 @@ export function ExportRunDialog({
                             ? 'Paused'
                             : webSearch.phase === 'completed'
                               ? 'Done'
+                          : webSearch.phase === 'error'
+                            ? 'Search failed'
+                          : resultHasOffsets
+                            ? 'Not estimated'
                           : remainingSeconds === undefined
                             ? 'Measuring...'
                             : formatSearchTime(remainingSeconds)}
@@ -755,6 +604,9 @@ export function ExportRunDialog({
                     </div>
                   </div>
 
+                  {resultHasOffsets && <small className="web-search-checkpoint-note">
+                    Coverage includes branches ruled out without checking every position.
+                  </small>}
                   <div className="web-search-checkpoint-note">
                     <Save size={13} />
                     Progress and the first{' '}
@@ -805,6 +657,7 @@ export function ExportRunDialog({
               {webSearch.results.length > 0 && (
                 <SearchResultTable
                   results={webSearch.results}
+                  yUnconstrained={Boolean(webSearch.yUnconstrained)}
                   hasMore={
                     webSearch.matchCount > BigInt(webSearch.results.length)
                   }
@@ -822,16 +675,16 @@ export function ExportRunDialog({
               )}
             </article>
 
-            <article className="run-target">
+            <article className={`run-target${offsetSummary ? ' run-target-native' : ''}`}>
               <div className="run-target-heading">
                 <Download size={18} />
                 <div>
                   <h3>Use CoordsFinder</h3>
-                  <span>Native CPU or CUDA</span>
+                  <span>Native CPU or CUDA · Textures only</span>
                 </div>
               </div>
               <p>
-                Download the exact configuration for your local CoordsFinder
+                Export saved, confirmed texture evidence for your local CoordsFinder
                 executable.
               </p>
               <div className="coordsfinder-links">
@@ -850,18 +703,31 @@ export function ExportRunDialog({
                   Colab Notebook
                 </a>
               </div>
+              {document.offsets?.length ? <div className="validation warning">
+                <AlertTriangle size={14} />
+                {document.offsets.length} stored block offset observation{document.offsets.length === 1 ? ' is' : 's are'} omitted.
+                {' '}This config searches {nativeValidation.rowCount} saved texture constraint{nativeValidation.rowCount === 1 ? '' : 's'} only.
+              </div> : null}
+              {nativeValidation.rowCount === 0 ? <div className="validation warning">
+                <AlertTriangle size={14} />
+                No saved, confirmed texture evidence to export.
+                {offsetSummary && ' Native CoordsFinder cannot search block offsets.'}
+              </div> : nativeValidation.errors.map((message) => <div className="validation warning" key={message}>
+                <AlertTriangle size={14} />
+                {message}
+              </div>)}
               <div className="coordsfinder-actions">
                 <button
-                  className="primary-button"
-                  disabled={validation.errors.length > 0}
+                  className={offsetSummary ? 'secondary-button' : 'primary-button'}
+                  disabled={nativeValidation.errors.length > 0}
                   onClick={onDownload}
                   type="button"
                 >
-                  <Download size={16} /> Download config
+                  <Download size={16} /> Download texture config
                 </button>
                 <button
                   className="secondary-button"
-                  disabled={validation.errors.length > 0}
+                  disabled={nativeValidation.errors.length > 0}
                   onClick={copyConfig}
                   type="button"
                 >
@@ -878,7 +744,7 @@ export function ExportRunDialog({
                 </button>
               </div>
               <details className="export-run-config-preview">
-                <summary>Preview configuration</summary>
+                <summary>Preview texture configuration</summary>
                 <pre>{config}</pre>
               </details>
             </article>

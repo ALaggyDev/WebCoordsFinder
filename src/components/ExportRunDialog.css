@@ -491,12 +491,65 @@ body.export-run-dialog-open {
   flex-direction: column;
 }
 
-.export-inspector > .crack-mode-field {
-  margin-bottom: 10px;
-}
-
 .export-inspector .inspector-heading span {
   font-size: 11px;
+}
+
+/* Evidence switches lead the setup with a small inset below the heading. */
+.export-inspector .search-evidence {
+  margin-bottom: 10px;
+  container-type: inline-size;
+}
+
+.export-inspector .search-evidence-heading {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.search-evidence-options {
+  position: relative;
+  padding-left: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+}
+
+.search-evidence-option {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@container (min-width: 290px) {
+  .search-evidence-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 0;
+  }
+
+  .search-evidence-option:last-child {
+    justify-content: flex-end;
+    border-left: 1px solid var(--border);
+    padding-left: 8px;
+  }
+}
+
+.export-inspector .setting-disabled > .field-label > span,
+.export-inspector .setting-disabled > b,
+.export-inspector .setting-disabled > .search-presets-heading,
+.export-inspector .advanced-settings.setting-disabled > summary,
+.export-inspector .advanced-settings.setting-disabled > .field-help,
+.export-inspector .advanced-settings.setting-disabled .check-field,
+.export-inspector input:disabled,
+.export-inspector select:disabled {
+  opacity: .45;
+}
+
+.export-inspector input:disabled,
+.export-inspector select:disabled {
+  cursor: not-allowed;
 }
 
 .export-inspector-footer {
@@ -706,4 +759,32 @@ body.export-run-dialog-open {
 
 :root[data-theme='white'] .export-run-status.ready {
   color: var(--accent-contrast);
+}
+
+/* Offset summaries share the existing cards; native export is a texture-only handoff. */
+.export-run-mode {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.export-run-summary-note {
+  margin: -7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.run-target-native {
+  border-top-color: var(--surface-3);
+}
+
+.run-target-native .run-target-heading {
+  color: var(--muted);
+}
+
+.run-target .validation {
+  font-size: 11px;
+  line-height: 1.45;
 }

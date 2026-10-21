@@ -209,15 +209,6 @@ export interface SearchBounds {
   zEnd: number
 }
 
-export interface OffsetSearchBounds {
-  xStart: number
-  xEnd: number
-  zStart: number
-  zEnd: number
-}
-
-export type CrackMode = 'texture-rotations' | 'block-offsets'
-
 export interface WebSearchResult {
   x: number
   y: number
@@ -235,6 +226,7 @@ export interface WebSearchShardCheckpoint {
   end: string
   next: string
   matchCount: string
+  offsetMatchCount?: string
 }
 
 export type PersistedWebSearchPhase =
@@ -245,13 +237,16 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 2 | 3 | 4 | 5 | 6
+  engineVersion: 2 | 3 | 4 | 5 | 6 | 7
   // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase
   processed: string
   total: string
   matchCount: string
+  offsetMatchCount?: string
+  yUnconstrained?: boolean
+  offsetBits?: number
   checksPerSecond: number
   results: WebSearchResult[]
   // Version 4 persists each independent cursor. Aggregate progress alone is
@@ -262,8 +257,8 @@ export interface WebSearchCheckpoint {
 }
 
 export interface ScannerSettings {
-  crackMode: CrackMode
-  offsetBounds: OffsetSearchBounds
+  textureEnabled: boolean
+  offsetsEnabled: boolean
   textureAlgorithm: TextureAlgorithm
   scanOrder: ScanOrder
   directions: SearchDirection[]

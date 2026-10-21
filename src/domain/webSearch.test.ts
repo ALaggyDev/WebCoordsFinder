@@ -306,6 +306,7 @@ describe('web search configuration', () => {
       processed: 9_007_199_254_740_993n,
       total: 9_007_199_254_741_999n,
       matchCount: 123_456_789_012_345n,
+      offsetMatchCount: 12_345_678_901_234n,
       checksPerSecond: 4_200_000,
       results: [{ x: 12, y: -4, z: 99, badBlocks: 1, direction: 90 as const }],
       shards: [
@@ -315,6 +316,7 @@ describe('web search configuration', () => {
           end: 9_007_199_254_741_999n,
           next: 9_007_199_254_740_993n,
           matchCount: 123_456_789_012_345n,
+      offsetMatchCount: 12_345_678_901_234n,
         },
       ],
     }

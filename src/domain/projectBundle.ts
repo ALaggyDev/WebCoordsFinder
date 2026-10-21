@@ -36,6 +36,8 @@ const projectSchema = z
     scanner: z
       .object({
         crackMode: z.enum(['texture-rotations', 'block-offsets']).optional(),
+        textureEnabled: z.boolean().optional(),
+        offsetsEnabled: z.boolean().optional(),
         offsetBounds: z.object({
           xStart: z.number().int(),
           xEnd: z.number().int(),
@@ -57,6 +59,7 @@ const projectSchema = z
               z.literal(4),
               z.literal(5),
               z.literal(6),
+              z.literal(7),
             ]),
             requestKey: z.string(),
             phase: z.enum([
@@ -69,6 +72,9 @@ const projectSchema = z
             processed: z.string().regex(/^\d+$/),
             total: z.string().regex(/^\d+$/),
             matchCount: z.string().regex(/^\d+$/),
+            offsetMatchCount: z.string().regex(/^\d+$/).optional(),
+            yUnconstrained: z.boolean().optional(),
+            offsetBits: z.number().int().min(0).max(26).optional(),
             checksPerSecond: z.number(),
             results: z.array(
               z.object({
@@ -87,6 +93,7 @@ const projectSchema = z
                   end: z.string().regex(/^\d+$/),
                   next: z.string().regex(/^\d+$/),
                   matchCount: z.string().regex(/^\d+$/),
+                  offsetMatchCount: z.string().regex(/^\d+$/).optional(),
                 }),
               )
               .optional(),

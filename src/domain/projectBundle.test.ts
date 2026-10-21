@@ -3,10 +3,25 @@ import { createTestDocument } from '../test/createTestDocument'
 import { buildProjectBundle, readProjectBundle } from './projectBundle'
 
 describe('project bundle web-search checkpoints', () => {
-  it('round-trips block offset mode and its output filter in schema 1', async () => {
+  it('preserves intermediate counts and unconstrained Y in version 7 checkpoints', async () => {
     const document = createTestDocument()
-    document.scanner.crackMode = 'block-offsets'
-    document.scanner.offsetBounds = {
+    document.scanner.webSearch = {
+      engineVersion: 7, requestKey: 'unified-test', phase: 'paused',
+      processed: '9007199254740993', total: '18014398509481984',
+      matchCount: '1500', offsetMatchCount: '2000', yUnconstrained: true, offsetBits: 26,
+      checksPerSecond: 0, results: [], updatedAt: 1234,
+      shards: [{ start: '0', end: '18014398509481984', next: '9007199254740993',
+        matchCount: '1500', offsetMatchCount: '2000' }],
+    }
+    const imported = await readProjectBundle(await buildProjectBundle(document))
+    expect(imported.document.scanner.webSearch).toEqual(document.scanner.webSearch)
+  })
+  it('round-trips independently enabled evidence and shared bounds in schema 1', async () => {
+    const document = createTestDocument()
+    document.scanner.textureEnabled = true
+    document.scanner.offsetsEnabled = true
+    document.scanner.bounds = {
+      yStart: -64, yEnd: 120,
       xStart: -1234,
       xEnd: 5678,
       zStart: -9876,
@@ -16,8 +31,9 @@ describe('project bundle web-search checkpoints', () => {
     const imported = await readProjectBundle(await buildProjectBundle(document))
 
     expect(imported.document.schemaVersion).toBe(1)
-    expect(imported.document.scanner.crackMode).toBe('block-offsets')
-    expect(imported.document.scanner.offsetBounds).toEqual(document.scanner.offsetBounds)
+    expect(imported.document.scanner.textureEnabled).toBe(true)
+    expect(imported.document.scanner.offsetsEnabled).toBe(true)
+    expect(imported.document.scanner.bounds).toEqual(document.scanner.bounds)
   })
 
   it('round-trips version 5 shard cursors and result ordinals without changing schema version 1', async () => {

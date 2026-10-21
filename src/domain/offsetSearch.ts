@@ -1,73 +1,81 @@
-import { offsetProfiles, offsetReadiness } from './blockOffsets'
+import { offsetFromNibbles, offsetProfiles, offsetReadiness } from './blockOffsets'
 import { mappedAnchorOffset } from './geometry'
-import type { EditorDocument, OffsetSearchBounds } from './types'
+import type { EditorDocument, SearchDirection } from './types'
 
 export interface OffsetConstraint {
   dx: number
   dz: number
-  x: number
-  y: number
-  z: number
-  xMask: number
-  zMask: number
-  full: boolean
+  acceptedX: number
+  acceptedY: number
+  acceptedZ: number
 }
 
-export interface OffsetSearchRequest {
-  bounds: OffsetSearchBounds
-  constraints: OffsetConstraint[]
+/** All seeds producing the same visible displacement remain valid evidence. */
+export function acceptedOffsetNibbles(blockId: string, axis: 'x' | 'y' | 'z', selected: number): number {
+  const profile = offsetProfiles[blockId]
+  if (axis === 'y' && profile.type === 'XZ') return 0xffff
+  const value = (n: number) => offsetFromNibbles(profile, { x: n, y: n, z: n })[axis]
+  let accepted = 0
+  for (let n = 0; n < 16; n++) {
+    if (value(n) === value(selected)) accepted |= 1 << n
+  }
+  return accepted
 }
 
-/** Every active model contributes an offset constraint. */
-export function createOffsetSearchRequest(document: EditorDocument): OffsetSearchRequest {
+function reverseNibbles(mask: number): number {
+  let reversed = 0
+  for (let n = 0; n < 16; n++) if (mask & (1 << n)) reversed |= 1 << (15 - n)
+  return reversed
+}
+
+/** Rotate measured displacement with its owning block, around the shared anchor. */
+export function compileOffsetDirections(document: EditorDocument): OffsetConstraint[][] {
+  const active = (document.offsets ?? []).filter((entry) => !entry.ignored)
+  if (!active.length) return document.scanner.directions.map(() => [])
   const blocked = offsetReadiness(document)
   if (blocked) throw new Error(blocked)
-  const constraints = (document.offsets ?? [])
-    .filter((entry) => !entry.ignored)
-    .map((entry) => {
-      const position = mappedAnchorOffset(
-        document.scene,
-        document.anchorFaceId,
-        entry.position,
-      )
-      if (!position) throw new Error('Select an anchor block in Geometry first.')
-      if (!Number.isInteger(position.x) || !Number.isInteger(position.z) ||
-          Math.abs(position.x) > 2_147_483_647 || Math.abs(position.z) > 2_147_483_647) {
-        throw new Error('An offset position is outside the 32-bit coordinate range.')
-      }
-      return {
-        dx: position.x,
-        dz: position.z,
-        ...entry.nibbles,
-        // Clipped endpoints make four seed nibbles visually identical.
-        xMask: profileMask(offsetProfiles[entry.blockId].horizontal, entry.nibbles.x),
-        zMask: profileMask(offsetProfiles[entry.blockId].horizontal, entry.nibbles.z),
-        full: offsetProfiles[entry.blockId].type === 'XYZ',
-      }
-    })
-  if (constraints.length === 0) throw new Error('Add at least one active block offset first.')
-  if (constraints.length > 256) throw new Error('The WASM scanner accepts at most 256 offsets.')
-
-  const bounds = document.scanner.offsetBounds
-  for (const axis of ['x', 'z'] as const) {
-    const start = bounds[`${axis}Start`]
-    const end = bounds[`${axis}End`]
-    if (!Number.isInteger(start) || !Number.isInteger(end) ||
-        start < -134_217_728 || end > 134_217_727 || start > end) {
-      throw new Error('Offset bounds must be ordered integers within the signed 28-bit range.')
+  if (active.length > 256) throw new Error('The browser scanner accepts at most 256 active offset observations.')
+  const constraints = active.map((entry): OffsetConstraint => {
+    const position = mappedAnchorOffset(document.scene, document.anchorFaceId, entry.position)
+    if (!position) throw new Error('Select an anchor block in Geometry first.')
+    if (![position.x, position.z].every((n) => Number.isInteger(n) && Math.abs(n) <= 2_147_483_647)) {
+      throw new Error('An offset observation is outside the 32-bit coordinate range.')
     }
+    return {
+      dx: position.x, dz: position.z,
+      acceptedX: acceptedOffsetNibbles(entry.blockId, 'x', entry.nibbles.x),
+      acceptedY: acceptedOffsetNibbles(entry.blockId, 'y', entry.nibbles.y),
+      acceptedZ: acceptedOffsetNibbles(entry.blockId, 'z', entry.nibbles.z),
+    }
+  })
+  return document.scanner.directions.map((direction: SearchDirection) => {
+    const grouped = new Map<string, OffsetConstraint>()
+    for (const original of constraints) {
+      let c = { ...original }
+      if (direction === 90) c = { ...c, dx: -original.dz, dz: original.dx, acceptedX: reverseNibbles(original.acceptedZ), acceptedZ: original.acceptedX }
+      if (direction === 180) c = { ...c, dx: -original.dx, dz: -original.dz, acceptedX: reverseNibbles(original.acceptedX), acceptedZ: reverseNibbles(original.acceptedZ) }
+      if (direction === 270) c = { ...c, dx: original.dz, dz: -original.dx, acceptedX: original.acceptedZ, acceptedZ: reverseNibbles(original.acceptedX) }
+      const key = `${c.dx}:${c.dz}`
+      const previous = grouped.get(key)
+      if (previous) {
+        c.acceptedX &= previous.acceptedX
+        c.acceptedY &= previous.acceptedY
+        c.acceptedZ &= previous.acceptedZ
+      }
+      if (!(c.acceptedX && c.acceptedY && c.acceptedZ)) {
+        throw new Error(`Offset observations at (${c.dx}, ${c.dz}) contradict each other for ${direction}°.`)
+      }
+      grouped.set(key, c)
+    }
+    return [...grouped.values()]
+  })
+}
+
+/** Smallest signed lattice covering the bounds; at most 26 bits at ±30 million. */
+export function offsetTraversalBits(xStart: number, xEnd: number, zStart: number, zEnd: number): number {
+  for (let bits = 1; bits <= 26; bits++) {
+    const half = 2 ** (bits - 1)
+    if (Math.min(xStart, zStart) >= -half && Math.max(xEnd, zEnd) < half) return bits
   }
-  return { bounds, constraints }
-}
-
-function profileMask(horizontal: number, nibble: number): number {
-  return horizontal === 0.125 && (nibble <= 3 || nibble >= 12) ? 0xc : 0xf
-}
-
-/** Split the 16-bit X prefix space among independent WASM workers. */
-export function offsetWorkerRanges(count: number): { start: number; end: number }[] {
-  return Array.from({ length: count }, (_, index) => ({
-    start: Math.floor(index * 65536 / count),
-    end: Math.floor((index + 1) * 65536 / count),
-  }))
+  throw new Error('X/Z bounds must lie within ±30,000,000 blocks.')
 }

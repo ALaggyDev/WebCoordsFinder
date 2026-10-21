@@ -98,10 +98,10 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
   })
 }
 
-export function validateForExport(document: EditorDocument): ValidationResult {
+export function validateForExport(document: EditorDocument, target: 'native' | 'browser' = 'native'): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
-  if (document.offsets?.length) warnings.push('Block offset observations are saved in the project but are not used by browser search or native CoordsFinder export yet.')
+  if (target === 'native' && document.offsets?.length) warnings.push('Native CoordsFinder exports texture evidence only; block offset observations are omitted.')
   const { bounds } = document.scanner
   const rows = confirmedUniqueEvidence(document)
 
@@ -142,12 +142,12 @@ export function validateForExport(document: EditorDocument): ValidationResult {
   ) {
     errors.push('Every search start bound must be less than or equal to its end bound.')
   }
-  if (
+  if (target === 'native' && (
     document.scanner.cpuTileSize.x <= 0 ||
     document.scanner.cpuTileSize.z <= 0 ||
     document.scanner.gpuTileSize.x <= 0 ||
     document.scanner.gpuTileSize.z <= 0
-  ) {
+  )) {
     errors.push('CPU and GPU tile dimensions must be positive.')
   }
   if (document.scanner.errorTolerance < 0) {
@@ -250,6 +250,10 @@ export function generateCoordsFinderConfig(document: EditorDocument): string {
   const rows = confirmedUniqueEvidence(document)
   const lines = [
     '# Generated locally by WebCoordsFinder.',
+    ...(document.offsets?.length ? [
+      `# This project contains ${document.offsets.length} block offset observation${document.offsets.length === 1 ? ' that is' : 's that are'} not exported.`,
+      '# Native CoordsFinder supports texture constraints only. Run the browser search to include active block offsets.',
+    ] : []),
     '',
     `algorithm = ${scanner.textureAlgorithm}`,
     `scanOrder = ${scanner.scanOrder}`,
