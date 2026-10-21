@@ -398,10 +398,10 @@ export function ExportRunDialog({
           {offsetSummary ? <p className="export-run-summary-note">
             {document.scanner.offsetsEnabled && activeOffsets > 0 ? <>
               {yUnconstrained
-                ? 'Offsets search X/Z only; every match leaves Y unconstrained.'
-                : 'Offsets filter X/Z first; textures check the surviving columns across Y.'}
+                ? 'Offsets search X/Z only; Y is unknown.'
+                : 'Offsets filter X/Z first; texture rotations check the surviving results across Y.'}
               <br />
-              Runtime and {yUnconstrained ? 'offset' : 'combined'} hit counts are not estimated.
+              Estimated runtime is around 15-60 seconds across the full 60m world (fanda857 & epic10l2's fast bit lifting algorithm).
               {!yUnconstrained && ` Texture mismatch tolerance: ${document.scanner.errorTolerance}.`}
             </> : document.scanner.offsetsEnabled
               ? 'No active block offsets participate in this browser search.'

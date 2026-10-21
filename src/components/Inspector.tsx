@@ -1736,11 +1736,11 @@ function ExportInspector() {
         </select>
       </div>
       <label className={hasOffsets ? 'field setting-disabled' : 'field'}
-        title={hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}>
+        title={hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}>
         <div className="field-label">
           <span>Scan order</span>
           <InfoTip label="Scan order information">
-            {hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : <>
+            {hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : <>
             Active block offsets use an automatic traversal to prune candidates.
             Otherwise, the selected scan order applies.
             <br />
@@ -1755,7 +1755,7 @@ function ExportInspector() {
         <select
           aria-label="Scan order"
           disabled={hasOffsets}
-          title={hasOffsets ? 'Block offsets use fanda857’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}
+          title={hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}
           value={hasOffsets ? 'offsets' : document.scanner.scanOrder}
           onChange={(event) =>
             updateScanner({ scanOrder: event.target.value as ScanOrder })
