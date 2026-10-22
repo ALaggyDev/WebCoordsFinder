@@ -25,6 +25,8 @@ const tools: Array<{ id: EditorTool; label: string; icon: typeof Crosshair; shor
 ]
 
 export function ToolRail() {
+  const selectedOffsetId = useEditorStore((state) => state.selectedOffsetId)
+  const deleteOffset = useEditorStore((state) => state.deleteOffset)
   const tool = useEditorStore((state) => state.tool)
   const scene = useEditorStore((state) => state.document.scene)
   const setTool = useEditorStore((state) => state.setTool)
@@ -92,10 +94,10 @@ export function ToolRail() {
         <button
           type="button"
           className="tool-button"
-          onClick={deleteSelectedFaces}
-          disabled={!hasSelectedFaces}
-          title="Delete selected faces (X / Backspace / Delete)"
-          aria-label="Delete selected faces"
+          onClick={selectedOffsetId ? () => deleteOffset(selectedOffsetId) : deleteSelectedFaces}
+          disabled={selectedOffsetId ? false : !hasSelectedFaces}
+          title={selectedOffsetId ? 'Delete selected decoration (X / Backspace / Delete)' : 'Delete selected faces (X / Backspace / Delete)'}
+          aria-label={selectedOffsetId ? 'Delete selected decoration' : 'Delete selected faces'}
         >
           <Eraser size={19} />
           <span>X</span>

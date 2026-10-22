@@ -1,5 +1,6 @@
 import {
   MAX_WEB_SEARCH_RESULTS,
+  webSearchRequestVolume,
   aggregateSearchPoolPhase,
   maximumSearchWorkerCount,
   mergeOrdinalSearchResults,
@@ -22,6 +23,7 @@ type ShardPhase = WebSearchShardWorkerState['phase']
 interface ActiveShard extends WebSearchShardProgress {
   worker: Worker
   phase: ShardPhase
+  checksPerSecond: number
 }
 
 const publicationIntervalMilliseconds = 100
@@ -36,6 +38,7 @@ let publicationTimer: ReturnType<typeof setTimeout> | undefined
 let lastPublishedAt = 0
 let rateMeasurementStartedAt = 0
 let rateMeasurementStartProcessed = 0n
+let liftedTraversal = false
 
 function terminateShards() {
   shards.forEach((shard) => shard.worker.terminate())
@@ -50,12 +53,13 @@ function aggregatePhase(): WebSearchWorkerState['phase'] {
 }
 
 function currentProgress(): WebSearchShardProgress[] {
-  return shards.map(({ id, start, end, next, matchCount }) => ({
+  return shards.map(({ id, start, end, next, matchCount, offsetMatchCount }) => ({
     id,
     start,
     end,
     next,
     matchCount,
+    offsetMatchCount,
   }))
 }
 
@@ -93,7 +97,10 @@ function emitState(error?: string) {
       (sum, shard) => sum + shard.matchCount,
       0n,
     ),
-    checksPerSecond: measuredChecksPerSecond,
+    offsetMatchCount: progress.reduce((sum, shard) => sum + (shard.offsetMatchCount ?? 0n), 0n),
+    checksPerSecond: liftedTraversal
+      ? shards.reduce((sum, shard) => sum + shard.checksPerSecond, 0)
+      : measuredChecksPerSecond,
     // When present, this is a complete deterministic snapshot rather than an
     // arrival-order delta. Unchanged sets stay inside the coordinator so a
     // populated result table does not reconcile at progress-update frequency.
@@ -159,12 +166,17 @@ function validateResumeShards(
     ).map((shard) => ({ ...shard, next: shard.start, matchCount: 0n }))
   }
 
-  return validateSearchShardProgress(
+  const validated = validateSearchShardProgress(
     total,
     checkpoint.processed,
     checkpoint.matchCount,
     saved,
   )
+  if (validated.reduce((sum, shard) => sum + (shard.offsetMatchCount ?? 0n), 0n) !==
+    (checkpoint.offsetMatchCount ?? 0n)) {
+    throw new Error('The saved offset candidate count does not match its worker shards.')
+  }
+  return validated
 }
 
 function startShard(
@@ -180,6 +192,7 @@ function startShard(
     ...progress,
     worker,
     phase: progress.next === progress.end ? 'completed' : 'running',
+    checksPerSecond: 0,
   }
   worker.onmessage = (event: MessageEvent<WebSearchShardWorkerState>) => {
     const message = event.data
@@ -191,8 +204,10 @@ function startShard(
       return
     }
     active.next = message.next
+    active.offsetMatchCount = message.offsetMatchCount ?? 0n
     active.matchCount = message.matchCount
     active.phase = message.phase
+    active.checksPerSecond = message.phase === 'running' ? message.checksPerSecond : 0
     if (message.results.length > 0) {
       const nextRetainedResults = mergeOrdinalSearchResults(
         retainedResults,
@@ -232,6 +247,7 @@ function startShard(
     checkpoint: {
       next: progress.next,
       matchCount: progress.matchCount,
+      offsetMatchCount: progress.offsetMatchCount,
     },
   }
   worker.postMessage(command)
@@ -253,14 +269,10 @@ function startSearch(
   lastPublishedAt = 0
   rateMeasurementStartedAt = performance.now()
   rateMeasurementStartProcessed = command.checkpoint?.processed ?? 0n
+  liftedTraversal = Boolean(command.request.offsetBits)
 
   try {
-    const total = (
-      (BigInt(command.request.xEnd) - BigInt(command.request.xStart) + 1n) *
-      (BigInt(command.request.yEnd) - BigInt(command.request.yStart) + 1n) *
-      (BigInt(command.request.zEnd) - BigInt(command.request.zStart) + 1n) *
-      BigInt(command.request.directions.length)
-    )
+    const total = webSearchRequestVolume(command.request)
     retainedResults = command.checkpoint
       ? restoreOrdinalResults(command.checkpoint.results, total)
       : []

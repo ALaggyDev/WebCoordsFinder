@@ -337,6 +337,12 @@ function App() {
         redo()
         return
       }
+      const offsetState = useEditorStore.getState()
+      if (event.key === 'Escape' && offsetState.selectedOffsetId) {
+        offsetState.selectOffset(null)
+        return
+      }
+
       if (event.ctrlKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
         selectAllFaces()
@@ -349,7 +355,8 @@ function App() {
         ['x', 'backspace', 'delete'].includes(event.key.toLowerCase())
       ) {
         event.preventDefault()
-        deleteSelectedFaces()
+        if (offsetState.selectedOffsetId) offsetState.deleteOffset(offsetState.selectedOffsetId)
+        else deleteSelectedFaces()
         return
       }
       if (event.key.toLowerCase() === 'g') {
@@ -712,6 +719,7 @@ function App() {
           evidenceId: entry.id,
           quad,
           referenceUrl,
+          animationTick: state.document.animationTicks?.[entry.blockId] ?? 1,
           grassTint: entry.blockSettings?.grassTint,
           transforms: variantTransformsForFace(entry.blockId, face),
         }]
@@ -860,6 +868,7 @@ function App() {
             <ToolRail />
             <EditorCanvas />
             <Inspector
+              key={activeProjectId}
               busy={busy}
               onAutoFill={autoFill}
             />

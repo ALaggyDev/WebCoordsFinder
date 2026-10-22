@@ -15,6 +15,7 @@ import {
   type RgbColor,
 } from '../domain/imageAnalysis'
 import { defaultGrassTintSettings } from '../domain/types'
+import { textureAnimationFrame } from '../domain/textureAnimation'
 
 const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
 const referencePixelsCache = new Map<string, Promise<ImageData>>()
@@ -64,14 +65,40 @@ async function grassTintColor(
 
 function referenceCacheKey(job: AutoAnalyzeJob, size: number): string {
   const tint = job.grassTint ?? defaultGrassTintSettings
-  return `${job.referenceUrl}:${size}:${tint.temperature}:${tint.downfall}`
+  return `${job.referenceUrl}:${size}:${tint.temperature}:${tint.downfall}:${job.animationTick ?? 1}`
+}
+
+async function decodedReferencePixels(job: AutoAnalyzeJob, size: number): Promise<ImageData> {
+  const response = await fetch(job.referenceUrl)
+  if (!response.ok) throw new Error(`Unable to load analysis image (${response.status}).`)
+  const bitmap = await createImageBitmap(await response.blob())
+  try {
+    const canvas = new OffscreenCanvas(size, size)
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Off-thread image extraction is unavailable.')
+    context.imageSmoothingEnabled = false
+    const frame = textureAnimationFrame(job.referenceUrl, job.animationTick ?? 1)
+    if (frame) {
+      const frameSize = bitmap.width
+      context.drawImage(bitmap, 0, frame.current * frameSize, frameSize, frameSize, 0, 0, size, size)
+      if (frame.blend > 0) {
+        context.globalAlpha = frame.blend
+        context.drawImage(bitmap, 0, frame.next * frameSize, frameSize, frameSize, 0, 0, size, size)
+      }
+    } else {
+      context.drawImage(bitmap, 0, 0, size, size)
+    }
+    return context.getImageData(0, 0, size, size)
+  } finally {
+    bitmap.close()
+  }
 }
 
 function referencePixels(job: AutoAnalyzeJob, size: number): Promise<ImageData> {
   const key = referenceCacheKey(job, size)
   const cached = referencePixelsCache.get(key)
   if (cached) return cached
-  const promise = decodedPixels(job.referenceUrl, size).then(async (pixels) => {
+  const promise = decodedReferencePixels(job, size).then(async (pixels) => {
     if (!isGrassTexture(job.referenceUrl)) return pixels
     const copy = new ImageData(
       new Uint8ClampedArray(pixels.data),

@@ -1,8 +1,8 @@
 # WebCoordsFinder
 
-WebCoordsFinder is an online web editor for Minecraft texture rotation cracking! It allows users to easily label visible block texture variants in a screenshot to find the coordinates. Then, users can either run the scanner directly on the website or export a search config file for [CoordsFinder](https://github.com/ALaggyDev/CoordsFinder) to run on Nvidia GPU.
+WebCoordsFinder is an online web editor for Minecraft texture rotation & block offset cracking! It allows users to easily label visible block texture variants in a screenshot to find the coordinates. Then, users can either run the scanner directly on the website or export a search config file for [CoordsFinder](https://github.com/ALaggyDev/CoordsFinder) to run on Nvidia GPU.
 
-With WebCoordsFinder, you can trivally find the coordinates of any screenshot in under 10 minutes.
+Update: WebCoordsFinder now supports both texture rotation AND block offset cracking! With block offset's [fast bit lifting algorithm](https://github.com/ALaggyDev/CoordsFinder/docs/fast_bit_lifting.rs) by fanda857 and epic10l2, you can perform a full 60 million world search in less than 15 seconds!
 
 Check out my video on YouTube!
 
@@ -36,6 +36,7 @@ npm run build
 - Perspective-aware 3D mesh editor: draw a base grid, extrude connected faces, calibrate a shared camera view, and pan or zoom to inspect evidence.
 - Explicit world orientation and anchor controls for reliable X/Y/Z offsets.
 - Manual and batch face labeling with perspective-correct crops, bundled vanilla reference textures, and grass-tint controls for supported blocks.
+- Manual block-offset alignment with bundled decoration models, discrete XZ/XYZ offsets, and undoable placement. Requires a 3D camera and parity-consistent compass mapping; guessed cardinal directions are accepted. Measurements are saved in `.wcf` projects but are not yet used by the scanners.
 - Reviewable automatic variant proposals, scored in a background worker; only confirmed evidence is used for searching or export.
 - Search configuration for Vanilla and Sodium texture algorithms, inclusive bounds, quarter-turn directions, error tolerance, and scanner tile settings.
 - Run a compatible parallel CoordsFinder search locally in a WebAssembly worker pool, with pause, stop, exact shard checkpoints, and resumable results.

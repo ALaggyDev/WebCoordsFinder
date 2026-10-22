@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Eye, EyeOff, Layers3 } from 'lucide-react'
+import { OffsetOverlay } from './OffsetOverlay'
 import type Konva from 'konva'
 import {
   Arrow,
@@ -76,6 +77,7 @@ interface CanvasSize {
 
 interface VisualizationSettings {
   grid: boolean
+  blockModels: boolean
   axisGizmo: boolean
   faceNormals: boolean
   anchorMarker: boolean
@@ -86,6 +88,7 @@ interface VisualizationSettings {
 
 const defaultVisualizationSettings: VisualizationSettings = {
   grid: true,
+  blockModels: true,
   axisGizmo: true,
   anchorMarker: true,
   calibrationPoints: true,
@@ -238,6 +241,11 @@ const visualizationOptions: Array<{
     key: 'grid',
     label: 'Mesh grid',
     description: 'Show the block-face grid and its selectable edges.',
+  },
+  {
+    key: 'blockModels',
+    label: 'Block models',
+    description: 'Show placed offset models in every workflow stage.',
   },
   {
     key: 'axisGizmo',
@@ -1736,6 +1744,10 @@ export function EditorCanvas() {
             </>
           )}
         </Layer>
+        <OffsetOverlay
+          scale={view.scale}
+          showModels={visualizationsVisible && visualizations.blockModels}
+        />
         {boxSelection && (
           <Layer listening={false}>
             <Rect

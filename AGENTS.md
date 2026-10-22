@@ -55,7 +55,7 @@ variant before it becomes search evidence or is exported.
 
 ## User Workflow
 
-The top navigation has three stages:
+The top navigation has four stages:
 
 1. **Geometry** — draw four corners around the first block-aligned surface and
    set its dimensions. The editor saves a planar solve. Select one or more
@@ -69,9 +69,24 @@ The top navigation has three stages:
    selected faces with the bundled reference texture off the main thread. Its
    confidence threshold controls which suggestions are proposed; they can be
    reviewed, bulk-confirmed, corrected, or cleared.
-3. **Export** — choose the texture algorithm, scan order, optional quarter-turn
+3. **Offsets** — requires a 3D camera and parity-consistent compass mapping;
+   guessed cardinal directions are accepted with quarter-turn search directions.
+   Select a supporting mesh face, add a bundled decoration, and drag its base
+   handle to move whole blocks or fit discrete X/Z offsets. World-axis nudges,
+   XYZ vertical offsets, model states, tint, and opacity assist manual alignment.
+   Alignment depends on the current camera and axis mapping; Active/Ignore
+   controls whether an observation participates in browser search.
+   Optional `EditorDocument.offsets` preserves schema-1 compatibility and is
+   autosaved, undoable, and included in portable projects. Active, non-ignored
+   observations are strict browser-search constraints;
+   confirmation is not required. Native configurations include them in an
+   `[offsets]` section when offset cracking is enabled, with `*` for unknown Y
+   and a `dripstone` marker for clipped horizontal displacement. Native offset
+   searches require the CPU backend and may include texture filters to resolve Y.
+4. **Export** — choose the texture algorithm, scan order, optional quarter-turn
    directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
-   settings. Review readiness and estimates, run the browser search, or export
+   settings. Enable texture and offset cracking independently, review readiness
+   and exact intermediate/final counts, run the browser search, or export
    / copy the generated configuration.
 
 Projects are autosaved in IndexedDB. The project library supports multiple
@@ -229,8 +244,11 @@ Texture algorithms are chosen directly by the user:
 The local web scanner is a freestanding C-to-WASM port of CoordsFinder's
 texture sampling and brute-force loop. `src/workers/search.worker.ts` owns one
 scanner instance and runs short adaptive batches so pause and stop commands
-remain responsive. It is single-threaded and caps retained result rows at
-1,000; total match counts remain exact. Treat the native scanner parity tests
+remain responsive. A pool of independent single-threaded instances caps retained result rows at
+1,000; total match counts remain exact. Active offsets use low-bit X/Z lifting in the same WASM engine, followed by
+texture checks over Y. Offset-only results leave Y unconstrained. Search bounds
+are limited to ±30,000,000 on X/Z. Intermediate counts report X/Z-and-direction
+pairs passing offsets. Treat the native scanner parity tests
 as the compatibility contract when changing this code.
 
 ## Current Implementation
@@ -264,6 +282,14 @@ This is a React 19 + TypeScript + Vite application:
 - `src/domain/projectBundle.ts` — zipped `.wcf` bundles with schema validation.
 - `src/domain/examples.ts` and `public/examples/` — bundled portable example
   projects.
+- `src/domain/blockOffsets.ts`, `offsetRendering.ts`, and `offsetModels.json` —
+  offset contracts, Java-compatible nibble values, world/lattice placement,
+  textured model projection, and resolved vanilla model data.
+- `src/components/OffsetInspector.tsx` and `OffsetOverlay.tsx` — decoration
+  placement, alignment, and confirmation. `scripts/bundle-offset-models.mjs`
+  rebuilds the model catalog and `public/minecraft/offsets` textures from an
+  extracted Minecraft assets directory. The supplied 1.21.11 assets include 37
+  supported blocks; golden dandelion is absent and is not substituted.
 
 The PWA service worker precaches the local shell, textures, examples, and WASM
 for offline use. Its 4 MiB Workbox precache limit intentionally accommodates

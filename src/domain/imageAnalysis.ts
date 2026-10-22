@@ -5,6 +5,7 @@ import type {
   Point2,
 } from './types'
 import { defaultGrassTintSettings } from './types'
+import { textureAnimationFrame } from './textureAnimation'
 import {
   computeHomography,
   projectPoint,
@@ -15,6 +16,7 @@ import {
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
 const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
+let grassColorMapPixels: Promise<ImageData> | undefined
 
 export type RgbColor = { red: number; green: number; blue: number }
 
@@ -45,23 +47,30 @@ export function grassColorMapCoordinates(
   ]
 }
 
-async function grassTintColor(
+export async function grassTintColor(
   settings = defaultGrassTintSettings,
 ): Promise<RgbColor> {
-  const colorMap = await loadImage(grassColorMapSource)
-  const canvas = document.createElement('canvas')
-  canvas.width = colorMap.naturalWidth
-  canvas.height = colorMap.naturalHeight
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error('Grass colormap extraction is unavailable.')
-  context.drawImage(colorMap, 0, 0)
+  grassColorMapPixels ??= loadImage(grassColorMapSource).then((colorMap) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = colorMap.naturalWidth
+    canvas.height = colorMap.naturalHeight
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('Grass colormap extraction is unavailable.')
+    context.drawImage(colorMap, 0, 0)
+    return context.getImageData(0, 0, canvas.width, canvas.height)
+  })
+  const pixels = await grassColorMapPixels
   const [x, y] = grassColorMapCoordinates(
     settings,
-    canvas.width,
-    canvas.height,
+    pixels.width,
+    pixels.height,
   )
-  const pixel = context.getImageData(x, y, 1, 1).data
-  return { red: pixel[0], green: pixel[1], blue: pixel[2] }
+  const offset = (y * pixels.width + x) * 4
+  return {
+    red: pixels.data[offset],
+    green: pixels.data[offset + 1],
+    blue: pixels.data[offset + 2],
+  }
 }
 
 export function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {
@@ -95,23 +104,60 @@ export function loadImage(source: string): Promise<HTMLImageElement> {
 export function colorizedReferenceTexture(
   source: string,
   grassTint = defaultGrassTintSettings,
+  animationTick = 1,
 ): Promise<string> {
-  if (!isGrassTexture(source)) return Promise.resolve(source)
-  const cacheKey = `${source}:${grassTint.temperature}:${grassTint.downfall}`
+  const animationFrame = textureAnimationFrame(source, animationTick)
+  if (!isGrassTexture(source) && !animationFrame) return Promise.resolve(source)
+  const cacheKey = `${source}:${grassTint.temperature}:${grassTint.downfall}:${animationTick}`
   const cached = colorizedReferenceCache.get(cacheKey)
   if (cached) return cached
-  const promise = Promise.all([loadImage(source), grassTintColor(grassTint)]).then(([image, tint]) => {
+  const promise = Promise.all([
+    loadImage(source),
+    isGrassTexture(source) ? grassTintColor(grassTint) : undefined,
+  ]).then(([image, tint]) => {
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
-    canvas.height = image.naturalHeight
+    canvas.height = image.naturalWidth
     const context = canvas.getContext('2d', { willReadFrequently: true })
     if (!context) throw new Error('Canvas image extraction is unavailable.')
-    context.drawImage(image, 0, 0)
-    const imageData = applyGrassTint(
-      context.getImageData(0, 0, canvas.width, canvas.height),
-      tint,
-    )
-    context.putImageData(imageData, 0, 0)
+    if (animationFrame) {
+      const size = image.naturalWidth
+      context.drawImage(
+        image,
+        0,
+        animationFrame.current * size,
+        size,
+        size,
+        0,
+        0,
+        size,
+        size,
+      )
+      if (animationFrame.blend > 0) {
+        context.globalAlpha = animationFrame.blend
+        context.drawImage(
+          image,
+          0,
+          animationFrame.next * size,
+          size,
+          size,
+          0,
+          0,
+          size,
+          size,
+        )
+        context.globalAlpha = 1
+      }
+    } else {
+      context.drawImage(image, 0, 0)
+    }
+    if (tint) {
+      const imageData = applyGrassTint(
+        context.getImageData(0, 0, canvas.width, canvas.height),
+        tint,
+      )
+      context.putImageData(imageData, 0, 0)
+    }
     return canvas.toDataURL('image/png')
   })
   colorizedReferenceCache.set(cacheKey, promise)
@@ -210,6 +256,7 @@ export async function imageToPixels(
   source: string,
   size = 96,
   grassTint = defaultGrassTintSettings,
+  animationTick = 1,
 ): Promise<ImageData> {
   const image = await loadImage(source)
   const canvas = document.createElement('canvas')
@@ -218,7 +265,38 @@ export async function imageToPixels(
   const context = canvas.getContext('2d', { willReadFrequently: true })
   if (!context) throw new Error('Canvas image extraction is unavailable.')
   context.imageSmoothingEnabled = false
-  context.drawImage(image, 0, 0, size, size)
+  const animationFrame = textureAnimationFrame(source, animationTick)
+  if (animationFrame) {
+    const frameSize = image.naturalWidth
+    context.drawImage(
+      image,
+      0,
+      animationFrame.current * frameSize,
+      frameSize,
+      frameSize,
+      0,
+      0,
+      size,
+      size,
+    )
+    if (animationFrame.blend > 0) {
+      context.globalAlpha = animationFrame.blend
+      context.drawImage(
+        image,
+        0,
+        animationFrame.next * frameSize,
+        frameSize,
+        frameSize,
+        0,
+        0,
+        size,
+        size,
+      )
+      context.globalAlpha = 1
+    }
+  } else {
+    context.drawImage(image, 0, 0, size, size)
+  }
   const imageData = context.getImageData(0, 0, size, size)
   return isGrassTexture(source)
     ? applyGrassTint(imageData, await grassTintColor(grassTint))

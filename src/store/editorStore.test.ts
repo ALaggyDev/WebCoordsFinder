@@ -885,6 +885,8 @@ describe('unit-face geometry', () => {
     const legacy = structuredClone(createTestDocument()) as unknown as {
       scanner: Record<string, unknown>
     }
+    delete legacy.scanner.textureEnabled
+    delete legacy.scanner.offsetsEnabled
     delete legacy.scanner.scanOrder
     delete legacy.scanner.cpuTileSize
     delete legacy.scanner.gpuTileSize
@@ -897,6 +899,8 @@ describe('unit-face geometry', () => {
 
     const normalized = normalizeEditorDocument(legacy)
     expect(normalized.scanner).toMatchObject({
+      textureEnabled: true,
+      offsetsEnabled: false,
       scanOrder: 'spiral',
       cpuTileSize: { x: 1024, z: 1024 },
       gpuTileSize: { x: 8192, z: 8192 },

@@ -18,7 +18,25 @@ This website is simple to use once you get the hang of it. The gist is as follow
 
    Choose the correct block type. Then either manually select texture variant for each face or let the editor auto-suggest them.
 
-5. **Search or export**
+5. **Record decoration offsets (optional)**
+
+   Open **Offsets** after solving a 3D camera and setting UP. Guessed cardinal
+   directions work too; search the possible quarter-turn directions when the compass
+   is unknown. Select a supporting mesh face, choose a decoration, and add it.
+   Drag its circular base handle to match the decoration's horizontal offset.
+   Hold **Shift** to fit vertical offset on XYZ models, **Ctrl** to move across
+   blocks horizontally, or both to move across blocks vertically. Pressing a
+   modifier applies that mode to the current drag displacement; releasing it
+   preserves the snapped placement and continues in the new drag mode. The
+   world-axis buttons and offset sliders provide precise adjustments. Choose
+   the correct model state or half. Use Ignore model to mark a decoration's
+   handle gray while keeping the model visible.
+   Camera or compass changes require reviewing the alignment again.
+
+   Offset observations are saved locally and travel with `.wcf` projects.
+   Active, non-ignored observations are included in browser searches and native CoordsFinder exports when block offsets are enabled. Native offset searches use the CPU backend; texture rotations can be included to resolve Y.
+
+6. **Search or export**
 
    Run the local browser search for a smaller scan, or export a CoordsFinder config for the native scanner.
 

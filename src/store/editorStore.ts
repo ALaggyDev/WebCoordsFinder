@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { offsetBasis, offsetEvidenceListSchema, offsetEvidenceSchema, offsetReadiness } from '../domain/blockOffsets'
+import type { BlockOffsetEvidence } from '../domain/types'
 import {
   automaticAxisMappingForUp,
   axisMappingFromUpAndHorizontal,
@@ -123,6 +125,8 @@ function createDefaultScanner(): ScannerSettings {
   // Defaults target current CoordsFinder behavior while leaving compass
   // orientation unresolved until the user supplies a valid world mapping.
   return {
+    textureEnabled: true,
+    offsetsEnabled: true,
     textureAlgorithm: 'Vanilla-3',
     scanOrder: 'spiral',
     directions: [0],
@@ -305,6 +309,16 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
       ? scene.projection !== null
       : !isValidCommittedProjection(scene.projection)) ||
     !Array.isArray(directions) ||
+    (candidate.animationTicks !== undefined &&
+      (!candidate.animationTicks ||
+        typeof candidate.animationTicks !== 'object' ||
+        Array.isArray(candidate.animationTicks) ||
+        Object.values(candidate.animationTicks).some(
+          (tick) =>
+            typeof tick !== 'number' ||
+            !Number.isInteger(tick) ||
+            tick < 1,
+        ))) ||
     new Set(directions).size !== directions.length ||
     directions.some(
       (direction) =>
@@ -317,15 +331,25 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
     throw new Error('This project uses an unsupported document schema.')
   }
   const normalized = structuredClone(input as EditorDocument)
+  normalized.offsets = offsetEvidenceListSchema.parse(normalized.offsets ?? [])
   normalized.scene.worldUpIntent ??= null
   normalized.scene.horizontalOrientationIntent ??= null
   const defaults = createDefaultScanner()
+  // Convert the old exclusive mode and its X/Z bounds once, then drop them.
+  const { crackMode, offsetBounds, ...migratedScanner } = normalized.scanner as ScannerSettings & {
+    crackMode?: 'texture-rotations' | 'block-offsets'
+    offsetBounds?: Partial<ScannerSettings['bounds']>
+  }
+  const legacyOffsets = migratedScanner.textureEnabled === undefined && crackMode === 'block-offsets'
   // Current-format fields default independently so existing project bundles
   // remain usable without interpreting superseded scanner settings.
   normalized.scanner = {
     ...defaults,
-    ...normalized.scanner,
-    bounds: { ...defaults.bounds, ...normalized.scanner.bounds },
+    ...migratedScanner,
+    textureEnabled: migratedScanner.textureEnabled ?? !legacyOffsets,
+    offsetsEnabled: migratedScanner.offsetsEnabled ?? legacyOffsets,
+    bounds: { ...defaults.bounds, ...normalized.scanner.bounds,
+      ...(legacyOffsets ? offsetBounds : {}) },
     cpuTileSize: { ...defaults.cpuTileSize, ...normalized.scanner.cpuTileSize },
     gpuTileSize: { ...defaults.gpuTileSize, ...normalized.scanner.gpuTileSize },
   }
@@ -512,6 +536,16 @@ function pruneGeometry(document: EditorDocument): void {
 type FaceTab = 'selection' | 'review'
 
 interface EditorState {
+  selectedOffsetId: string | null
+  offsetOpacity: number
+  offsetYOcclusion: boolean
+  selectOffset: (id: string | null) => void
+  setOffsetOpacity: (opacity: number) => void
+  setOffsetYOcclusion: (enabled: boolean) => void
+  addOffset: (entry: BlockOffsetEvidence) => void
+  updateOffset: (id: string, patch: Partial<BlockOffsetEvidence>) => void
+  deleteOffset: (id: string) => void
+  confirmOffset: (id: string) => void
   document: EditorDocument
   step: EditorStep
   faceTab: FaceTab
@@ -557,6 +591,7 @@ interface EditorState {
   clearSelection: () => void
   setBlockForSelection: (blockId: string) => void
   updateBlockSettingsForSelection: (patch: Partial<BlockSettings>) => void
+  setAnimationTick: (blockId: string, tick: number) => void
   setVariant: (evidenceId: string, variant: number) => void
   setEvidenceStatus: (
     evidenceIds: string[],
@@ -769,6 +804,43 @@ export const useEditorStore = create<EditorState>((set) => ({
   hoveredEvidenceId: null,
   past: [],
   future: [],
+  selectedOffsetId: null,
+  offsetOpacity: 0.7,
+  offsetYOcclusion: true,
+  selectOffset: (selectedOffsetId) => set((state) => ({
+    selectedOffsetId,
+    // A decoration handle and mesh geometry use the same delete shortcut.
+    // Keep their selections exclusive so the shortcut always has one target.
+    selectedEdges: selectedOffsetId ? [] : state.selectedEdges,
+    selectedEvidenceIds: selectedOffsetId ? [] : state.selectedEvidenceIds,
+  })),
+  setOffsetOpacity: (offsetOpacity) => set({ offsetOpacity }),
+  setOffsetYOcclusion: (offsetYOcclusion) => set({ offsetYOcclusion }),
+  addOffset: (entry) => set((state) => {
+    if (offsetReadiness(state.document)) return state
+    const parsed = offsetEvidenceSchema.parse(entry)
+    return { ...mutateDocument(state, (document) => { (document.offsets ??= []).push(parsed) }), selectedOffsetId: parsed.id }
+  }),
+  updateOffset: (id, patch) => set((state) => {
+    if (offsetReadiness(state.document) || !state.document.offsets?.some((entry) => entry.id === id)) return state
+    return mutateDocument(state, (document) => {
+      document.offsets = document.offsets!.map((entry) => entry.id === id
+        ? offsetEvidenceSchema.parse({ ...entry, ...patch, id, confirmedBasis: undefined }) : entry)
+    })
+  }),
+  deleteOffset: (id) => set((state) => ({
+    ...mutateDocument(state, (document) => { document.offsets = document.offsets?.filter((entry) => entry.id !== id) }),
+    selectedOffsetId: state.selectedOffsetId === id ? null : state.selectedOffsetId,
+  })),
+  confirmOffset: (id) => set((state) => {
+    if (offsetReadiness(state.document)) return state
+    return mutateDocument(state, (document) => {
+      const entry = document.offsets?.find((entry) => entry.id === id)
+      if (entry) entry.confirmedBasis = offsetBasis(document)
+    })
+  }),
+  // Workflow stages change the inspector, not which canvas operation is
+  // available. This lets an analyst correct geometry while aligning offsets.
   setStep: (step) => set({ step }),
   setFaceTab: (faceTab) => set({ faceTab }),
   setTool: (tool) =>
@@ -786,7 +858,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       const geometry = selectedEdgeGeometry(state.document.scene, edge)
       if (!geometry) return state
-      if (!additive) return { selectedEdges: [edge] }
+      if (!additive) return { selectedEdges: [edge], selectedOffsetId: null }
 
       const key = meshEdgeKey(geometry.start, geometry.end)
       const selectedIndex = state.selectedEdges.findIndex((selection) => {
@@ -796,6 +868,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (selectedIndex >= 0) {
         return {
           selectedEdges: state.selectedEdges.filter((_, index) => index !== selectedIndex),
+          selectedOffsetId: null,
         }
       }
       const connected =
@@ -813,6 +886,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       // component replaces the chain instead of creating ambiguous endpoints.
       return {
         selectedEdges: connected ? [...state.selectedEdges, edge] : [edge],
+        selectedOffsetId: null,
       }
     }),
   clearSelectedEdges: () => set({ selectedEdges: [] }),
@@ -831,6 +905,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     syncUnconfirmedProposals(document)
     set({
       document,
+      selectedOffsetId: null,
       past: [],
       future: [],
       faceTab: 'selection',
@@ -858,6 +933,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         document.scene.worldUpIntent = null
         document.scene.horizontalOrientationIntent = null
         document.evidence = []
+        document.offsets = []
         document.anchorFaceId = null
         document.scanner.compassResolved = false
       }),
@@ -1282,6 +1358,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds,
         faceTab: 'selection' as FaceTab,
       }
@@ -1314,6 +1391,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds,
         faceTab: 'selection' as FaceTab,
       }
@@ -1337,6 +1415,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       return {
         ...documentPatch,
         selectedEdges: [],
+        selectedOffsetId: null,
         selectedEvidenceIds: faceIds,
         faceTab: 'selection' as FaceTab,
       }
@@ -1400,6 +1479,23 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.blockSettings = { ...entry.blockSettings, ...patch }
             // Proposals contain scores for the previous reference pixels.
             // Confirmed evidence has already been explicitly reviewed.
+            if (entry.reviewStatus === 'proposed') {
+              entry.selectedVariant = undefined
+              entry.reviewStatus = 'unlabeled'
+            }
+            entry.scores = undefined
+            entry.confidence = undefined
+          })
+      }),
+    ),
+  setAnimationTick: (blockId, tick) =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        const animationTicks = (document.animationTicks ??= {})
+        animationTicks[blockId] = Math.max(1, Math.floor(tick))
+        document.evidence
+          .filter((entry) => entry.blockId === blockId)
+          .forEach((entry) => {
             if (entry.reviewStatus === 'proposed') {
               entry.selectedVariant = undefined
               entry.reviewStatus = 'unlabeled'

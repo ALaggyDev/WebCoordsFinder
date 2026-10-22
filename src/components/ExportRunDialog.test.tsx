@@ -1,11 +1,13 @@
 // Export/Run tests pin modal workflow, search readiness, and checkpoint
 // restoration without starting the real background scanner.
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateCoordsFinderConfig } from '../domain/exportConfig'
@@ -89,7 +91,117 @@ function documentWithSavedSearch() {
   return document
 }
 
+function documentWithActiveOffsets() {
+  const document = documentWithSavedSearch()
+  document.scanner.webSearch = null
+  document.scanner.offsetsEnabled = true
+  document.scanner.bounds = {
+    xStart: -1000, xEnd: 1000, yStart: 64, yEnd: 127, zStart: -1000, zEnd: 1000,
+  }
+  document.scanner.directions = [0, 90, 180, 270]
+  document.offsets = [{
+    id: 'roots', blockId: 'hanging_roots', modelIndex: 0,
+    position: { x: 1, y: 2, z: 3 }, nibbles: { x: 4, y: 0, z: 12 }, tint: '#91bd59',
+  }]
+  return document
+}
+
 describe('Export / Run workspace', () => {
+  it('describes the effective offset search without counting unused Y or ignored observations', () => {
+    const document = documentWithActiveOffsets()
+    document.evidence = []
+    // The texture switch remains on, but no usable texture rows constrain Y.
+    document.offsets!.push({ ...document.offsets![0], id: 'ignored', ignored: true })
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(createWebSearchRequest(document).yUnconstrained).toBe(true)
+    expect(dialog.getByText('Browser search · Offsets')).toBeInTheDocument()
+    expect(dialog.getByText('Block offsets').parentElement).toHaveTextContent('1')
+    expect(dialog.getByText('X/Z search area').parentElement).toHaveTextContent('4,004,001')
+    expect(dialog.getByText('Y range').parentElement).toHaveTextContent('Any')
+    expect(dialog.queryByText('Runtime comparison')).not.toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: 'Run web search' })).toBeEnabled()
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeEnabled()
+  })
+
+  it('exports only enabled evidence when textures are disabled', () => {
+    const document = documentWithActiveOffsets()
+    document.scanner.textureEnabled = false
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText('Texture constraints').parentElement).toHaveTextContent('Off')
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeEnabled()
+    expect(generateCoordsFinderConfig(document)).toContain('[offsets]')
+    expect(generateCoordsFinderConfig(document)).not.toContain('[filter]')
+  })
+
+  it('keeps proposal warnings and separates intermediate from final combined matches', () => {
+    const worker = new MockSearchWorker()
+    vi.stubGlobal('Worker', function MockWorkerConstructor() { return worker })
+    const document = documentWithActiveOffsets()
+    document.evidence.push({ ...document.evidence[0], id: 'proposal', reviewStatus: 'proposed' })
+    const request = createWebSearchRequest(document)
+    document.scanner.webSearch = createWebSearchCheckpoint(webSearchRequestKey(request), {
+      phase: 'running', offsetBits: request.offsetBits, yUnconstrained: false,
+      processed: 64n, total: 1024n, offsetMatchCount: 12n, matchCount: 2n,
+      checksPerSecond: 100, results: [],
+    })
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText(/1 automatic proposal is omitted until reviewed/)).toBeInTheDocument()
+    expect(dialog.getByText('Y range').parentElement).toHaveTextContent('64–127')
+    expect(dialog.getByText('Offset candidates (X/Z + rotation)').parentElement).toHaveTextContent('12')
+    expect(dialog.getByText('Texture matches (X/Y/Z + rotation)').parentElement).toHaveTextContent('2')
+    expect(dialog.getByText('Time remaining').parentElement).toHaveTextContent('Paused')
+    fireEvent.click(dialog.getByRole('button', { name: 'Run again' }))
+    const command = worker.postMessage.mock.calls[0][0]
+    act(() => worker.onmessage!(new MessageEvent('message', { data: {
+      type: 'state', requestId: command.requestId, phase: 'running',
+      processed: 64n, total: 1024n, offsetMatchCount: 12n, matchCount: 2n,
+      checksPerSecond: 100, results: [],
+    } })))
+    expect(dialog.getByText('Time remaining').parentElement).toHaveTextContent('Not estimated')
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps offset context visible when active observations contradict each other', () => {
+    const document = documentWithActiveOffsets()
+    document.offsets!.push({ ...document.offsets![0], id: 'conflict', nibbles: { x: 5, y: 0, z: 12 } })
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByRole('alert')).toHaveTextContent('contradict each other')
+    expect(dialog.getByText('Block offsets').parentElement).toHaveTextContent('2')
+    expect(dialog.queryByText('Runtime comparison')).not.toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: 'Run web search' })).toBeDisabled()
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeDisabled()
+  })
+
+  it('does not save an outgoing run into a different project with the same search setup', () => {
+    const worker = new MockSearchWorker()
+    vi.stubGlobal('Worker', function MockWorkerConstructor() { return worker })
+    const original = documentWithSavedSearch()
+    original.scanner.webSearch = null
+    useEditorStore.setState({ document: original, step: 'export' })
+    const view = render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run web search' }))
+    const other = documentWithSavedSearch()
+    other.projectName = 'Another project'
+    const checkpoint = other.scanner.webSearch
+    act(() => useEditorStore.setState({ document: other }))
+    view.unmount()
+    expect(worker.terminate).toHaveBeenCalled()
+    expect(useEditorStore.getState().document.scanner.webSearch).toBe(checkpoint)
+    vi.unstubAllGlobals()
+  })
   it('keeps shared and CoordsFinder-only settings separated in the sidebar', () => {
     render(
       <Inspector
@@ -108,6 +220,40 @@ describe('Export / Run workspace', () => {
     expect(
       screen.getByRole('button', { name: 'Export / Run' }),
     ).toBeInTheDocument()
+  })
+
+  it('keeps the shared bounds when independently enabling or disabling evidence', () => {
+    const document = documentWithSavedSearch()
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Texture rotations' }))
+    expect(useEditorStore.getState().document.scanner).toMatchObject({ textureEnabled: false, offsetsEnabled: true })
+    fireEvent.change(screen.getAllByLabelText('Start')[0], { target: { value: '-1000' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Texture rotations' }))
+    expect(useEditorStore.getState().document.scanner.bounds.xStart).toBe(-1000)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Block offsets' }))
+    expect(useEditorStore.getState().document.scanner).toMatchObject({ textureEnabled: true, offsetsEnabled: false })
+  })
+
+  it('preserves disabled texture settings and Y bounds until textures are enabled again', () => {
+    const document = documentWithSavedSearch()
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Texture rotations' }))
+    expect(screen.getAllByLabelText('Start')[1]).toBeDisabled()
+    expect(screen.getAllByLabelText('End')[1]).toBeDisabled()
+    expect(screen.getByLabelText('Texture algorithm')).toBeDisabled()
+    expect(screen.getByLabelText('Error tolerance')).toBeDisabled()
+    expect(screen.getByLabelText('CPU tile size X')).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'verbose logging' })).toBeDisabled()
+    expect(screen.getByRole('option', { name: 'Fast bit lifting (block offsets)' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Search area presets' }))
+    expect(screen.getByRole('button', { name: /Overworld/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /World Border/ })).toBeEnabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Texture rotations' }))
+    expect(screen.getAllByLabelText('Start')[1]).toBeEnabled()
+    expect(screen.getByLabelText('Error tolerance')).toBeEnabled()
+    expect(useEditorStore.getState().document.scanner.bounds).toEqual(document.scanner.bounds)
   })
 
   it('adds optional compass rotations to the scanner settings', () => {
@@ -141,27 +287,12 @@ describe('Export / Run workspace', () => {
     expect(useEditorStore.getState().document.scanner.directions).toEqual([])
   })
 
-  it('opens the runtime comparison and blocks web search until setup is valid', () => {
-    render(
-      <Inspector
-        busy={false}
-        onAutoFill={vi.fn()}
-        onOpenImage={vi.fn()}
-      />,
-    )
-
+  it('blocks a search with no usable evidence and explains the missing setup', () => {
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
-
-    expect(
-      screen.getByRole('dialog', { name: 'Export or Run Search' }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('Estimated hits')).toBeInTheDocument()
-    expect(screen.getByText('Hit precision')).toBeInTheDocument()
-    expect(screen.getByText('CoordsFinder CPU')).toBeInTheDocument()
-    expect(screen.getByText('CoordsFinder CUDA')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Run web search' }),
-    ).toBeDisabled()
+    expect(screen.getByRole('dialog', { name: 'Export or Run Search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run web search' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/Confirm a texture face or add an active block offset/)
   })
 
   it('closes from the dialog close button', () => {
@@ -276,6 +407,34 @@ describe('Export / Run workspace', () => {
     )
   })
 
+  it('restores intermediate counts and represents unconstrained Y correctly', () => {
+    const document = documentWithSavedSearch()
+    Object.assign(document.scanner.webSearch!, {
+      offsetBits: 3, offsetMatchCount: '4', yUnconstrained: true,
+    })
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    // Saved offset-only results keep their own meaning despite the current
+    // texture setup: final candidates leave Y unconstrained and have no errors.
+    expect(screen.getByText('X/Z candidates (+ rotation)').parentElement).toHaveTextContent('2')
+    expect(screen.getByRole('row', { name: '3 Any 0 0°' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Texture errors' })).not.toBeInTheDocument()
+  })
+
+  it('clears the saved search without changing search settings', () => {
+    const document = documentWithSavedSearch()
+    useEditorStore.setState({ document, step: 'export' })
+    render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved search' }))
+    const scanner = useEditorStore.getState().document.scanner
+    expect(scanner.webSearch).toBeNull()
+    expect(scanner.bounds).toEqual(document.scanner.bounds)
+    expect(screen.queryByRole('row', { name: '3 0 0 0° 0' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run web search' })).toBeEnabled()
+  })
+
   it('restores saved progress and candidates as a resumable search', () => {
     useEditorStore.setState({
       document: documentWithSavedSearch(),
@@ -297,7 +456,7 @@ describe('Export / Run workspace', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '40')
     expect(screen.getByRole('row', { name: '3 0 0 0° 0' })).toBeInTheDocument()
     expect(
-      screen.getByText(/Progress and the first 1,000 matches are saved/),
+      screen.getByText(/Result display is capped at the first/),
     ).toBeInTheDocument()
   })
 })

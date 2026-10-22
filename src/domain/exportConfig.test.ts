@@ -52,6 +52,101 @@ const documentWith = (entries: FaceEvidence[]): EditorDocument => {
 }
 
 describe('CoordsFinder export', () => {
+  const offsetDocument = () => {
+    const document = documentWith([])
+    document.scanner.textureEnabled = false
+    document.scanner.offsetsEnabled = true
+    document.offsets = [{
+      id: 'flower', blockId: 'dandelion', modelIndex: 0,
+      position: { x: 300, y: 2, z: -400 },
+      nibbles: { x: 11, y: 0, z: 5 }, tint: '#91bd59',
+    }]
+    return document
+  }
+
+  it('exports anchor-relative world offsets beyond the texture signed-byte range', () => {
+    const document = offsetDocument()
+    document.anchorFaceId = document.scene.faces.find((face) =>
+      face.blockCoordinate.x === 2 && face.blockCoordinate.y === 1 && face.blockCoordinate.z === 0)!.id
+    document.scanner.directions = [0, 90, 180, 270]
+    const config = generateCoordsFinderConfig(document)
+    expect(config).toContain('[offsets]\n# x y z | offx offy offz [dripstone]\n298 -1 400 | 11 * 5')
+    expect(config).toContain('directions = [0, 90, 180, 270]')
+    expect(config).not.toContain('[filter]')
+    expect(config).not.toMatch(/^(algorithm|yRange|errorTolerance|scanOrder|cpuTileSize|gpuTileSize|verbose)\s*=/m)
+    expect(validateForExport(document)).toMatchObject({ errors: [], warnings: [], rowCount: 0 })
+  })
+
+  it('exports XYZ seeds and dripstone endpoints without losing clipping', () => {
+    const document = offsetDocument()
+    document.offsets![0].blockId = 'short_grass'
+    document.offsets![0].nibbles.y = 9
+    document.offsets!.push({ ...document.offsets![0], id: 'dripstone', blockId: 'pointed_dripstone',
+      position: { x: 3, y: 1, z: -2 }, nibbles: { x: 0, y: 0, z: 15 } })
+    expect(generateCoordsFinderConfig(document)).toContain('300 -2 400 | 11 9 5')
+    expect(generateCoordsFinderConfig(document)).toContain('3 -1 2 | 0 * 15 dripstone')
+    expect(validateForExport(document).errors).toEqual([])
+  })
+
+  it('combines enabled textures and offsets, excluding ignored observations', () => {
+    const document = offsetDocument()
+    document.scanner.textureEnabled = true
+    document.evidence = [evidence('texture', { x: 0, y: 0, z: 0 }, 4, 2)]
+    document.offsets!.push({ ...document.offsets![0], id: 'ignored', ignored: true, nibbles: { x: 1, y: 0, z: 2 } })
+    document.scanner.bounds.yStart = 2
+    document.scanner.bounds.yEnd = 60
+    const config = generateCoordsFinderConfig(document)
+    expect(config).toContain('algorithm = Vanilla-3')
+    expect(config).toContain('yRange = (2, 60)')
+    expect(config).toContain('errorTolerance = 0')
+    expect(config).toContain('scanOrder = spiral')
+    expect(config).toContain('cpuTileSize = (1024, 1024)')
+    expect(config).toContain('gpuTileSize = (8192, 8192)')
+    expect(config).toContain('verbose = false')
+    expect(config).toContain('[filter]\n# x y z | variant [side|netherrack-<face>]\n0 0 0 | 2')
+    expect(config).toContain('300 -2 400 | 11 * 5')
+    expect(config).not.toContain('300 -2 400 | 1 * 2')
+    expect(validateForExport(document).errors).toEqual([])
+    document.scanner.offsetsEnabled = false
+    expect(generateCoordsFinderConfig(document)).not.toContain('[offsets]')
+    document.scanner.textureEnabled = false
+    expect(validateForExport(document).errors).toContain('Confirm a texture face or add an active block offset to export.')
+  })
+
+  it('rejects invalid active offsets, conflicts, and out-of-world native offset bounds', () => {
+    const document = offsetDocument()
+    document.offsets![0].nibbles.x = 16
+    expect(validateForExport(document).errors.join(' ')).toMatch(/invalid model, position, or seed nibble/)
+    document.offsets![0].nibbles.x = 11
+    document.offsets!.push({ ...document.offsets![0], id: 'conflict', position: { ...document.offsets![0].position, y: 9 }, nibbles: { x: 4, y: 0, z: 5 } })
+    expect(validateForExport(document).errors.join(' ')).toMatch(/contradict/)
+    document.offsets![1].ignored = true
+    expect(validateForExport(document).errors).toEqual([])
+    document.scanner.bounds.xEnd = 30_000_001
+    expect(validateForExport(document).errors.join(' ')).toMatch(/30,000,000/)
+  })
+
+  it('requires offset alignment readiness and ignores unused Y bounds', () => {
+    const document = offsetDocument()
+    // Omitted texture settings must not block an offset-only export.
+    document.scanner.errorTolerance = -1
+    document.scanner.cpuTileSize.x = 0
+    document.scanner.gpuTileSize.z = 0
+    document.scanner.bounds.yStart = 100
+    document.scanner.bounds.yEnd = -100
+    expect(validateForExport(document).errors).toEqual([])
+    document.scanner.compassResolved = false
+    expect(validateForExport(document).errors).toEqual([])
+    document.scene.axisMapping = { ...document.scene.axisMapping, a: 'unknown' }
+    expect(validateForExport(document).errors.join(' ')).toMatch(/compass mapping/)
+  })
+
+  it('does not impose the browser observation limit on native exports', () => {
+    const document = offsetDocument()
+    document.offsets = Array.from({ length: 257 }, (_, i) => ({ ...document.offsets![0], id: `offset-${i}`, position: { x: i, y: 0, z: 0 } }))
+    expect(validateForExport(document).errors).toEqual([])
+  })
+
   it('deduplicates coordinates and keeps the stronger four-state constraint', () => {
     const entries = [
       evidence('side', { x: 0, y: 0, z: 0 }, 2, 1),
@@ -183,7 +278,7 @@ describe('CoordsFinder export', () => {
   })
 
   it('writes the user-selected texture algorithm to the scanner algorithm setting', () => {
-    const document = documentWith([])
+    const document = documentWith([evidence('texture', { x: 0, y: 0, z: 0 }, 4, 0)])
     document.scanner.textureAlgorithm = 'Sodium-2'
 
     expect(generateCoordsFinderConfig(document)).toContain('algorithm = Sodium-2')

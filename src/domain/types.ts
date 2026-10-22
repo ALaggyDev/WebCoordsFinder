@@ -44,7 +44,7 @@ export const searchDirections = [0, 90, 180, 270] as const
 export type SearchDirection = (typeof searchDirections)[number]
 
 export type ReviewStatus = 'unlabeled' | 'proposed' | 'confirmed'
-export type EditorStep = 'grid' | 'faces' | 'export'
+export type EditorStep = 'grid' | 'faces' | 'offsets' | 'export'
 export type EditorTool = 'select' | 'anchor' | 'plane' | 'orient' | 'extrude'
 
 export type CandidateTransform =
@@ -226,6 +226,7 @@ export interface WebSearchShardCheckpoint {
   end: string
   next: string
   matchCount: string
+  offsetMatchCount?: string
 }
 
 export type PersistedWebSearchPhase =
@@ -236,13 +237,16 @@ export type PersistedWebSearchPhase =
   | 'error'
 
 export interface WebSearchCheckpoint {
-  engineVersion: 2 | 3 | 4 | 5 | 6
+  engineVersion: 2 | 3 | 4 | 5 | 6 | 7
   // BigInt counters use decimal strings because projects are JSON-serialized.
   requestKey: string
   phase: PersistedWebSearchPhase
   processed: string
   total: string
   matchCount: string
+  offsetMatchCount?: string
+  yUnconstrained?: boolean
+  offsetBits?: number
   checksPerSecond: number
   results: WebSearchResult[]
   // Version 4 persists each independent cursor. Aggregate progress alone is
@@ -253,6 +257,8 @@ export interface WebSearchCheckpoint {
 }
 
 export interface ScannerSettings {
+  textureEnabled: boolean
+  offsetsEnabled: boolean
   textureAlgorithm: TextureAlgorithm
   scanOrder: ScanOrder
   directions: SearchDirection[]
@@ -274,7 +280,28 @@ export interface EditorDocument {
   image: ImageAsset
   scene: SceneGeometry
   evidence: FaceEvidence[]
+  /** Optional addition to schema 1; older projects have no offset observations. */
+  offsets?: BlockOffsetEvidence[]
+  /** Global game tick per block type for previewing bundled animated textures. */
+  animationTicks?: Record<string, number>
   scanner: ScannerSettings
+}
+
+export interface BlockOffsetEvidence {
+  id: string
+  blockId: string
+  modelIndex: number
+  /** Owning block's minimum screenshot-local lattice corner. */
+  position: Point3
+  /** Seed nibbles, 0..15. Dripstone clamping can make several values equivalent. */
+  nibbles: Point3
+  tint: string
+  /** Climate values used to derive the Minecraft grass colormap tint. */
+  grassTint?: GrassTintSettings
+  /** Keep the placement visible while marking its handle as ignored. */
+  ignored?: boolean
+  /** Confirmation is valid only for the camera and compass used to align it. */
+  confirmedBasis?: string
 }
 
 export interface BlockProfile {

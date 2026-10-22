@@ -1,4 +1,5 @@
 import { confirmedUniqueEvidence, validateForExport } from './exportConfig'
+import { compileOffsetDirections, offsetTraversalBits, type OffsetConstraint } from './offsetSearch'
 import { compileFilterDirections } from './filterConstraints'
 import type {
   EditorDocument,
@@ -14,7 +15,7 @@ import type {
 // The web-search protocol keeps exact counters as BigInt in memory and as
 // decimal strings at the persisted document boundary.
 export const MAX_WEB_SEARCH_RESULTS = 1_000
-export const WEB_SEARCH_ENGINE_VERSION = 6
+export const WEB_SEARCH_ENGINE_VERSION = 7
 
 const textureModeIds: Record<TextureAlgorithm, number> = {
   'Vanilla-1': 0,
@@ -38,6 +39,9 @@ export interface WebSearchConstraint {
 }
 
 export interface WebSearchRequest {
+  offsetConstraintsByDirection?: OffsetConstraint[][]
+  offsetBits?: number
+  yUnconstrained?: boolean
   mode: number
   scanOrder: number
   directions: SearchDirection[]
@@ -61,6 +65,7 @@ export interface WebSearchOrdinalShard {
 export interface WebSearchShardProgress extends WebSearchOrdinalShard {
   next: bigint
   matchCount: bigint
+  offsetMatchCount?: bigint
 }
 
 export interface WebSearchOrdinalResult extends Omit<WebSearchResult, 'scanOrdinal'> {
@@ -130,6 +135,8 @@ export function validateSearchShardProgress(
       shard.next < shard.start ||
       shard.next > shard.end ||
       shard.matchCount < 0n ||
+      (shard.offsetMatchCount ?? 0n) < 0n ||
+      (shard.offsetMatchCount ?? 0n) > shard.next - shard.start ||
       shard.matchCount > shard.next - shard.start
     ) {
       throw new Error('The saved search shard layout is invalid.')
@@ -231,6 +238,7 @@ export type WebSearchWorkerCommand =
       checkpoint?: {
         processed: bigint
         matchCount: bigint
+        offsetMatchCount?: bigint
         results: WebSearchResult[]
         shards?: WebSearchShardProgress[]
       }
@@ -246,6 +254,7 @@ export interface WebSearchWorkerState {
   processed: bigint
   total: bigint
   matchCount: bigint
+  offsetMatchCount?: bigint
   checksPerSecond: number
   // Omitted when the deterministic retained set has not changed since the
   // previous publication. This keeps high-frequency counter updates small.
@@ -263,6 +272,7 @@ export type WebSearchShardWorkerCommand =
       checkpoint?: {
         next: bigint
         matchCount: bigint
+        offsetMatchCount?: bigint
       }
     }
   | { type: 'pause'; requestId: string }
@@ -276,6 +286,7 @@ export interface WebSearchShardWorkerState {
   phase: 'running' | 'paused' | 'stopped' | 'completed' | 'error'
   next: bigint
   matchCount: bigint
+  offsetMatchCount?: bigint
   checksPerSecond: number
   results: WebSearchOrdinalResult[]
   error?: string
@@ -319,16 +330,30 @@ function requireInt32(value: number, label: string): number {
 export function createWebSearchRequest(
   document: EditorDocument,
 ): WebSearchRequest {
-  const validation = validateForExport(document)
-  if (validation.errors.length > 0) {
-    throw new Error(validation.errors[0])
+  const textures = document.scanner.textureEnabled !== false
+  const offsets = document.scanner.offsetsEnabled === true
+  if (!textures && !offsets) throw new Error('Enable texture rotations or block offsets to search.')
+  const textureRows = textures ? confirmedUniqueEvidence(document) : []
+  const offsetConstraints = offsets ? compileOffsetDirections(document) : document.scanner.directions.map(() => [])
+  const hasOffsets = offsetConstraints.some((entries) => entries.length > 0)
+  if (textures && document.evidence.some((entry) =>
+    entry.reviewStatus === 'confirmed' && entry.selectedVariant !== undefined)) {
+    const validation = validateForExport(document, 'browser')
+    if (validation.errors.length) throw new Error(validation.errors[0])
+  } else {
+    if (!document.scanner.directions.length || new Set(document.scanner.directions).size !== document.scanner.directions.length ||
+      document.scanner.directions.some((n) => ![0, 90, 180, 270].includes(n))) {
+      throw new Error('Select at least one unique quarter-turn search direction.')
+    }
   }
+  if (!textureRows.length && !hasOffsets) throw new Error('Confirm a texture face or add an active block offset to search.')
+  const yUnconstrained = textureRows.length === 0
 
   const { bounds } = document.scanner
   const xStart = requireInt32(bounds.xStart, 'X start')
   const xEnd = requireInt32(bounds.xEnd, 'X end')
-  const yStart = requireInt32(bounds.yStart, 'Y start')
-  const yEnd = requireInt32(bounds.yEnd, 'Y end')
+  const yStart = yUnconstrained ? 0 : requireInt32(bounds.yStart, 'Y start')
+  const yEnd = yUnconstrained ? 0 : requireInt32(bounds.yEnd, 'Y end')
   const zStart = requireInt32(bounds.zStart, 'Z start')
   const zEnd = requireInt32(bounds.zEnd, 'Z end')
   const maxBadBlocks = requireInt32(
@@ -336,24 +361,25 @@ export function createWebSearchRequest(
     'Error tolerance',
   )
 
-  const volume =
-    (BigInt(xEnd) - BigInt(xStart) + 1n) *
-    (BigInt(yEnd) - BigInt(yStart) + 1n) *
-    (BigInt(zEnd) - BigInt(zStart) + 1n)
-  const directionalVolume =
-    volume * BigInt(document.scanner.directions.length)
-  // The freestanding WASM engine exposes unsigned 64-bit progress counters.
-  if (directionalVolume > uint64Maximum) {
-    throw new Error('The web search volume exceeds the WASM scanner limit.')
+  if (xStart > xEnd || zStart > zEnd || yStart > yEnd) throw new Error('Every search start must be less than or equal to its end.')
+  if ([xStart, xEnd, zStart, zEnd].some((n) => Math.abs(n) > 30_000_000)) {
+    throw new Error('X/Z bounds must lie within ±30,000,000 blocks.')
   }
-
-  const compiledDirections = compileFilterDirections(
-    confirmedUniqueEvidence(document),
-    document.scanner.textureAlgorithm,
-    document.scanner.directions,
-  )
+  if (maxBadBlocks < 0 || maxBadBlocks > 65535) throw new Error('Texture error tolerance must be between 0 and 65,535.')
+  const offsetBits = hasOffsets ? offsetTraversalBits(xStart, xEnd, zStart, zEnd) : 0
+  const xzVolume = hasOffsets ? 1n << BigInt(offsetBits * 2) :
+    (BigInt(xEnd) - BigInt(xStart) + 1n) * (BigInt(zEnd) - BigInt(zStart) + 1n)
+  if (xzVolume * (BigInt(yEnd) - BigInt(yStart) + 1n) * BigInt(document.scanner.directions.length) > uint64Maximum) {
+    throw new Error('The search traversal exceeds the WASM counter limit; narrow the Y range.')
+  }
+  const compiledDirections = textureRows.length ? compileFilterDirections(
+    textureRows, document.scanner.textureAlgorithm, document.scanner.directions,
+  ) : document.scanner.directions.map((direction) => ({ direction, constraints: [], forcedErrors: 0 }))
 
   return {
+    offsetConstraintsByDirection: offsetConstraints,
+    offsetBits,
+    yUnconstrained,
     mode: textureModeIds[document.scanner.textureAlgorithm],
     scanOrder: scanOrderIds[document.scanner.scanOrder],
     directions: document.scanner.directions,
@@ -376,18 +402,22 @@ export function webSearchRequestKey(request: WebSearchRequest): string {
 
 export function webSearchRequestVolume(request: WebSearchRequest): bigint {
   return (
-    (BigInt(request.xEnd) - BigInt(request.xStart) + 1n) *
+    (request.offsetBits ? 1n << BigInt(request.offsetBits * 2) :
+      (BigInt(request.xEnd) - BigInt(request.xStart) + 1n) *
+      (BigInt(request.zEnd) - BigInt(request.zStart) + 1n)) *
     (BigInt(request.yEnd) - BigInt(request.yStart) + 1n) *
-    (BigInt(request.zEnd) - BigInt(request.zStart) + 1n) *
     BigInt(request.directions.length)
   )
 }
 
 export interface WebSearchViewState {
+  offsetBits?: number
+  yUnconstrained?: boolean
   phase: WebSearchPhase
   processed: bigint
   total: bigint
   matchCount: bigint
+  offsetMatchCount?: bigint
   checksPerSecond: number
   results: WebSearchResult[]
   shards?: WebSearchShardProgress[]
@@ -413,14 +443,18 @@ export function restoreWebSearchCheckpoint(
     end: BigInt(shard.end),
     next: BigInt(shard.next),
     matchCount: BigInt(shard.matchCount),
+    offsetMatchCount: BigInt(shard.offsetMatchCount ?? 0),
   }))
   return {
     // A worker cannot survive a reload, so an in-flight persisted search
     // reopens as paused and requires an explicit resume.
+    yUnconstrained: checkpoint.yUnconstrained,
+    offsetBits: checkpoint.offsetBits,
     phase: checkpoint.phase === 'running' ? 'paused' : checkpoint.phase,
     processed: BigInt(checkpoint.processed),
     total: BigInt(checkpoint.total),
     matchCount: BigInt(checkpoint.matchCount),
+    offsetMatchCount: BigInt(checkpoint.offsetMatchCount ?? 0),
     checksPerSecond: checkpoint.checksPerSecond,
     results: checkpoint.results,
     ...(shards ? { shards } : {}),
@@ -444,11 +478,14 @@ export function createWebSearchCheckpoint(
 ): WebSearchCheckpoint {
   return {
     engineVersion: WEB_SEARCH_ENGINE_VERSION,
+    yUnconstrained: state.yUnconstrained,
+    offsetBits: state.offsetBits,
     requestKey,
     phase: persistedPhase(state.phase),
     processed: state.processed.toString(),
     total: state.total.toString(),
     matchCount: state.matchCount.toString(),
+    offsetMatchCount: (state.offsetMatchCount ?? 0n).toString(),
     checksPerSecond: Number.isFinite(state.checksPerSecond)
       ? state.checksPerSecond
       : 0,
@@ -461,6 +498,7 @@ export function createWebSearchCheckpoint(
               end: shard.end.toString(),
               next: shard.next.toString(),
               matchCount: shard.matchCount.toString(),
+              offsetMatchCount: (shard.offsetMatchCount ?? 0n).toString(),
             }),
           ),
         }

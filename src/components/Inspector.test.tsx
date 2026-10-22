@@ -140,13 +140,29 @@ describe('face inspector batch selection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Grass tint settings' }))
     expect(screen.getByLabelText('Grass tint controls')).toBeInTheDocument()
-    const temperature = screen.getByRole('slider', { name: /Temperature/ })
-    expect(temperature).toHaveValue('0.8')
-    expect(screen.getByRole('slider', { name: /Downfall/ })).toHaveValue('0.4')
-    fireEvent.change(temperature, { target: { value: '0.65' } })
-    expect(useEditorStore.getState().document.evidence[0].blockSettings).toEqual({
-      grassTint: { temperature: 0.65, downfall: 0.4 },
-    })
+    const map = screen.getByRole('img', { name: 'Grass tint color map' })
+    expect(map.querySelector('.grass-tint-marker')).toBeInTheDocument()
+    vi.spyOn(map, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 100, height: 100,
+    } as DOMRect)
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    fireEvent.pointerDown(map, { clientX: 25, clientY: 65, pointerId: 1 })
+    expect(useEditorStore.getState().document.evidence[0].blockSettings?.grassTint?.temperature)
+      .toBeCloseTo(0.75)
+    fireEvent.pointerMove(map, { clientX: 35, clientY: 65, pointerId: 1 })
+    expect(map.querySelector('.grass-tint-marker')).toHaveStyle({ left: '35%' })
+    expect(useEditorStore.getState().document.evidence[0].blockSettings?.grassTint?.temperature)
+      .toBeCloseTo(0.75)
+    now += 80
+    fireEvent.pointerMove(map, { clientX: 35, clientY: 65, pointerId: 1 })
+    expect(useEditorStore.getState().document.evidence[0].blockSettings?.grassTint?.temperature)
+      .toBeCloseTo(0.65)
+    fireEvent.pointerUp(map, { clientX: 35, clientY: 65, pointerId: 1 })
+    vi.restoreAllMocks()
+    const tint = useEditorStore.getState().document.evidence[0].blockSettings?.grassTint
+    expect(tint?.temperature).toBeCloseTo(0.65)
+    expect(tint?.downfall).toBeCloseTo(0.35 / 0.65)
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(useEditorStore.getState().document.evidence[0].blockSettings).toEqual({
@@ -245,6 +261,31 @@ describe('face inspector batch selection', () => {
         (entry) => entry.blockId === 'deepslate',
       ),
     ).toBe(true)
+  })
+
+  it('shows and persists the global sculk animation time', () => {
+    const first = useEditorStore.getState().document.scene.faces[0]
+    useEditorStore.getState().selectFace(first.id, false)
+    useEditorStore.getState().setBlockForSelection('sculk')
+    useEditorStore.setState({ step: 'faces', faceTab: 'selection' })
+
+    render(
+      <Inspector
+        busy={false}
+        onOpenImage={vi.fn()}
+        onAutoFill={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Animation settings' }))
+    const slider = screen.getByRole('slider', { name: 'Animation time' })
+    expect(slider).toHaveAttribute('min', '1')
+    expect(slider).toHaveAttribute('max', '80')
+    expect(slider).toHaveValue('1')
+    fireEvent.change(slider, { target: { value: '35' } })
+    expect(useEditorStore.getState().document.animationTicks?.sculk).toBe(35)
+    fireEvent.change(slider, { target: { value: '80' } })
+    expect(useEditorStore.getState().document.animationTicks?.sculk).toBe(80)
   })
 
   it('only auto analyzes unlabeled faces and only confirms proposed faces', () => {

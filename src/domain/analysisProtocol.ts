@@ -9,6 +9,7 @@ export interface AutoAnalyzeJob {
   evidenceId: string
   quad: [Point2, Point2, Point2, Point2]
   referenceUrl: string
+  animationTick?: number
   grassTint?: GrassTintSettings
   transforms: CandidateTransform[]
 }

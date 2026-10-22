@@ -25,6 +25,7 @@ const steps: Array<{
 }> = [
   { id: 'grid', label: 'Geometry', icon: Grid3X3 },
   { id: 'faces', label: 'Faces', icon: BoxSelect },
+  { id: 'offsets', label: 'Offsets', icon: Crosshair },
   { id: 'export', label: 'Export', icon: Download },
 ]
 

@@ -1,9 +1,10 @@
+import { OffsetInspector } from './OffsetInspector'
+import { GrassTintPicker } from './GrassTintPicker'
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -70,6 +71,7 @@ import {
   type TextureAlgorithm,
 } from '../domain/types'
 import { downloadBlob } from '../domain/projectBundle'
+import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
 import { ExportRunDialog } from './ExportRunDialog'
 
@@ -99,6 +101,8 @@ function NumberField({
   min,
   max,
   info,
+  disabled = false,
+  disabledReason,
 }: {
   label: string
   value: number
@@ -106,6 +110,8 @@ function NumberField({
   min?: number
   max?: number
   info?: ReactNode
+  disabled?: boolean
+  disabledReason?: string
 }) {
   const [draft, setDraft] = useState(() => String(value))
 
@@ -118,14 +124,16 @@ function NumberField({
   }
 
   return (
-    <label className="field">
+    <label className={disabled ? 'field setting-disabled' : 'field'} title={disabled ? disabledReason : undefined}>
       <div className="field-label">
         <span>{label}</span>
-        {info ? <InfoTip label={`${label} information`}>{info}</InfoTip> : null}
+        {info ? <InfoTip label={`${label} information`}>{disabled && disabledReason ? disabledReason : info}</InfoTip> : null}
       </div>
       <input
         aria-label={label}
         type="number"
+        disabled={disabled}
+        title={disabled ? disabledReason : undefined}
         value={draft}
         min={min}
         max={max}
@@ -161,8 +169,10 @@ const verticalSearchPresets = [
 function SearchAreaPresets({
   bounds,
   updateBounds,
+  verticalEnabled = true,
 }: {
   bounds: SearchBounds
+  verticalEnabled?: boolean
   updateBounds: (patch: Partial<SearchBounds>) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -245,7 +255,8 @@ function SearchAreaPresets({
               })}
             </div>
           </div>
-          <div className="search-presets-group">
+          <div className={verticalEnabled ? 'search-presets-group' : 'search-presets-group setting-disabled'}
+            title={verticalEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}>
             <div className="search-presets-heading">
               <span>Y</span>
             </div>
@@ -256,6 +267,8 @@ function SearchAreaPresets({
                   <button
                     key={preset.label}
                     type="button"
+                    disabled={!verticalEnabled}
+                    title={verticalEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}
                     className={active ? 'search-preset-option active' : 'search-preset-option'}
                     aria-pressed={active}
                     onClick={() => updateBounds({
@@ -663,6 +676,7 @@ function FaceInspector({
   const updateBlockSettingsForSelection = useEditorStore(
     (state) => state.updateBlockSettingsForSelection,
   )
+  const setAnimationTick = useEditorStore((state) => state.setAnimationTick)
   const setVariant = useEditorStore((state) => state.setVariant)
   const selectedEvidence = document.evidence.filter((entry) =>
     selectedIds.includes(entry.id),
@@ -702,6 +716,15 @@ function FaceInspector({
   const supportsGrassSettings =
     selectedEvidence.length > 0 &&
     selectedEvidence.every((entry) => blockProfileMap.get(entry.blockId)?.settings?.grassTint)
+  const selectedAnimationCycle = evidence && selectedEvidence.every(
+    (entry) => entry.blockId === evidence.blockId,
+  )
+    ? animationCycleTicks(
+        Object.values(blockProfileMap.get(evidence.blockId)?.referenceTextures ?? {})
+          .filter((source): source is string => Boolean(source)),
+      )
+    : undefined
+  const supportsBlockSettings = supportsGrassSettings || selectedAnimationCycle !== undefined
 
   useEffect(() => {
     if (!settingsOpen) return
@@ -718,8 +741,8 @@ function FaceInspector({
   }, [settingsOpen])
 
   useEffect(() => {
-    if (!supportsGrassSettings) setSettingsOpen(false)
-  }, [supportsGrassSettings])
+    if (!supportsBlockSettings) setSettingsOpen(false)
+  }, [supportsBlockSettings])
 
   useEffect(() => {
     let active = true
@@ -782,13 +805,19 @@ function FaceInspector({
         )
     : undefined
   const grassTint = evidence?.blockSettings?.grassTint ?? defaultGrassTintSettings
+  const storedAnimationTick = evidence
+    ? document.animationTicks?.[evidence.blockId] ?? 1
+    : 1
+  const animationTick = selectedAnimationCycle
+    ? ((storedAnimationTick - 1) % selectedAnimationCycle) + 1
+    : storedAnimationTick
   const [displayReferenceUrl, setDisplayReferenceUrl] = useState('')
 
   useEffect(() => {
     let active = true
     setDisplayReferenceUrl('')
     if (!referenceUrl) return
-    colorizedReferenceTexture(referenceUrl, grassTint)
+    colorizedReferenceTexture(referenceUrl, grassTint, animationTick)
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
       })
@@ -798,7 +827,7 @@ function FaceInspector({
     return () => {
       active = false
     }
-  }, [grassTint, referenceUrl])
+  }, [animationTick, grassTint, referenceUrl])
 
   if (!document.scene.projection) {
     return (
@@ -852,9 +881,6 @@ function FaceInspector({
   const grassTintIsDefault =
     temperature === defaultGrassTintSettings.temperature &&
     downfall === defaultGrassTintSettings.downfall
-  const tintSliderStyle = (value: number) => ({
-    '--tint-position': `${value * 100}%`,
-  }) as CSSProperties
   const renderedReferenceUrl = displayReferenceUrl || referenceUrl
   const candidates = Array.from({ length: evidence.stateCount }, (_, index) => index)
   const variantTransforms = evidenceFace
@@ -976,12 +1002,14 @@ function FaceInspector({
       <div className="field block-profile-field">
         <div className="block-profile-heading">
           <label htmlFor="block-profile">Block profile</label>
-          {profile?.settings?.grassTint && (
+          {supportsBlockSettings && (
             <button
               ref={settingsButtonRef}
               type="button"
               className={settingsOpen ? 'profile-settings-button active' : 'profile-settings-button'}
-              aria-label="Grass tint settings"
+              aria-label={selectedAnimationCycle === undefined
+                ? 'Grass tint settings'
+                : 'Animation settings'}
               aria-expanded={settingsOpen}
               onClick={() => setSettingsOpen((open) => !open)}
             >
@@ -1026,61 +1054,54 @@ function FaceInspector({
             </option>
           ))}
         </select>
-        {settingsOpen && profile?.settings?.grassTint && (
+        {settingsOpen && supportsBlockSettings && (
           <div
             ref={settingsMenuRef}
             className="block-settings-menu"
-            aria-label="Grass tint controls"
+            aria-label={selectedAnimationCycle === undefined
+              ? 'Grass tint controls'
+              : 'Animation controls'}
           >
-            <div className="block-settings-menu-header">
-              <div className="block-settings-title">Grass tint</div>
-              <button
-                type="button"
-                className="reset-tint-button"
-                disabled={grassTintIsDefault}
-                onClick={() => updateBlockSettingsForSelection({
-                  grassTint: { ...defaultGrassTintSettings },
-                })}
-              >
-                <RotateCcw size={12} /> Reset
-              </button>
-            </div>
-            <label className="tint-slider">
-              <span>Temperature <output>{temperature?.toFixed(2) ?? 'Mixed'}</output></span>
-              <input
-                type="range"
-                aria-label="Temperature"
-                min="0"
-                max="1"
-                step="0.01"
-                value={resolvedTemperature}
-                style={tintSliderStyle(resolvedTemperature)}
-                onChange={(event) => updateBlockSettingsForSelection({
-                  grassTint: {
-                    temperature: Number(event.target.value),
-                    downfall: resolvedDownfall,
-                  },
-                })}
-              />
-            </label>
-            <label className="tint-slider">
-              <span>Downfall <output>{downfall?.toFixed(2) ?? 'Mixed'}</output></span>
-              <input
-                type="range"
-                aria-label="Downfall"
-                min="0"
-                max="1"
-                step="0.01"
-                value={resolvedDownfall}
-                style={tintSliderStyle(resolvedDownfall)}
-                onChange={(event) => updateBlockSettingsForSelection({
-                  grassTint: {
-                    temperature: resolvedTemperature,
-                    downfall: Number(event.target.value),
-                  },
-                })}
-              />
-            </label>
+            {selectedAnimationCycle !== undefined && (
+              <label className="range-field">
+                <span>
+                  Animation time{' '}
+                  <output>{animationTick} / {selectedAnimationCycle} ticks</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label="Animation time"
+                  min="1"
+                  max={selectedAnimationCycle}
+                  step="1"
+                  value={animationTick}
+                  onChange={(event) =>
+                    setAnimationTick(evidence.blockId, Number(event.target.value))
+                  }
+                />
+              </label>
+            )}
+            {profile?.settings?.grassTint && (
+              <>
+                <div className="block-settings-menu-header">
+                  <div className="block-settings-title">Grass tint</div>
+                  <button
+                    type="button"
+                    className="reset-tint-button"
+                    disabled={grassTintIsDefault}
+                    onClick={() => updateBlockSettingsForSelection({
+                      grassTint: { ...defaultGrassTintSettings },
+                    })}
+                  >
+                    <RotateCcw size={12} /> Reset
+                  </button>
+                </div>
+                <GrassTintPicker
+                  value={{ temperature: resolvedTemperature, downfall: resolvedDownfall }}
+                  onChange={(grassTint) => updateBlockSettingsForSelection({ grassTint })}
+                />
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1292,6 +1313,7 @@ function ReviewFacePreview({
     colorizedReferenceTexture(
       referenceUrl,
       evidence.blockSettings?.grassTint ?? defaultGrassTintSettings,
+      document.animationTicks?.[evidence.blockId] ?? 1,
     )
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
@@ -1302,7 +1324,7 @@ function ReviewFacePreview({
     return () => {
       active = false
     }
-  }, [evidence.blockSettings?.grassTint, referenceUrl])
+  }, [document.animationTicks, evidence.blockId, evidence.blockSettings?.grassTint, referenceUrl])
 
   return createPortal(
     <aside
@@ -1614,6 +1636,8 @@ function ExportInspector() {
   const validation = validateForExport(document)
   const config = generateCoordsFinderConfig(document)
   const bounds = document.scanner.bounds
+  const hasOffsets = document.scanner.offsetsEnabled &&
+    (document.offsets ?? []).some((entry) => !entry.ignored)
 
   const downloadConfig = () => {
     if (validation.errors.length > 0) return
@@ -1626,11 +1650,48 @@ function ExportInspector() {
   return (
     <div className="export-inspector">
       <SectionTitle icon={Download} title="Export" />
-      <div className="field">
+      <div className="search-evidence">
+        <div className="field-label search-evidence-heading">
+          Search evidence
+          <InfoTip label="Search evidence information">
+            Enable either evidence type or combine both. Active block offsets
+            must match exactly; error tolerance applies only to textures.
+          </InfoTip>
+        </div>
+        <div className="search-evidence-options">
+          <div className="search-evidence-option">
+            <label className="check-field" title={[
+              'Search using confirmed texture variants on labeled block faces.',
+              'Choose the algorithm for your Minecraft version or renderer.',
+              'Error tolerance allows texture mismatches; unconfirmed proposals are excluded.',
+            ].join('\n')}>
+              Texture rotations
+              <input type="checkbox" checked={document.scanner.textureEnabled}
+                onChange={(event) => updateScanner({ textureEnabled: event.target.checked })} />
+            </label>
+          </div>
+          <div className="search-evidence-option">
+            <label className="check-field" title={[
+              'Search using the measured displacement of decorations such as grass and flowers.',
+              'All Active observations are strict constraints; Ignore observations are excluded.',
+              'Offsets constrain X/Z, so Y is unconstrained unless textures are also enabled.',
+              'Horizontal rotations rotate both the block positions and their displacements.',
+              'Block offsets are supported by the browser search only.',
+            ].join('\n')}>
+              Block offsets
+              <input type="checkbox" checked={document.scanner.offsetsEnabled}
+                onChange={(event) => updateScanner({ offsetsEnabled: event.target.checked })} />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className={document.scanner.textureEnabled ? 'field' : 'field setting-disabled'}
+        title={document.scanner.textureEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}>
         <div className="field-label">
           <span>Texture algorithm</span>
           <InfoTip label="Algorithm version reference">
-            <div className="algorithm-reference-content">
+            {!document.scanner.textureEnabled ? 'This setting is only relevant when texture rotations are used.' : <div className="algorithm-reference-content">
               <table>
                 <thead>
                   <tr>
@@ -1657,10 +1718,12 @@ function ExportInspector() {
                   <tr><td>1.19-1.19.3</td><td>4.2-4.8</td><td>Sodium-2</td></tr>
                 </tbody>
               </table>
-            </div>
+            </div>}
           </InfoTip>
         </div>
         <select
+          disabled={!document.scanner.textureEnabled}
+          title={document.scanner.textureEnabled ? undefined : 'This setting is only relevant when texture rotations are used.'}
           aria-label="Texture algorithm"
           value={document.scanner.textureAlgorithm}
           onChange={(event) =>
@@ -1672,23 +1735,33 @@ function ExportInspector() {
           ))}
         </select>
       </div>
-      <label className="field">
+      <label className={hasOffsets ? 'field setting-disabled' : 'field'}
+        title={hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}>
         <div className="field-label">
           <span>Scan order</span>
           <InfoTip label="Scan order information">
+            {hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : <>
+            Active block offsets use an automatic traversal to prune candidates.
+            Otherwise, the selected scan order applies.
+            <br />
             "Linear" starts from -X and end in +X, then -Z to +Z.
             <br />
             "Spiral" starts from the center and spirals outward clockwise.
             <br />
             "Reverse spiral" follows the same path from the outside inward.
+            </>}
           </InfoTip>
         </div>
         <select
-          value={document.scanner.scanOrder}
+          aria-label="Scan order"
+          disabled={hasOffsets}
+          title={hasOffsets ? 'Block offsets use fanda857 & epic10l2’s fast bit lifting algorithm, which makes this setting irrelevant.' : undefined}
+          value={hasOffsets ? 'offsets' : document.scanner.scanOrder}
           onChange={(event) =>
             updateScanner({ scanOrder: event.target.value as ScanOrder })
           }
         >
+          <option value="offsets" disabled>Fast bit lifting (block offsets)</option>
           {scanOrders.map((scanOrder) => (
             <option key={scanOrder} value={scanOrder}>{scanOrder}</option>
           ))}
@@ -1700,12 +1773,14 @@ function ExportInspector() {
           <InfoTip label="XZ rotations to search information">
             This setting is necessary when the cardinal direction of the camera is unknown.
             <br />
-            The scanner will automatically rotate the coordinates and variants of each block clockwise by either 0°, 90°, 180°, and 270° horizontally.
+            The scanner searches each selected rotation around the anchor: 0°, 90°, 180°, or 270°.
+            This rotates texture constraints, block positions, and measured X/Z displacements together. Vertical displacements stay unchanged.
             <br />
             If the camera is known to be facing a specific direction, uncheck the other directions to reduce search time.
             <br />
             <br />
-            Note: For stone/deepslate/bedrock/sculk textures, only 0° and 180° are enough.
+            For stone/deepslate/bedrock/sculk textures alone, 0° and 180° are enough.
+            With block offsets enabled, keep all four rotations if the compass direction is unknown.
           </InfoTip>
         </div>
         <div className="direction-list" aria-label="Directions to search">
@@ -1735,14 +1810,17 @@ function ExportInspector() {
       <div className="subsection">
         <div className="field-label subsection-label search-area-heading">
           <span>Search area</span>
-          <SearchAreaPresets bounds={bounds} updateBounds={updateBounds} />
+          <SearchAreaPresets bounds={bounds} updateBounds={updateBounds} verticalEnabled={document.scanner.textureEnabled} />
         </div>
         <div className="bounds-grid">
           {(['x', 'y', 'z'] as const).map((axis) => (
-            <div key={axis} className="bounds-row">
+            <div key={axis} className={axis === 'y' && !document.scanner.textureEnabled ? 'bounds-row setting-disabled' : 'bounds-row'}
+              title={axis === 'y' && !document.scanner.textureEnabled ? 'This setting is only relevant when texture rotations are used.' : undefined}>
               <b>{axis.toUpperCase()}</b>
               <NumberField
                 label="Start"
+                disabled={axis === 'y' && !document.scanner.textureEnabled}
+                disabledReason="This setting is only relevant when texture rotations are used."
                 value={bounds[`${axis}Start`]}
                 onChange={(value) =>
                   updateBounds({ [`${axis}Start`]: value } as Partial<typeof bounds>)
@@ -1750,6 +1828,8 @@ function ExportInspector() {
               />
               <NumberField
                 label="End"
+                disabled={axis === 'y' && !document.scanner.textureEnabled}
+                disabledReason="This setting is only relevant when texture rotations are used."
                 value={bounds[`${axis}End`]}
                 onChange={(value) =>
                   updateBounds({ [`${axis}End`]: value } as Partial<typeof bounds>)
@@ -1762,24 +1842,27 @@ function ExportInspector() {
       <div className="subsection">
         <NumberField
           label="Error tolerance"
+          disabled={!document.scanner.textureEnabled}
+          disabledReason="This setting is only relevant when texture rotations are used."
           value={document.scanner.errorTolerance}
           min={0}
           info={<>The maximum amount of texture mismatches allowed by the scanner.<br />High error tolerance increases search time.</>}
           onChange={(errorTolerance) => updateScanner({ errorTolerance })}
         />
       </div>
-      <details className="advanced-settings">
+      <details className={document.scanner.textureEnabled ? 'advanced-settings' : 'advanced-settings setting-disabled'}
+        title={document.scanner.textureEnabled ? undefined : 'These settings are only relevant when texture rotations are used.'}>
         <summary>CoordsFinder settings (advanced)</summary>
         <p className="field-help">
           These options only affect the CoordsFinder configuration.
         </p>
         <div className="field-grid two">
-          <NumberField label="CPU tile size X" value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
-          <NumberField label="CPU tile size Z" value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
-          <NumberField label="GPU tile size X" value={document.scanner.gpuTileSize.x} min={1} onChange={(x) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, x } })} />
-          <NumberField label="GPU tile size Z" value={document.scanner.gpuTileSize.z} min={1} onChange={(z) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, z } })} />
+          <NumberField label="CPU tile size X" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.cpuTileSize.x} min={1} onChange={(x) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, x } })} />
+          <NumberField label="CPU tile size Z" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.cpuTileSize.z} min={1} onChange={(z) => updateScanner({ cpuTileSize: { ...document.scanner.cpuTileSize, z } })} />
+          <NumberField label="GPU tile size X" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.gpuTileSize.x} min={1} onChange={(x) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, x } })} />
+          <NumberField label="GPU tile size Z" disabled={!document.scanner.textureEnabled} disabledReason="This setting is only relevant when texture rotations are used." value={document.scanner.gpuTileSize.z} min={1} onChange={(z) => updateScanner({ gpuTileSize: { ...document.scanner.gpuTileSize, z } })} />
           <label className="check-field">
-            <input type="checkbox" checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
+            <input type="checkbox" disabled={!document.scanner.textureEnabled} checked={document.scanner.verbose} onChange={(event) => updateScanner({ verbose: event.target.checked })} />
             verbose logging
           </label>
         </div>
@@ -1811,6 +1894,7 @@ export function Inspector(props: InspectorProps) {
       <div className="inspector-scroll">
         {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
+        {step === 'offsets' && <OffsetInspector />}
         {step === 'export' && <ExportInspector />}
       </div>
     </aside>
