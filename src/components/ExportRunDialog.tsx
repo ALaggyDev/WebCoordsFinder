@@ -401,7 +401,7 @@ export function ExportRunDialog({
                 ? 'Offsets search X/Z only; Y is unknown.'
                 : 'Offsets filter X/Z first; texture rotations check the surviving results across Y.'}
               <br />
-              Estimated runtime is around 15-60 seconds across the full 60m world (fanda857 & epic10l2's <a href="https://github.com/ALaggyDev/CoordsFinder/docs/fast_bit_lifting.rs">fast bit lifting algorithm</a>).
+              Estimated runtime is around 15-60 seconds across the full 60m world (fanda857 & epic10l2's <a href="https://github.com/ALaggyDev/CoordsFinder/blob/main/docs/fast_bit_lifting.rs">fast bit lifting algorithm</a>).
               {!yUnconstrained && ` Texture mismatch tolerance: ${document.scanner.errorTolerance}.`}
             </> : document.scanner.offsetsEnabled
               ? 'No active block offsets participate in this browser search.'

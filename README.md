@@ -2,7 +2,7 @@
 
 WebCoordsFinder is an online web editor for Minecraft texture rotation & block offset cracking! It allows users to easily label visible block texture variants in a screenshot to find the coordinates. Then, users can either run the scanner directly on the website or export a search config file for [CoordsFinder](https://github.com/ALaggyDev/CoordsFinder) to run on Nvidia GPU.
 
-Update: WebCoordsFinder now supports both texture rotation AND block offset cracking! With block offset's [fast bit lifting algorithm](https://github.com/ALaggyDev/CoordsFinder/docs/fast_bit_lifting.rs) by fanda857 and epic10l2, you can perform a full 60 million world search in less than 15 seconds!
+Update: WebCoordsFinder now supports both texture rotation AND block offset cracking! With block offset's [fast bit lifting algorithm](https://github.com/ALaggyDev/CoordsFinder/blob/main/docs/fast_bit_lifting.rs) by fanda857 and epic10l2, you can perform a full 60 million world search in less than 15 seconds!
 
 Check out my video on YouTube!
 
