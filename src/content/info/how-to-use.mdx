@@ -20,8 +20,9 @@ This website is simple to use once you get the hang of it. The gist is as follow
 
 5. **Record decoration offsets (optional)**
 
-   Open **Offsets** after solving a 3D camera and confirming a horizontal
-   direction. Select a supporting mesh face, choose a decoration, and add it.
+   Open **Offsets** after solving a 3D camera and setting UP. Guessed cardinal
+   directions work too; search the possible quarter-turn directions when the compass
+   is unknown. Select a supporting mesh face, choose a decoration, and add it.
    Drag its circular base handle to match the decoration's horizontal offset.
    Hold **Shift** to fit vertical offset on XYZ models, **Ctrl** to move across
    blocks horizontally, or both to move across blocks vertically. Pressing a
@@ -33,7 +34,7 @@ This website is simple to use once you get the hang of it. The gist is as follow
    Camera or compass changes require reviewing the alignment again.
 
    Offset observations are saved locally and travel with `.wcf` projects.
-   They are not yet used by browser search or native CoordsFinder export.
+   Active, non-ignored observations are included in browser searches and native CoordsFinder exports when block offsets are enabled. Native offset searches use the CPU backend; texture rotations can be included to resolve Y.
 
 6. **Search or export**
 

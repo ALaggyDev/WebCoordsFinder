@@ -123,10 +123,10 @@ describe('Export / Run workspace', () => {
     expect(dialog.getByText('Y range').parentElement).toHaveTextContent('Any')
     expect(dialog.queryByText('Runtime comparison')).not.toBeInTheDocument()
     expect(dialog.getByRole('button', { name: 'Run web search' })).toBeEnabled()
-    expect(dialog.getByRole('button', { name: 'Download texture config' })).toBeDisabled()
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeEnabled()
   })
 
-  it('preserves saved-texture export when browser textures are disabled', () => {
+  it('exports only enabled evidence when textures are disabled', () => {
     const document = documentWithActiveOffsets()
     document.scanner.textureEnabled = false
     useEditorStore.setState({ document, step: 'export' })
@@ -134,8 +134,9 @@ describe('Export / Run workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.getByText('Texture constraints').parentElement).toHaveTextContent('Off')
-    expect(dialog.getByRole('button', { name: 'Download texture config' })).toBeEnabled()
-    expect(dialog.getByText(/1 stored block offset observation is omitted/)).toHaveTextContent('1 saved texture constraint')
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeEnabled()
+    expect(generateCoordsFinderConfig(document)).toContain('[offsets]')
+    expect(generateCoordsFinderConfig(document)).not.toContain('[filter]')
   })
 
   it('keeps proposal warnings and separates intermediate from final combined matches', () => {
@@ -180,7 +181,7 @@ describe('Export / Run workspace', () => {
     expect(dialog.getByText('Block offsets').parentElement).toHaveTextContent('2')
     expect(dialog.queryByText('Runtime comparison')).not.toBeInTheDocument()
     expect(dialog.getByRole('button', { name: 'Run web search' })).toBeDisabled()
-    expect(dialog.getByRole('button', { name: 'Download texture config' })).toBeEnabled()
+    expect(dialog.getByRole('button', { name: 'Download config' })).toBeDisabled()
   })
 
   it('does not save an outgoing run into a different project with the same search setup', () => {
@@ -397,7 +398,7 @@ describe('Export / Run workspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Export / Run' }))
     fireEvent.click(
-      screen.getByRole('button', { name: 'Download texture config' }),
+      screen.getByRole('button', { name: 'Download config' }),
     )
 
     expect(click).toHaveBeenCalledOnce()

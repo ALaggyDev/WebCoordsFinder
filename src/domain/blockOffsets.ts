@@ -87,15 +87,14 @@ export const offsetEvidenceListSchema = z
 
 export function offsetReadiness(document: EditorDocument): string | undefined {
   if (document.scene.projection?.kind !== 'camera')
-    return 'Build and calibrate a 3D mesh in Geometry first. A planar solve cannot align decoration models.'
+    return 'Build a 3D mesh in Geometry first. Extrude faces into the 3rd dimension to establish a 3D perspective.'
   if (
-    !document.scanner.compassResolved ||
     !isAxisMappingComplete(
       document.scene.axisMapping,
       sceneLatticeParity(document.scene),
     )
   )
-    return 'Confirm UP and a horizontal compass direction in Geometry first.'
+    return 'Set UP and a valid compass mapping in Geometry first. The guessed cardinal directions are sufficient.'
   return undefined
 }
 

@@ -7,6 +7,8 @@ import type {
   ValidationResult,
 } from './types'
 import { searchDirections } from './types'
+import { offsetEvidenceListSchema, offsetProfiles } from './blockOffsets'
+import { compileOffsetDirections } from './offsetSearch'
 import {
   isAxisMappingComplete,
   faceForLocalNormal,
@@ -101,9 +103,26 @@ export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidenc
 export function validateForExport(document: EditorDocument, target: 'native' | 'browser' = 'native'): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
-  if (target === 'native' && document.offsets?.length) warnings.push('Native CoordsFinder exports texture evidence only; block offset observations are omitted.')
   const { bounds } = document.scanner
-  const rows = confirmedUniqueEvidence(document)
+  const rows = document.scanner.textureEnabled !== false ? confirmedUniqueEvidence(document) : []
+  const offsets = document.scanner.offsetsEnabled
+    ? (document.offsets ?? []).filter((entry) => !entry.ignored) : []
+  const hasOffsets = offsets.length > 0
+
+  if (target === 'native' && hasOffsets) {
+    if (!offsetEvidenceListSchema.safeParse(offsets).success) {
+      errors.push('An active block offset has an invalid model, position, or seed nibble.')
+    } else {
+      try {
+        compileOffsetDirections(document, 'native')
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : 'Unable to compile offset constraints.')
+      }
+    }
+    if ([bounds.xStart, bounds.xEnd, bounds.zStart, bounds.zEnd].some(
+      (value) => !Number.isInteger(value) || Math.abs(value) > 30_000_000,
+    )) errors.push('X/Z bounds must lie within ±30,000,000 blocks.')
+  }
 
   if (!document.scene.projection) {
     errors.push('Create perspective geometry before export.')
@@ -134,15 +153,15 @@ export function validateForExport(document: EditorDocument, target: 'native' | '
   ) {
     errors.push('Select at least one unique quarter-turn search direction.')
   }
-  if (rows.length === 0) errors.push('No block faces are confirmed.')
+  if (rows.length === 0 && !hasOffsets) errors.push('Confirm a texture face or add an active block offset to export.')
   if (
     bounds.xStart > bounds.xEnd ||
-    bounds.yStart > bounds.yEnd ||
+    (rows.length > 0 && bounds.yStart > bounds.yEnd) ||
     bounds.zStart > bounds.zEnd
   ) {
     errors.push('Every search start bound must be less than or equal to its end bound.')
   }
-  if (target === 'native' && (
+  if (target === 'native' && rows.length > 0 && (
     document.scanner.cpuTileSize.x <= 0 ||
     document.scanner.cpuTileSize.z <= 0 ||
     document.scanner.gpuTileSize.x <= 0 ||
@@ -150,7 +169,7 @@ export function validateForExport(document: EditorDocument, target: 'native' | '
   )) {
     errors.push('CPU and GPU tile dimensions must be positive.')
   }
-  if (document.scanner.errorTolerance < 0) {
+  if ((target === 'browser' || rows.length > 0) && document.scanner.errorTolerance < 0) {
     errors.push('Error tolerance cannot be negative.')
   }
 
@@ -205,7 +224,7 @@ export function validateForExport(document: EditorDocument, target: 'native' | '
   const validDirections = document.scanner.directions.filter((direction) =>
     searchDirections.includes(direction as SearchDirection),
   ) as SearchDirection[]
-  if (validDirections.length > 0) {
+  if (rows.length > 0 && validDirections.length > 0) {
     try {
       const compiled = compileFilterDirections(
         rows,
@@ -237,7 +256,8 @@ export function validateForExport(document: EditorDocument, target: 'native' | '
     }
   }
 
-  const proposals = document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length
+  const proposals = document.scanner.textureEnabled !== false
+    ? document.evidence.filter((entry) => entry.reviewStatus === 'proposed').length : 0
   if (proposals > 0) {
     warnings.push(`${proposals} automatic proposal${proposals === 1 ? ' is' : 's are'} omitted until reviewed.`)
   }
@@ -247,40 +267,55 @@ export function validateForExport(document: EditorDocument, target: 'native' | '
 
 export function generateCoordsFinderConfig(document: EditorDocument): string {
   const { scanner } = document
-  const rows = confirmedUniqueEvidence(document)
+  const rows = scanner.textureEnabled !== false ? confirmedUniqueEvidence(document) : []
+  const offsets = scanner.offsetsEnabled
+    ? (document.offsets ?? []).filter((entry) => !entry.ignored) : []
   const lines = [
     '# Generated locally by WebCoordsFinder.',
-    ...(document.offsets?.length ? [
-      `# This project contains ${document.offsets.length} block offset observation${document.offsets.length === 1 ? ' that is' : 's that are'} not exported.`,
-      '# Native CoordsFinder supports texture constraints only. Run the browser search to include active block offsets.',
-    ] : []),
     '',
-    `algorithm = ${scanner.textureAlgorithm}`,
-    `scanOrder = ${scanner.scanOrder}`,
+    ...(rows.length ? [`algorithm = ${scanner.textureAlgorithm}`] : []),
+    ...(rows.length ? [`scanOrder = ${scanner.scanOrder}`] : []),
     `directions = [${scanner.directions.join(', ')}]`,
     '',
     `xRange = (${scanner.bounds.xStart}, ${scanner.bounds.xEnd})`,
-    `yRange = (${scanner.bounds.yStart}, ${scanner.bounds.yEnd})`,
+    ...(rows.length ? [`yRange = (${scanner.bounds.yStart}, ${scanner.bounds.yEnd})`] : []),
     `zRange = (${scanner.bounds.zStart}, ${scanner.bounds.zEnd})`,
     '',
-    `errorTolerance = ${scanner.errorTolerance}`,
-    '',
-    `cpuTileSize = (${scanner.cpuTileSize.x}, ${scanner.cpuTileSize.z})`,
-    `gpuTileSize = (${scanner.gpuTileSize.x}, ${scanner.gpuTileSize.z})`,
-    `verbose = ${scanner.verbose ? 'true' : 'false'}`,
-    '',
-    '[filter]',
-    '# x y z | variant [side|netherrack-<face>]',
-    ...rows.map((entry) => {
-      const { x, y, z } = entry.coordinate
-      const marker = entry.blockId === 'netherrack'
-        ? ` netherrack-${entry.face}`
-        : entry.stateCount === 2
-          ? ' side'
-          : ''
-      return `${x} ${y} ${z} | ${entry.selectedVariant}${marker}`
-    }),
-    '',
+    ...(rows.length ? [
+      `errorTolerance = ${scanner.errorTolerance}`,
+      '',
+      `cpuTileSize = (${scanner.cpuTileSize.x}, ${scanner.cpuTileSize.z})`,
+      `gpuTileSize = (${scanner.gpuTileSize.x}, ${scanner.gpuTileSize.z})`,
+      `verbose = ${scanner.verbose ? 'true' : 'false'}`,
+      '',
+      '[filter]',
+      '# x y z | variant [side|netherrack-<face>]',
+      ...rows.map((entry) => {
+        const { x, y, z } = entry.coordinate
+        const marker = entry.blockId === 'netherrack'
+          ? ` netherrack-${entry.face}`
+          : entry.stateCount === 2
+            ? ' side'
+            : ''
+        return `${x} ${y} ${z} | ${entry.selectedVariant}${marker}`
+      }),
+      '',
+    ] : []),
+    ...(offsets.length ? [
+      '[offsets]',
+      '# x y z | offx offy offz [dripstone]',
+      ...offsets.flatMap((entry) => {
+        const coordinate = mappedAnchorOffset(document.scene, document.anchorFaceId, entry.position)
+        const profile = offsetProfiles[entry.blockId]
+        if (!coordinate || !profile) return []
+        const { x, y, z } = coordinate
+        // Positions need world mapping; the sliders already store world-axis nibbles.
+        const offY = profile.type === 'XYZ' ? entry.nibbles.y : '*'
+        const marker = entry.blockId === 'pointed_dripstone' ? ' dripstone' : ''
+        return [`${x} ${y} ${z} | ${entry.nibbles.x} ${offY} ${entry.nibbles.z}${marker}`]
+      }),
+      '',
+    ] : []),
   ]
   return lines.join('\n')
 }

@@ -90,8 +90,9 @@ describe('unified offset constraints', () => {
       for (let n = 4; n < 12; n++) expect(acceptedOffsetNibbles('pointed_dripstone', axis, n)).toBe(1 << n)
     }
   })
-  it('rotates positions and clipped displacement sets together', () => {
+  it('searches and exports guessed compass rotations with positions and displacements rotated together', () => {
     const document = documentWithOffsets()
+    document.scanner.compassResolved = false
     document.scanner.directions = [0, 90, 180, 270]
     document.offsets![0].blockId = 'pointed_dripstone'
     document.offsets![0].nibbles = { x: 3, y: 0, z: 8 }
@@ -99,6 +100,11 @@ describe('unified offset constraints', () => {
     expect(b).toEqual({ dx: -a.dz, dz: a.dx, acceptedX: 1 << 7, acceptedY: 65535, acceptedZ: 15 })
     expect(c).toEqual({ dx: -a.dx, dz: -a.dz, acceptedX: 0xf000, acceptedY: 65535, acceptedZ: 1 << 7 })
     expect(d).toEqual({ dx: a.dz, dz: -a.dx, acceptedX: 1 << 8, acceptedY: 65535, acceptedZ: 0xf000 })
+    const request = createWebSearchRequest(document)
+    expect(request.directions).toEqual([0, 90, 180, 270])
+    expect(request.offsetConstraintsByDirection).toEqual([[a], [b], [c], [d]])
+    expect(generateCoordsFinderConfig(document)).toContain('directions = [0, 90, 180, 270]')
+    expect(generateCoordsFinderConfig(document)).toContain('[offsets]')
   })
   it('rejects contradictory active observations, but allows equivalent clipped values', () => {
     const document = documentWithOffsets()
@@ -120,7 +126,7 @@ describe('unified offset constraints', () => {
     document.scanner.offsetsEnabled = false
     expect(() => createWebSearchRequest(document)).toThrow(/Enable/)
   })
-  it('migrates legacy offset bounds and explicitly documents omitted native evidence', () => {
+  it('migrates legacy offset bounds and exports native offset evidence', () => {
     const document = documentWithOffsets()
     const legacy = structuredClone(document) as unknown as { scanner: Record<string, unknown> }
     delete legacy.scanner.textureEnabled
@@ -129,7 +135,8 @@ describe('unified offset constraints', () => {
     legacy.scanner.offsetBounds = { xStart: -12, xEnd: 15, zStart: -6, zEnd: 7 }
     const migrated = normalizeEditorDocument(legacy)
     expect(migrated.scanner).toMatchObject({ textureEnabled: false, offsetsEnabled: true, bounds: { xStart: -12, xEnd: 15, zStart: -6, zEnd: 7 } })
-    expect(generateCoordsFinderConfig(document)).toContain('# This project contains 1 block offset observation that is not exported.')
+    expect(generateCoordsFinderConfig(migrated)).toContain('[offsets]')
+    expect(generateCoordsFinderConfig(migrated)).not.toContain('[filter]')
   })
 })
 

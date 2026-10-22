@@ -401,7 +401,7 @@ export function ExportRunDialog({
                 ? 'Offsets search X/Z only; Y is unknown.'
                 : 'Offsets filter X/Z first; texture rotations check the surviving results across Y.'}
               <br />
-              Estimated runtime is around 15-60 seconds across the full 60m world (fanda857 & epic10l2's fast bit lifting algorithm).
+              Estimated runtime is around 15-60 seconds across the full 60m world (fanda857 & epic10l2's <a href="https://github.com/ALaggyDev/CoordsFinder/docs/fast_bit_lifting.rs">fast bit lifting algorithm</a>).
               {!yUnconstrained && ` Texture mismatch tolerance: ${document.scanner.errorTolerance}.`}
             </> : document.scanner.offsetsEnabled
               ? 'No active block offsets participate in this browser search.'
@@ -680,11 +680,11 @@ export function ExportRunDialog({
                 <Download size={18} />
                 <div>
                   <h3>Use CoordsFinder</h3>
-                  <span>Native CPU or CUDA · Textures only</span>
+                  <span>{document.scanner.offsetsEnabled && activeOffsets > 0 ? 'Native CPU · Block offsets + optional textures' : 'Native CPU or GPU · Texture rotations'}</span>
                 </div>
               </div>
               <p>
-                Export saved, confirmed texture evidence for your local CoordsFinder
+                Export enabled texture and block offset evidence for your local CoordsFinder
                 executable.
               </p>
               <div className="coordsfinder-links">
@@ -703,16 +703,7 @@ export function ExportRunDialog({
                   Colab Notebook
                 </a>
               </div>
-              {document.offsets?.length ? <div className="validation warning">
-                <AlertTriangle size={14} />
-                {document.offsets.length} stored block offset observation{document.offsets.length === 1 ? ' is' : 's are'} omitted.
-                {' '}This config searches {nativeValidation.rowCount} saved texture constraint{nativeValidation.rowCount === 1 ? '' : 's'} only.
-              </div> : null}
-              {nativeValidation.rowCount === 0 ? <div className="validation warning">
-                <AlertTriangle size={14} />
-                No saved, confirmed texture evidence to export.
-                {offsetSummary && ' Native CoordsFinder cannot search block offsets.'}
-              </div> : nativeValidation.errors.map((message) => <div className="validation warning" key={message}>
+              {nativeValidation.errors.map((message) => <div className="validation warning" key={message}>
                 <AlertTriangle size={14} />
                 {message}
               </div>)}
@@ -723,7 +714,7 @@ export function ExportRunDialog({
                   onClick={onDownload}
                   type="button"
                 >
-                  <Download size={16} /> Download texture config
+                  <Download size={16} /> Download config
                 </button>
                 <button
                   className="secondary-button"
@@ -744,7 +735,7 @@ export function ExportRunDialog({
                 </button>
               </div>
               <details className="export-run-config-preview">
-                <summary>Preview texture configuration</summary>
+                <summary>Preview configuration</summary>
                 <pre>{config}</pre>
               </details>
             </article>

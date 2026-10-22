@@ -194,6 +194,9 @@ export function OffsetInspector() {
             texture rotations, block offsets can also be used to crack coordinates.
           </p>
           <p>
+            Unlike texture rotations, block offsets can be easily reversed to recover the original coordinates across the full 60 million world in <b>less than 15 seconds</b>, using the <b>fast bit lifting algorithm</b>.
+          </p>
+          <p>
             For workflows only related to texture rotations, you may simply skip
             this tab.
           </p>

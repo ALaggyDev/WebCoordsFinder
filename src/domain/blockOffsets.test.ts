@@ -88,18 +88,32 @@ describe('Minecraft block offsets', () => {
       .toBe(12)
   })
 
-  it('requires a full camera and a parity-consistent confirmed compass', () => {
+  it('requires a full camera and a parity-consistent mapping, allowing a guessed compass', () => {
     const document = cameraDocument()
     expect(offsetReadiness(document)).toBeUndefined()
     document.scanner.compassResolved = false
-    expect(offsetReadiness(document)).toContain('compass')
+    expect(offsetReadiness(document)).toBeUndefined()
     expect(offsetReadiness(createEmptyDocument())).toContain('3D')
-    document.scanner.compassResolved = true
+    document.scene.axisMapping = { ...document.scene.axisMapping, a: 'unknown' }
+    expect(offsetReadiness(document)).toContain('compass')
     document.scene.axisMapping = validAxisMappingCompletions(
       { a: 'unknown', b: 'unknown', c: 'unknown' },
       -sceneLatticeParity(document.scene)! as 1 | -1,
     )[0]
     expect(offsetReadiness(document)).toContain('compass')
+  })
+
+  it('allows placing and adjusting offsets with guessed cardinal directions', () => {
+    const document = cameraDocument()
+    document.scanner.compassResolved = false
+    document.scanner.directions = [0, 90, 180, 270]
+    useEditorStore.getState().loadDocument(document)
+    useEditorStore.getState().addOffset(observation())
+    useEditorStore.getState().updateOffset('grass-1', { nibbles: { x: 4, y: 0, z: 12 } })
+    const updated = useEditorStore.getState().document
+    expect(updated.offsets).toEqual([{ ...observation(), nibbles: { x: 4, y: 0, z: 12 } }])
+    expect(updated.scanner.compassResolved).toBe(false)
+    expect(updated.scanner.directions).toEqual([0, 90, 180, 270])
   })
 
   it('does not fit or place offsets using a planar homography', () => {

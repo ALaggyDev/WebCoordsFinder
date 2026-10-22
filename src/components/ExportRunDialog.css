@@ -761,7 +761,7 @@ body.export-run-dialog-open {
   color: var(--accent-contrast);
 }
 
-/* Offset summaries share the existing cards; native export is a texture-only handoff. */
+/* Offset summaries share the existing cards and native export layout. */
 .export-run-mode {
   display: block;
   margin-top: 5px;

@@ -29,16 +29,17 @@ function reverseNibbles(mask: number): number {
 }
 
 /** Rotate measured displacement with its owning block, around the shared anchor. */
-export function compileOffsetDirections(document: EditorDocument): OffsetConstraint[][] {
+export function compileOffsetDirections(document: EditorDocument, target: 'browser' | 'native' = 'browser'): OffsetConstraint[][] {
   const active = (document.offsets ?? []).filter((entry) => !entry.ignored)
   if (!active.length) return document.scanner.directions.map(() => [])
   const blocked = offsetReadiness(document)
   if (blocked) throw new Error(blocked)
-  if (active.length > 256) throw new Error('The browser scanner accepts at most 256 active offset observations.')
+  if (target === 'browser' && active.length > 256) throw new Error('The browser scanner accepts at most 256 active offset observations.')
   const constraints = active.map((entry): OffsetConstraint => {
     const position = mappedAnchorOffset(document.scene, document.anchorFaceId, entry.position)
     if (!position) throw new Error('Select an anchor block in Geometry first.')
-    if (![position.x, position.z].every((n) => Number.isInteger(n) && Math.abs(n) <= 2_147_483_647)) {
+    const coordinates = target === 'native' ? [position.x, position.y, position.z] : [position.x, position.z]
+    if (!coordinates.every((n) => Number.isInteger(n) && n >= -2_147_483_648 && n <= 2_147_483_647)) {
       throw new Error('An offset observation is outside the 32-bit coordinate range.')
     }
     return {

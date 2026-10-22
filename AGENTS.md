@@ -69,7 +69,8 @@ The top navigation has four stages:
    selected faces with the bundled reference texture off the main thread. Its
    confidence threshold controls which suggestions are proposed; they can be
    reviewed, bulk-confirmed, corrected, or cleared.
-3. **Offsets** — requires a 3D camera and confirmed parity-consistent compass.
+3. **Offsets** — requires a 3D camera and parity-consistent compass mapping;
+   guessed cardinal directions are accepted with quarter-turn search directions.
    Select a supporting mesh face, add a bundled decoration, and drag its base
    handle to move whole blocks or fit discrete X/Z offsets. World-axis nudges,
    XYZ vertical offsets, model states, tint, and opacity assist manual alignment.
@@ -78,8 +79,10 @@ The top navigation has four stages:
    Optional `EditorDocument.offsets` preserves schema-1 compatibility and is
    autosaved, undoable, and included in portable projects. Active, non-ignored
    observations are strict browser-search constraints;
-   confirmation is not required. Native configurations omit them and report
-   the omitted observation count in comments.
+   confirmation is not required. Native configurations include them in an
+   `[offsets]` section when offset cracking is enabled, with `*` for unknown Y
+   and a `dripstone` marker for clipped horizontal displacement. Native offset
+   searches require the CPU backend and may include texture filters to resolve Y.
 4. **Export** — choose the texture algorithm, scan order, optional quarter-turn
    directions, inclusive bounds, error tolerance, and native CPU/CUDA tile
    settings. Enable texture and offset cracking independently, review readiness
