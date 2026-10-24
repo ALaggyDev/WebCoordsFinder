@@ -1,6 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { z } from 'zod'
 import { offsetEvidenceListSchema } from './blockOffsets'
+import { resourcePackSchema } from './resourcePacks'
 import {
   searchDirections,
   textureAlgorithms,
@@ -33,6 +34,7 @@ const projectSchema = z
     evidence: z.array(z.unknown()),
     offsets: offsetEvidenceListSchema.optional(),
     animationTicks: z.record(z.string(), z.number().int().positive()).optional(),
+    resourcePack: resourcePackSchema.optional(),
     scanner: z
       .object({
         crackMode: z.enum(['texture-rotations', 'block-offsets']).optional(),

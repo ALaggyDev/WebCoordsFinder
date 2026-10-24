@@ -734,6 +734,7 @@ function App() {
         ).href,
         size: 96,
         jobs,
+        resourcePack: state.document.resourcePack,
       }
       let response: AutoAnalyzeResponse
       try {
@@ -751,6 +752,8 @@ function App() {
         throw new Error(response.error ?? 'Automatic analysis failed.')
       }
       const results = response.results
+      // Pack switches and undo can happen while the worker is running.
+      if (useEditorStore.getState().document.resourcePack !== state.document.resourcePack) return
       applyAnalysisResults(results)
       setFaceTab('review')
       notify(

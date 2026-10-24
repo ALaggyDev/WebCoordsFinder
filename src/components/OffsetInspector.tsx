@@ -21,6 +21,7 @@ import { defaultGrassTintSettings } from '../domain/types'
 import { animationCycleTicks } from '../domain/textureAnimation'
 import { useEditorStore } from '../store/editorStore'
 import { GrassTintPicker } from './GrassTintPicker'
+import { ResourcePackPicker } from './ResourcePackPicker'
 
 function InfoTip({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -59,7 +60,7 @@ function rgbToHex(color: { red: number; green: number; blue: number }) {
     .join('')}`
 }
 
-export function OffsetInspector() {
+export function OffsetInspector({ busy = false }: { busy?: boolean }) {
   const state = useEditorStore()
   const { document, selectedOffsetId, selectedEvidenceIds } = state
   const [blockId, setBlockId] = useState('short_grass')
@@ -75,7 +76,7 @@ export function OffsetInspector() {
   const selected = entries.find((entry) => entry.id === selectedOffsetId)
   const profile = selected ? offsetProfiles[selected.blockId] : undefined
   const animationCycle = profile
-    ? animationCycleTicks(profileTextureSources(profile))
+    ? animationCycleTicks(profileTextureSources(profile), document.resourcePack)
     : undefined
   const storedAnimationTick = selected
     ? document.animationTicks?.[selected.blockId] ?? 1
@@ -127,7 +128,7 @@ export function OffsetInspector() {
     if (!selected) return
     const request = ++tintRequestRef.current
     const settings = { temperature, downfall }
-    const color = await grassTintColor(settings)
+    const color = await grassTintColor(settings, document.resourcePack)
     if (request !== tintRequestRef.current) return
     state.updateOffset(selected.id, {
       grassTint: settings,
@@ -181,6 +182,7 @@ export function OffsetInspector() {
         <Crosshair size={18} />
         <h2>Block offsets</h2>
         <span className="offset-badge">{entries.length}</span>
+        <ResourcePackPicker busy={busy} />
       </div>
       <div className="offset-intro">
         <p className="field-help">

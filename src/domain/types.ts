@@ -284,7 +284,29 @@ export interface EditorDocument {
   offsets?: BlockOffsetEvidence[]
   /** Global game tick per block type for previewing bundled animated textures. */
   animationTicks?: Record<string, number>
+  /** Local texture overrides, embedded so portable projects remain self-contained. */
+  resourcePack?: ResourcePackSettings
   scanner: ScannerSettings
+}
+
+export interface TextureAnimation {
+  frameCount: number
+  frameTime: number
+  interpolate: boolean
+  frames?: { index: number; time: number }[]
+  frameWidth?: number
+  frameHeight?: number
+  columns?: number
+}
+
+export interface ResourcePackSettings {
+  base: 'vanilla' | 'programmer-art'
+  custom?: {
+    name: string
+    /** Keys use Minecraft's textures/block/... asset names; values are PNG data URLs. */
+    textures: Record<string, string>
+    animations: Record<string, TextureAnimation>
+  }
 }
 
 export interface BlockOffsetEvidence {

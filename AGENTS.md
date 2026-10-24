@@ -274,6 +274,15 @@ This is a React 19 + TypeScript + Vite application:
   gradient-based candidate scoring.
 - `src/domain/references.ts` — curated supported block profiles and mappings to
   bundled face-correct Minecraft reference PNGs in `public/minecraft`.
+- `src/domain/resourcePacks.ts` and `src/components/ResourcePackPicker.tsx` —
+  project-level Vanilla/Programmer's Art selection and local custom Java ZIP
+  texture imports. Optional `EditorDocument.resourcePack` embeds supported PNG
+  overrides and animation metadata in schema-1 projects. Faces, analysis,
+  grass colormaps, and offset overlays share the selected textures. Custom
+  models/blockstates/connected textures are not applied; scanner algorithms
+  remain independent. Changing packs preserves face variants, analysis, and
+  search progress.
+  `scripts/bundle-programmer-art.mjs` rebuilds the 35 bundled Mojang overrides.
 - `src/domain/exportConfig.ts` — evidence deduplication, validation, and exact
   native configuration generation.
 - `src/domain/webSearch.ts`, `src/workers/search.worker.ts`, and `src/wasm/` —

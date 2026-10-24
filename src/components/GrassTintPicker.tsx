@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type { GrassTintSettings } from '../domain/types'
+import { grassColorMapSource, resolveTextureSource } from '../domain/resourcePacks'
+import { useEditorStore } from '../store/editorStore'
 
 type Props = {
   value: GrassTintSettings
@@ -21,6 +23,7 @@ function grassTintFromMapPoint(x: number, y: number): GrassTintSettings {
 }
 
 export function GrassTintPicker({ value, onChange }: Props) {
+  const pack = useEditorStore((state) => state.document.resourcePack)
   const [draft, setDraft] = useState<GrassTintSettings | null>(null)
   const draggingPointer = useRef<number | null>(null)
   const lastCommit = useRef(0)
@@ -66,6 +69,7 @@ export function GrassTintPicker({ value, onChange }: Props) {
     <div className="grass-tint-picker">
       <div
         className="grass-tint-map"
+        style={{ backgroundImage: `url("${resolveTextureSource(grassColorMapSource, pack)}")` }}
         role="img"
         aria-label="Grass tint color map"
         aria-description="Click or drag to choose a grass color. Use arrow keys for fine adjustment; hold Shift for larger steps."

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyGrassTint,
   grassColorMapCoordinates,
   normalizedGradientScore,
   normalizedGradientVector,
@@ -8,6 +9,11 @@ import {
 } from './imageAnalysis'
 
 describe('grass colormap lookup', () => {
+  it('multiplies custom texture colors per channel without changing alpha', () => {
+    const pixels = { data: new Uint8ClampedArray([100, 150, 200, 77]), width: 1, height: 1 } as ImageData
+    expect([...applyGrassTint(pixels, { red: 128, green: 64, blue: 255 }).data])
+      .toEqual([50, 38, 200, 77])
+  })
   it('uses Minecraft temperature-scaled downfall coordinates', () => {
     // Plains: temperature .8, downfall .4, humidity .32.
     expect(grassColorMapCoordinates({ temperature: 0.8, downfall: 0.4 }, 256, 256))

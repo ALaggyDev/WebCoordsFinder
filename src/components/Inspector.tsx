@@ -1,5 +1,7 @@
 import { OffsetInspector } from './OffsetInspector'
 import { GrassTintPicker } from './GrassTintPicker'
+import { ResourcePackPicker } from './ResourcePackPicker'
+import { resolveTextureSource } from '../domain/resourcePacks'
 import {
   useEffect,
   useMemo,
@@ -722,6 +724,7 @@ function FaceInspector({
     ? animationCycleTicks(
         Object.values(blockProfileMap.get(evidence.blockId)?.referenceTextures ?? {})
           .filter((source): source is string => Boolean(source)),
+        document.resourcePack,
       )
     : undefined
   const supportsBlockSettings = supportsGrassSettings || selectedAnimationCycle !== undefined
@@ -817,17 +820,17 @@ function FaceInspector({
     let active = true
     setDisplayReferenceUrl('')
     if (!referenceUrl) return
-    colorizedReferenceTexture(referenceUrl, grassTint, animationTick)
+    colorizedReferenceTexture(referenceUrl, grassTint, animationTick, document.resourcePack)
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
       })
       .catch(() => {
-        if (active) setDisplayReferenceUrl(referenceUrl)
+        if (active) setDisplayReferenceUrl(resolveTextureSource(referenceUrl, document.resourcePack))
       })
     return () => {
       active = false
     }
-  }, [animationTick, grassTint, referenceUrl])
+  }, [animationTick, grassTint, referenceUrl, document.resourcePack])
 
   if (!document.scene.projection) {
     return (
@@ -1314,17 +1317,18 @@ function ReviewFacePreview({
       referenceUrl,
       evidence.blockSettings?.grassTint ?? defaultGrassTintSettings,
       document.animationTicks?.[evidence.blockId] ?? 1,
+      document.resourcePack,
     )
       .then((url) => {
         if (active) setDisplayReferenceUrl(url)
       })
       .catch(() => {
-        if (active) setDisplayReferenceUrl(referenceUrl)
+        if (active) setDisplayReferenceUrl(resolveTextureSource(referenceUrl, document.resourcePack))
       })
     return () => {
       active = false
     }
-  }, [document.animationTicks, evidence.blockId, evidence.blockSettings?.grassTint, referenceUrl])
+  }, [document.animationTicks, evidence.blockId, evidence.blockSettings?.grassTint, referenceUrl, document.resourcePack])
 
   return createPortal(
     <aside
@@ -1601,25 +1605,28 @@ function FacesWorkspace(props: Pick<InspectorProps, 'busy' | 'onAutoFill'>) {
 
   return (
     <div className="faces-workspace">
-      <div className="face-tabs" role="tablist" aria-label="Face evidence">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={faceTab === 'selection'}
-          className={faceTab === 'selection' ? 'active' : ''}
-          onClick={() => setFaceTab('selection')}
-        >
-          Selection <span>{selectedCount}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={faceTab === 'review'}
-          className={faceTab === 'review' ? 'active' : ''}
-          onClick={() => setFaceTab('review')}
-        >
-          Auto Analyze <span>{analyzedCount}</span>
-        </button>
+      <div className="faces-toolbar">
+        <div className="face-tabs" role="tablist" aria-label="Face evidence">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={faceTab === 'selection'}
+            className={faceTab === 'selection' ? 'active' : ''}
+            onClick={() => setFaceTab('selection')}
+          >
+            Selection <span>{selectedCount}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={faceTab === 'review'}
+            className={faceTab === 'review' ? 'active' : ''}
+            onClick={() => setFaceTab('review')}
+          >
+            Auto Analyze <span>{analyzedCount}</span>
+          </button>
+        </div>
+        <ResourcePackPicker busy={props.busy} />
       </div>
       {faceTab === 'selection'
         ? <FaceInspector {...props} />
@@ -1894,7 +1901,7 @@ export function Inspector(props: InspectorProps) {
       <div className="inspector-scroll">
         {step === 'grid' && <GeometryInspector />}
         {step === 'faces' && <FacesWorkspace busy={props.busy} onAutoFill={props.onAutoFill} />}
-        {step === 'offsets' && <OffsetInspector />}
+        {step === 'offsets' && <OffsetInspector busy={props.busy} />}
         {step === 'export' && <ExportInspector />}
       </div>
     </aside>

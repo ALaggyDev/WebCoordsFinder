@@ -3,6 +3,7 @@ import type {
   CandidateTransform,
   GrassTintSettings,
   Point2,
+  ResourcePackSettings,
 } from './types'
 
 export interface AutoAnalyzeJob {
@@ -20,6 +21,7 @@ export interface AutoAnalyzeRequest {
   sourceUrl: string
   size: number
   jobs: AutoAnalyzeJob[]
+  resourcePack?: ResourcePackSettings
 }
 
 export interface AutoAnalyzeResult {

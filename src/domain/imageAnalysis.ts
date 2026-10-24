@@ -3,9 +3,11 @@ import type {
   CandidateTransform,
   GrassTintSettings,
   Point2,
+  ResourcePackSettings,
 } from './types'
 import { defaultGrassTintSettings } from './types'
-import { textureAnimationFrame } from './textureAnimation'
+import { textureAnimation, textureAnimationFrame, textureFrameRect } from './textureAnimation'
+import { grassColorMapSource, resolveTextureSource } from './resourcePacks'
 import {
   computeHomography,
   projectPoint,
@@ -15,8 +17,7 @@ import {
 // coalesces concurrent requests for the same bundled reference image.
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const colorizedReferenceCache = new Map<string, Promise<string>>()
-const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
-let grassColorMapPixels: Promise<ImageData> | undefined
+const grassColorMapPixels = new Map<string, Promise<ImageData>>()
 
 export type RgbColor = { red: number; green: number; blue: number }
 
@@ -49,8 +50,10 @@ export function grassColorMapCoordinates(
 
 export async function grassTintColor(
   settings = defaultGrassTintSettings,
+  pack?: ResourcePackSettings,
 ): Promise<RgbColor> {
-  grassColorMapPixels ??= loadImage(grassColorMapSource).then((colorMap) => {
+  const source = resolveTextureSource(grassColorMapSource, pack)
+  if (!grassColorMapPixels.has(source)) grassColorMapPixels.set(source, loadImage(source).then((colorMap) => {
     const canvas = document.createElement('canvas')
     canvas.width = colorMap.naturalWidth
     canvas.height = colorMap.naturalHeight
@@ -58,8 +61,8 @@ export async function grassTintColor(
     if (!context) throw new Error('Grass colormap extraction is unavailable.')
     context.drawImage(colorMap, 0, 0)
     return context.getImageData(0, 0, canvas.width, canvas.height)
-  })
-  const pixels = await grassColorMapPixels
+  }))
+  const pixels = await grassColorMapPixels.get(source)!
   const [x, y] = grassColorMapCoordinates(
     settings,
     pixels.width,
@@ -75,13 +78,13 @@ export async function grassTintColor(
 
 export function applyGrassTint(imageData: ImageData, tint: RgbColor): ImageData {
   for (let offset = 0; offset < imageData.data.length; offset += 4) {
-    const shade = imageData.data[offset]
-    imageData.data[offset] = Math.round((shade * tint.red) / 255)
+    // Vanilla's mask is grayscale; custom packs can retain color in each channel.
+    imageData.data[offset] = Math.round((imageData.data[offset] * tint.red) / 255)
     imageData.data[offset + 1] = Math.round(
-      (shade * tint.green) / 255,
+      (imageData.data[offset + 1] * tint.green) / 255,
     )
     imageData.data[offset + 2] = Math.round(
-      (shade * tint.blue) / 255,
+      (imageData.data[offset + 2] * tint.blue) / 255,
     )
   }
   return imageData
@@ -105,15 +108,17 @@ export function colorizedReferenceTexture(
   source: string,
   grassTint = defaultGrassTintSettings,
   animationTick = 1,
+  pack?: ResourcePackSettings,
 ): Promise<string> {
-  const animationFrame = textureAnimationFrame(source, animationTick)
-  if (!isGrassTexture(source) && !animationFrame) return Promise.resolve(source)
-  const cacheKey = `${source}:${grassTint.temperature}:${grassTint.downfall}:${animationTick}`
+  const resolved = resolveTextureSource(source, pack)
+  const animationFrame = textureAnimationFrame(source, animationTick, pack)
+  if (!isGrassTexture(source) && !animationFrame) return Promise.resolve(resolved)
+  const cacheKey = `${resolved}:${resolveTextureSource(grassColorMapSource, pack)}:${JSON.stringify(textureAnimation(source, pack))}:${grassTint.temperature}:${grassTint.downfall}:${animationTick}`
   const cached = colorizedReferenceCache.get(cacheKey)
   if (cached) return cached
   const promise = Promise.all([
-    loadImage(source),
-    isGrassTexture(source) ? grassTintColor(grassTint) : undefined,
+    loadImage(resolved),
+    isGrassTexture(source) ? grassTintColor(grassTint, pack) : undefined,
   ]).then(([image, tint]) => {
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
@@ -124,10 +129,7 @@ export function colorizedReferenceTexture(
       const size = image.naturalWidth
       context.drawImage(
         image,
-        0,
-        animationFrame.current * size,
-        size,
-        size,
+        ...textureFrameRect(source, size, animationFrame.current, pack),
         0,
         0,
         size,
@@ -137,10 +139,7 @@ export function colorizedReferenceTexture(
         context.globalAlpha = animationFrame.blend
         context.drawImage(
           image,
-          0,
-          animationFrame.next * size,
-          size,
-          size,
+          ...textureFrameRect(source, size, animationFrame.next, pack),
           0,
           0,
           size,
@@ -149,7 +148,7 @@ export function colorizedReferenceTexture(
         context.globalAlpha = 1
       }
     } else {
-      context.drawImage(image, 0, 0)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
     }
     if (tint) {
       const imageData = applyGrassTint(

@@ -76,10 +76,11 @@ export const OffsetOverlay = memo(function OffsetOverlay({
   }, [scale])
   // Offset/position edits do not reload image assets during a drag.
   const textureSources = JSON.stringify(
-    entries.map(({ blockId, modelIndex, tint }) => ({
+    entries.map(({ blockId, modelIndex, tint, grassTint }) => ({
       blockId,
       modelIndex,
       tint,
+      grassTint,
     })),
   )
   const animationTicksKey = JSON.stringify(document.animationTicks ?? {})
@@ -88,7 +89,7 @@ export const OffsetOverlay = memo(function OffsetOverlay({
     let cancelled = false
     const sources = JSON.parse(textureSources) as BlockOffsetEvidence[]
     const animationTicks = JSON.parse(animationTicksKey) as Record<string, number>
-    loadOffsetTextures(sources, animationTicks)
+    loadOffsetTextures(sources, animationTicks, document.resourcePack)
       .then((loaded) => {
         if (!cancelled) {
           setTextures(loaded)
@@ -101,7 +102,7 @@ export const OffsetOverlay = memo(function OffsetOverlay({
     return () => {
       cancelled = true
     }
-  }, [animationTicksKey, showModels, textureSources])
+  }, [animationTicksKey, showModels, textureSources, document.resourcePack])
   const rendered = useMemo(
     () => entries.map((entry) => preview?.id === entry.id ? preview : entry),
     [entries, preview],

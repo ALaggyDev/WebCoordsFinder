@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { offsetBasis, offsetEvidenceListSchema, offsetEvidenceSchema, offsetReadiness } from '../domain/blockOffsets'
-import type { BlockOffsetEvidence } from '../domain/types'
+import type { BlockOffsetEvidence, ResourcePackSettings } from '../domain/types'
+import { resourcePackSchema } from '../domain/resourcePacks'
 import {
   automaticAxisMappingForUp,
   axisMappingFromUpAndHorizontal,
@@ -332,6 +333,7 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   }
   const normalized = structuredClone(input as EditorDocument)
   normalized.offsets = offsetEvidenceListSchema.parse(normalized.offsets ?? [])
+  if (normalized.resourcePack) normalized.resourcePack = resourcePackSchema.parse(normalized.resourcePack)
   normalized.scene.worldUpIntent ??= null
   normalized.scene.horizontalOrientationIntent ??= null
   const defaults = createDefaultScanner()
@@ -592,6 +594,7 @@ interface EditorState {
   setBlockForSelection: (blockId: string) => void
   updateBlockSettingsForSelection: (patch: Partial<BlockSettings>) => void
   setAnimationTick: (blockId: string, tick: number) => void
+  setResourcePack: (pack: ResourcePackSettings) => void
   setVariant: (evidenceId: string, variant: number) => void
   setEvidenceStatus: (
     evidenceIds: string[],
@@ -614,7 +617,11 @@ function mutateDocument(
   state: EditorState,
   mutator: (document: EditorDocument) => void,
 ): Pick<EditorState, 'document' | 'past' | 'future'> {
-  const next = structuredClone(state.document)
+  // Pack assets are immutable and can be large. Keep them shared across edits
+  // and undo snapshots; setResourcePack replaces the entire validated value.
+  const { resourcePack, ...content } = state.document
+  const next: EditorDocument = structuredClone(content)
+  if (resourcePack) next.resourcePack = resourcePack
   mutator(next)
   return {
     document: next,
@@ -1488,6 +1495,12 @@ export const useEditorStore = create<EditorState>((set) => ({
           })
       }),
     ),
+  setResourcePack: (pack) =>
+    set((state) => mutateDocument(state, (document) => {
+      document.resourcePack = resourcePackSchema.parse(pack)
+      // Pack selection changes the reference display without discarding evidence
+      // or interrupting searches based on the existing confirmed variants.
+    })),
   setAnimationTick: (blockId, tick) =>
     set((state) =>
       mutateDocument(state, (document) => {

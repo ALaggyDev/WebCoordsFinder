@@ -7,18 +7,28 @@ import {
   type ModelFace,
 } from './blockOffsets'
 import { projectScenePoint } from './geometry'
-import { textureAnimationFrame } from './textureAnimation'
+import { textureAnimation, textureAnimationFrame, textureFrameRect } from './textureAnimation'
+import { resolveTextureSource } from './resourcePacks'
+import { grassTintColor } from './imageAnalysis'
 import type {
   BlockOffsetEvidence,
   Point2,
   Point3,
   SceneGeometry,
+  ResourcePackSettings,
 } from './types'
 
 interface Quad {
   points: Point3[]
   uv: Point2[]
   face: ModelFace
+}
+
+function offsetTextureKey(entry: BlockOffsetEvidence, face: ModelFace): string {
+  const tint = face.tintindex === undefined ? '' : entry.grassTint
+    ? `${entry.grassTint.temperature}:${entry.grassTint.downfall}` : entry.tint
+  // Two climates can share a vanilla color yet differ in a custom colormap.
+  return `${entry.blockId}:${face.texture}:${tint}`
 }
 const point = (v: number[]): Point3 => ({ x: v[0], y: v[1], z: v[2] })
 
@@ -313,6 +323,7 @@ export function prepareOffsetModels(
       quad.face.tintindex === undefined ? '' : quad.entry.tint
     }`
     const texture =
+      textures.get(offsetTextureKey(quad.entry, quad.face)) ??
       textures.get(`${quad.entry.blockId}:${textureSuffix}`) ??
       textures.get(textureSuffix) ??
       // Keep the previous tint visible while its replacement texture loads.
@@ -487,12 +498,18 @@ export function rasterizeOffsetModelPatch(
 export async function loadOffsetTextures(
   entries: BlockOffsetEvidence[],
   animationTicks: Record<string, number> = {},
+  pack?: ResourcePackSettings,
 ): Promise<Map<string, HTMLCanvasElement>> {
   const requests = new Map<string, { url: string; tint?: string; tick: number }>()
   for (const entry of entries)
     for (const quad of offsetModelQuads(entry)) {
-      const tint = quad.face.tintindex === undefined ? undefined : entry.tint
-      requests.set(`${entry.blockId}:${quad.face.texture}:${tint ?? ''}`, {
+      const originalTint = quad.face.tintindex === undefined ? undefined : entry.tint
+      let tint = originalTint
+      if (tint && entry.grassTint) {
+        const color = await grassTintColor(entry.grassTint, pack)
+        tint = `#${[color.red, color.green, color.blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+      }
+      requests.set(offsetTextureKey(entry, quad.face), {
         url: quad.face.texture,
         tint,
         tick: animationTicks[entry.blockId] ?? 1,
@@ -502,45 +519,41 @@ export async function loadOffsetTextures(
     await Promise.all(
       [...requests].map(async ([key, { url, tint, tick }]) => {
         const image = new Image()
-        image.src = url
+        image.src = resolveTextureSource(url, pack)
         await image.decode()
         const canvas = document.createElement('canvas')
-        canvas.width = canvas.height = 16
+        const animation = textureAnimation(url, pack)
+        const size = Math.max(animation?.frameWidth ?? image.width, animation?.frameHeight ?? image.width)
+        canvas.width = canvas.height = size
         const ctx = canvas.getContext('2d')!
         ctx.imageSmoothingEnabled = false
-        const frame = textureAnimationFrame(url, tick)
+        const frame = textureAnimationFrame(url, tick, pack)
         if (frame) {
           ctx.drawImage(
             image,
-            0,
-            frame.current * image.width,
-            image.width,
-            image.width,
+            ...textureFrameRect(url, image.width, frame.current, pack),
             0,
             0,
-            16,
-            16,
+            size,
+            size,
           )
           if (frame.blend > 0) {
             ctx.globalAlpha = frame.blend
             ctx.drawImage(
               image,
-              0,
-              frame.next * image.width,
-              image.width,
-              image.width,
+              ...textureFrameRect(url, image.width, frame.next, pack),
               0,
               0,
-              16,
-              16,
+              size,
+              size,
             )
             ctx.globalAlpha = 1
           }
         } else {
-          ctx.drawImage(image, 0, 0, image.width, image.width, 0, 0, 16, 16)
+          ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, size, size)
         }
         if (tint) {
-          const pixels = ctx.getImageData(0, 0, 16, 16)
+          const pixels = ctx.getImageData(0, 0, size, size)
           const rgb = [1, 3, 5].map(
             (start) => parseInt(tint.slice(start, start + 2), 16) / 255,
           )

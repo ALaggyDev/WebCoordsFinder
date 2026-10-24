@@ -14,10 +14,11 @@ import {
   type NormalizedGradientVector,
   type RgbColor,
 } from '../domain/imageAnalysis'
-import { defaultGrassTintSettings } from '../domain/types'
-import { textureAnimationFrame } from '../domain/textureAnimation'
+import { defaultGrassTintSettings, type ResourcePackSettings } from '../domain/types'
+import { textureAnimationFrame, textureFrameRect } from '../domain/textureAnimation'
+import { grassColorMapSource, resolveTextureSource } from '../domain/resourcePacks'
 
-const grassColorMapSource = '/minecraft/textures/colormap/grass.png'
+let resourcePack: ResourcePackSettings | undefined
 const referencePixelsCache = new Map<string, Promise<ImageData>>()
 const referenceGradientCache = new Map<
   string,
@@ -48,7 +49,7 @@ async function decodedPixels(source: string, size?: number): Promise<ImageData> 
 async function grassTintColor(
   settings = defaultGrassTintSettings,
 ): Promise<RgbColor> {
-  grassColorMapPromise ??= decodedPixels(grassColorMapSource)
+  grassColorMapPromise ??= decodedPixels(resolveTextureSource(grassColorMapSource, resourcePack))
   const colorMap = await grassColorMapPromise
   const [x, y] = grassColorMapCoordinates(
     settings,
@@ -69,7 +70,7 @@ function referenceCacheKey(job: AutoAnalyzeJob, size: number): string {
 }
 
 async function decodedReferencePixels(job: AutoAnalyzeJob, size: number): Promise<ImageData> {
-  const response = await fetch(job.referenceUrl)
+  const response = await fetch(resolveTextureSource(job.referenceUrl, resourcePack))
   if (!response.ok) throw new Error(`Unable to load analysis image (${response.status}).`)
   const bitmap = await createImageBitmap(await response.blob())
   try {
@@ -77,13 +78,13 @@ async function decodedReferencePixels(job: AutoAnalyzeJob, size: number): Promis
     const context = canvas.getContext('2d', { willReadFrequently: true })
     if (!context) throw new Error('Off-thread image extraction is unavailable.')
     context.imageSmoothingEnabled = false
-    const frame = textureAnimationFrame(job.referenceUrl, job.animationTick ?? 1)
+    const frame = textureAnimationFrame(job.referenceUrl, job.animationTick ?? 1, resourcePack)
     if (frame) {
       const frameSize = bitmap.width
-      context.drawImage(bitmap, 0, frame.current * frameSize, frameSize, frameSize, 0, 0, size, size)
+      context.drawImage(bitmap, ...textureFrameRect(job.referenceUrl, frameSize, frame.current, resourcePack), 0, 0, size, size)
       if (frame.blend > 0) {
         context.globalAlpha = frame.blend
-        context.drawImage(bitmap, 0, frame.next * frameSize, frameSize, frameSize, 0, 0, size, size)
+        context.drawImage(bitmap, ...textureFrameRect(job.referenceUrl, frameSize, frame.next, resourcePack), 0, 0, size, size)
       }
     } else {
       context.drawImage(bitmap, 0, 0, size, size)
@@ -156,6 +157,10 @@ async function analyzeJob(
 self.onmessage = async (event: MessageEvent<AutoAnalyzeRequest>) => {
   const request = event.data
   if (request.type !== 'analyze') return
+  resourcePack = request.resourcePack
+  referencePixelsCache.clear()
+  referenceGradientCache.clear()
+  grassColorMapPromise = undefined
   try {
     // The full screenshot is decoded, drawn, and read exactly once per batch.
     const sourcePixels = await decodedPixels(request.sourceUrl)
