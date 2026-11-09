@@ -1,4 +1,5 @@
 import { OffsetInspector } from './OffsetInspector'
+import { TextureDirectionPanel } from './DirectionInspector'
 import { GrassTintPicker } from './GrassTintPicker'
 import { ResourcePackPicker } from './ResourcePackPicker'
 import { resolveTextureSource } from '../domain/resourcePacks'
@@ -396,6 +397,9 @@ function GeometryInspector() {
   const compassResolved = useEditorStore(
     (state) => state.document.scanner.compassResolved,
   )
+  const compassSource = useEditorStore(
+    (state) => state.document.scanner.compassSource,
+  )
   const upResolved = isWorldUpResolved(scene.axisMapping)
   const sceneParity = sceneLatticeParity(scene)
   const mappingComplete = isAxisMappingComplete(
@@ -566,7 +570,7 @@ function GeometryInspector() {
             <span>2</span>
             <span className="orientation-step-label">Horizontal Orientation</span>
             {upResolved && mappingComplete && orientationDraft?.mode !== 'horizontal' && (
-              compassResolved ? (
+              compassResolved && compassSource !== 'texture' ? (
                 <Check
                   className="orientation-step-status confirmed"
                   size={18}
@@ -606,9 +610,11 @@ function GeometryInspector() {
           ) : upResolved && mappingComplete ? (
             <div className="orientation-status">
               <p>
-                {compassResolved
-                  ? 'Horizontal orientation is user-confirmed.'
-                  : 'A default horizontal orientation is pre-selected by the app. It can be changed if it is incorrect.'}
+                {compassResolved && compassSource === 'texture'
+                  ? 'Compass is locked from a block texture. Arrows or another texture match can replace it.'
+                  : compassResolved
+                    ? 'Horizontal orientation is user-confirmed.'
+                    : 'A default horizontal orientation is pre-selected by the app. It can be changed if it is incorrect.'}
               </p>
               <button className="secondary-button" type="button" onClick={startHorizontalOrientation}>
                 Change horizontal orientation
@@ -632,6 +638,30 @@ function GeometryInspector() {
                   : 'Select horizontal orientation'}
               </button>
             </div>
+          )}
+        </div>
+        <div className="orientation-step-section">
+          <h4>
+            <span>3</span>
+            <span className="orientation-step-label">Texture direction</span>
+            {compassResolved && compassSource === 'texture' && (
+              <Check
+                className="orientation-step-status confirmed"
+                size={18}
+                aria-label="Texture direction locked"
+              />
+            )}
+          </h4>
+          <p className="orientation-help">
+            Optional. Match a fixed top or bottom texture to lock cardinal direction.
+            Top edge of the texture image is North.
+          </p>
+          {!upResolved ? (
+            <div className="orientation-empty">
+              <p>Determine world UP before matching texture direction.</p>
+            </div>
+          ) : (
+            <TextureDirectionPanel />
           )}
         </div>
       </section>
