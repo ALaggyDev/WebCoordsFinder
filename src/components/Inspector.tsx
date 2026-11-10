@@ -400,6 +400,13 @@ function GeometryInspector() {
   const compassSource = useEditorStore(
     (state) => state.document.scanner.compassSource,
   )
+  const [orientationMethod, setOrientationMethod] = useState<'arrows' | 'texture'>(
+    compassSource === 'texture' ? 'texture' : 'arrows',
+  )
+  useEffect(() => {
+    // The canvas Orient tool must always reveal its arrow instructions.
+    if (orientationDraft?.mode === 'horizontal') setOrientationMethod('arrows')
+  }, [orientationDraft?.mode])
   const upResolved = isWorldUpResolved(scene.axisMapping)
   const sceneParity = sceneLatticeParity(scene)
   const mappingComplete = isAxisMappingComplete(
@@ -570,7 +577,7 @@ function GeometryInspector() {
             <span>2</span>
             <span className="orientation-step-label">Horizontal Orientation</span>
             {upResolved && mappingComplete && orientationDraft?.mode !== 'horizontal' && (
-              compassResolved && compassSource !== 'texture' ? (
+              compassResolved ? (
                 <Check
                   className="orientation-step-status confirmed"
                   size={18}
@@ -585,7 +592,49 @@ function GeometryInspector() {
               )
             )}
           </h4>
-          {orientationDraft?.mode === 'horizontal' ? (
+          <p className="orientation-help">Choose either method to set the same compass direction.</p>
+          {upResolved && mappingComplete && orientationDraft?.mode !== 'horizontal' && (
+            <p className="orientation-help" role="status">
+              {compassResolved
+                ? `Confirmed ${compassSource === 'texture' ? 'from a texture match' : 'with a horizontal arrow'}.`
+                : 'Using a suggested compass direction. Confirm it with either method.'}
+            </p>
+          )}
+          <div className="orientation-methods" role="group" aria-label="Horizontal orientation method">
+            <button
+              type="button"
+              aria-pressed={orientationMethod === 'arrows'}
+              onClick={() => setOrientationMethod('arrows')}
+            >
+              <Compass size={14} /> Use arrows
+            </button>
+            <button
+              type="button"
+              aria-pressed={orientationMethod === 'texture'}
+              onClick={() => {
+                cancelOrientation()
+                setOrientationMethod('texture')
+              }}
+            >
+              <ScanSearch size={14} /> Match texture
+            </button>
+          </div>
+          <div className="orientation-method-panel">
+          {orientationMethod === 'texture' ? (
+            <>
+              <h5>Texture direction</h5>
+              <p className="orientation-help">
+                Match a fixed top or bottom texture. Its top edge points North.
+              </p>
+              {!upResolved || !mappingComplete ? (
+                <div className="orientation-empty">
+                  <p>Determine world UP before matching texture direction.</p>
+                </div>
+              ) : (
+                <TextureDirectionPanel />
+              )}
+            </>
+          ) : orientationDraft?.mode === 'horizontal' ? (
             <div className="orientation-workflow">
               <div className={orientationFace ? 'setup-step complete' : 'setup-step active'}>
                 <span>1</span>
@@ -610,14 +659,10 @@ function GeometryInspector() {
           ) : upResolved && mappingComplete ? (
             <div className="orientation-status">
               <p>
-                {compassResolved && compassSource === 'texture'
-                  ? 'Compass is locked from a block texture. Arrows or another texture match can replace it.'
-                  : compassResolved
-                    ? 'Horizontal orientation is user-confirmed.'
-                    : 'A default horizontal orientation is pre-selected by the app. It can be changed if it is incorrect.'}
+                Select a face, then identify a horizontal arrow as North, East, South, or West.
               </p>
               <button className="secondary-button" type="button" onClick={startHorizontalOrientation}>
-                Change horizontal orientation
+                {compassResolved ? 'Change with arrows' : 'Select horizontal arrow'}
               </button>
             </div>
           ) : (
@@ -639,30 +684,7 @@ function GeometryInspector() {
               </button>
             </div>
           )}
-        </div>
-        <div className="orientation-step-section">
-          <h4>
-            <span>3</span>
-            <span className="orientation-step-label">Texture direction</span>
-            {compassResolved && compassSource === 'texture' && (
-              <Check
-                className="orientation-step-status confirmed"
-                size={18}
-                aria-label="Texture direction locked"
-              />
-            )}
-          </h4>
-          <p className="orientation-help">
-            Optional. Match a fixed top or bottom texture to lock cardinal direction.
-            Top edge of the texture image is North.
-          </p>
-          {!upResolved ? (
-            <div className="orientation-empty">
-              <p>Determine world UP before matching texture direction.</p>
-            </div>
-          ) : (
-            <TextureDirectionPanel />
-          )}
+          </div>
         </div>
       </section>
       <section className="geometry-part geometry-actions">

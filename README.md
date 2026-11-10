@@ -48,13 +48,11 @@ npm run build
 
 
 
-## Export live stats
-
-**Visualization → Export live stats** shows Export / Run readiness under the top bar. Preference is saved with the other visualization toggles.
-
 ## Texture direction (optional)
 
-Under **Geometry → World Orientation → Texture direction**, you can lock North/East/South/West by matching a fixed top or bottom block texture (for example a crafting table top). The top edge of the reference texture is treated as North. Choosing a match updates world orientation the same way a confirmed horizontal arrow does; the most recent of arrows or texture match wins.
+Under **Geometry → World Orientation → Horizontal Orientation → Match texture**, you can lock North/East/South/West by matching a fixed top or bottom block texture (for example a crafting table top). The top edge of the reference texture is treated as North. Choosing a match updates world orientation the same way a confirmed horizontal arrow does; the most recent of arrows or texture match wins.
+
+Use the texture picker to select and filter reference textures. **Auto Analyze** selects a matching direction locally when confidence meets the configured threshold; unclear matches leave the choice manual. **Use arrows** and **Match texture** are alternative methods for the same compass setting.
 
 This module was contributed by **PedroJuan_1610**.
 

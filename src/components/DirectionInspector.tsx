@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlipHorizontal2, LoaderCircle, RotateCcw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, LoaderCircle, RotateCcw, ScanSearch, Search } from 'lucide-react'
+import type { AutoAnalyzeRequest, AutoAnalyzeResponse } from '../domain/analysisProtocol'
 import {
   DIRECTION_ROTATIONS,
   FACE_TEXTURE_INDEX_URL,
@@ -24,8 +25,8 @@ import { useEditorStore } from '../store/editorStore'
 const DEFAULT_TEXTURE = 'crafting_table_top.png'
 
 /**
- * Manual N/E/S/W lock from a fixed top/bottom block texture.
- * Lives under Geometry → World Orientation (step 3).
+ * N/E/S/W matching as an alternative to horizontal arrows.
+ * High-confidence matches apply directly; unclear matches leave the choice manual.
  * Credit: PedroJuan_1610
  */
 export function TextureDirectionPanel() {
@@ -33,12 +34,18 @@ export function TextureDirectionPanel() {
   const selectedIds = useEditorStore((s) => s.selectedEvidenceIds)
   const lockTextureDirection = useEditorStore((s) => s.lockTextureDirection)
   const clearTextureDirection = useEditorStore((s) => s.clearTextureDirection)
-  const flipSelectedFaces = useEditorStore((s) => s.flipSelectedFaces)
   const compassSource = useEditorStore((s) => s.document.scanner.compassSource)
   const textureDirection = useEditorStore((s) => s.document.scanner.textureDirection)
 
   const [texture, setTexture] = useState(DEFAULT_TEXTURE)
   const [query, setQuery] = useState('')
+  const picker = useRef<HTMLDetailsElement>(null)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const workerRef = useRef<Worker | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [noMatch, setNoMatch] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [textureIndex, setTextureIndex] = useState<FaceTextureIndex | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [cropUrl, setCropUrl] = useState('')
@@ -74,6 +81,104 @@ export function TextureDirectionPanel() {
     },
     [faceKind, lockTextureDirection],
   )
+
+  function closePicker(restoreFocus = false) {
+    if (!picker.current) return
+    picker.current.open = false
+    setPickerOpen(false)
+    setQuery('')
+    if (restoreFocus) picker.current.querySelector('summary')?.focus()
+  }
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    searchInput.current?.focus()
+    const dismiss = (event: PointerEvent) => {
+      if (!picker.current?.contains(event.target as Node)) closePicker()
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        closePicker(true)
+      }
+    }
+    window.document.addEventListener('pointerdown', dismiss)
+    window.document.addEventListener('keydown', escape)
+    return () => {
+      window.document.removeEventListener('pointerdown', dismiss)
+      window.document.removeEventListener('keydown', escape)
+    }
+  }, [pickerOpen])
+
+  useEffect(() => {
+    // A new face, calibration, or texture invalidates pending work and analysis.
+    setNoMatch(false)
+    setAnalysisError(null)
+    setAnalyzing(false)
+    return () => {
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
+  }, [document.image.src, document.scene, evidence, texture])
+
+  function autoAnalyze() {
+    const quad = meshFace ? directionMatchFaceQuad(document.scene, meshFace) : undefined
+    if (!evidence || !quad) return
+    setNoMatch(false)
+    setAnalysisError(null)
+    setAnalyzing(true)
+    try {
+      const worker = new Worker(new URL('../workers/analyze.worker.ts', import.meta.url), {
+        type: 'module',
+      })
+      workerRef.current = worker
+      const request: AutoAnalyzeRequest = {
+        type: 'analyze',
+        requestId: crypto.randomUUID(),
+        sourceUrl: new URL(document.image.src, globalThis.location.href).href,
+        size: 96,
+        jobs: [{
+          evidenceId: evidence.id,
+          quad,
+          referenceUrl: remoteBlockTextureUrl(texture),
+          transforms: ['identity', 'rotate90', 'rotate180', 'rotate270'],
+        }],
+      }
+      const finish = () => {
+        worker.terminate()
+        workerRef.current = null
+        setAnalyzing(false)
+      }
+      worker.onmessage = (event: MessageEvent<AutoAnalyzeResponse>) => {
+        if (workerRef.current !== worker || event.data.requestId !== request.requestId) return
+        if (event.data.type === 'error') {
+          setAnalysisError(event.data.error ?? 'Unable to analyze this texture.')
+          finish()
+          return
+        }
+        const result = event.data.results[0]
+        const rotation = result ? DIRECTION_ROTATIONS[result.scores[0]?.variant] : undefined
+        finish()
+        if (result && rotation !== undefined && result.confidence > 0 &&
+          result.confidence >= document.scanner.confidenceThreshold) {
+          lockDirection(rotation)
+        } else {
+          setNoMatch(true)
+        }
+      }
+      worker.onerror = () => {
+        if (workerRef.current !== worker) return
+        setAnalysisError('Unable to analyze this texture. Try again or choose a direction manually.')
+        finish()
+      }
+      worker.postMessage(request)
+    } catch {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      setAnalyzing(false)
+      setAnalysisError('Unable to start Auto Analyze. Choose a direction manually.')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -159,11 +264,10 @@ export function TextureDirectionPanel() {
 
   return (
     <div className="texture-direction-panel">
-      {!evidence && (
+      {selectedEvidence.length === 0 && (
         <div className="orientation-empty">
           <p>
-            Select a top or bottom face with a fixed texture. The top edge of the
-            texture image is North.
+            Select one top or bottom face on the canvas.
           </p>
         </div>
       )}
@@ -174,20 +278,70 @@ export function TextureDirectionPanel() {
       )}
       {evidence && sideOnly && (
         <div className="orientation-empty">
-          <p>Use a top or bottom face, or flip the visible side.</p>
-          <button type="button" className="secondary-button full" onClick={flipSelectedFaces}>
-            <FlipHorizontal2 size={15} /> Flip visible side
-          </button>
+          <p>Select a top or bottom face. Side textures cannot establish compass direction here.</p>
         </div>
       )}
       {canMatch && (
         <>
-          <div className="evidence-meta">
-            <span>{faceKind === 'top' ? 'Top (+Y)' : faceKind === 'bottom' ? 'Bottom (−Y)' : 'Face'}</span>
-            <span>4-state</span>
-            <span className={`status-dot ${lockedRotation === null ? 'unlabeled' : 'confirmed'}`}>
-              {lockedRotation === null ? 'unlabeled' : 'confirmed'}
-            </span>
+          <div className="field block-profile-field">
+            <div className="block-profile-heading">
+              <span className="field-label">Block texture · {faceKind}</span>
+              <a
+                className="texture-direction-link"
+                href={`https://mcasset.cloud/${MC_ASSETS_VERSION}/assets/minecraft/textures/block/${texture}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source ↗
+              </a>
+            </div>
+            <details
+              className="direction-texture-picker"
+              ref={picker}
+              onToggle={(event) => setPickerOpen(event.currentTarget.open)}
+            >
+              <summary aria-label={`Block texture: ${textureDisplayName(texture)}`}>
+                <img src={textureUrl} alt="" />
+                <span>{textureDisplayName(texture)}</span>
+                <ChevronDown size={14} />
+              </summary>
+              {pickerOpen && (
+                <div className="direction-texture-popup">
+                  <div className="direction-texture-search">
+                    <Search size={14} aria-hidden="true" />
+                    <input
+                      ref={searchInput}
+                      type="search"
+                      aria-label="Filter block textures"
+                      placeholder="Filter textures…"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div className="direction-texture-options" role="group" aria-label="Block textures">
+                    {results.map((file) => (
+                      <button
+                        key={file}
+                        type="button"
+                        aria-pressed={texture === file}
+                        onClick={() => {
+                          setTexture(file)
+                          closePicker(true)
+                        }}
+                      >
+                        {textureDisplayName(file)}
+                      </button>
+                    ))}
+                    {results.length === 0 && (
+                      <p role="status">{textureIndex ? 'No matching textures.' : loadError ?? 'Loading textures…'}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </details>
+            {loadError && <p className="calibration-error">{loadError}</p>}
           </div>
           <div className="face-preview-row">
             <div className="face-preview-item">
@@ -202,7 +356,7 @@ export function TextureDirectionPanel() {
                   </div>
                 )}
               </div>
-              <span className="face-preview-label">Unwarped · world-aligned</span>
+              <span className="face-preview-label">Selected face</span>
             </div>
             <div className="face-preview-item">
               <div className="face-preview reference">
@@ -218,52 +372,40 @@ export function TextureDirectionPanel() {
               </div>
               <span className="face-preview-label">
                 {lockedRotation === null
-                  ? 'No variant selected'
-                  : `Variant ${lockedRotation / 90} · ${searchDirectionLabel(lockedRotation)}`}
+                  ? 'Reference · North ↑'
+                  : `Confirmed · ${searchDirectionLabel(lockedRotation)}`}
               </span>
             </div>
           </div>
-          <div className="field block-profile-field">
-            <div className="block-profile-heading">
-              <label htmlFor="geometry-direction-texture">
-                Block texture{faceKind ? ` · ${faceKind}` : ''}
-              </label>
-              <a
-                className="texture-direction-link"
-                href={`https://mcasset.cloud/${MC_ASSETS_VERSION}/assets/minecraft/textures/block/${texture}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                mcasset.cloud
-              </a>
-            </div>
-            <select
-              id="geometry-direction-texture"
-              value={texture}
-              onChange={(event) => setTexture(event.target.value)}
+          <div className="texture-direction-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={autoAnalyze}
+              disabled={analyzing || cropStatus !== 'ready'}
             >
-              {!results.includes(texture) && (
-                <option value={texture}>{textureDisplayName(texture)}</option>
-              )}
-              {results.map((file) => (
-                <option key={file} value={file}>
-                  {textureDisplayName(file)}
-                </option>
-              ))}
-            </select>
-            <input
-              type="search"
-              aria-label="Filter block textures"
-              placeholder="Filter textures…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {loadError && <p className="calibration-error">{loadError}</p>}
+              {analyzing ? <LoaderCircle size={14} className="spin" /> : <ScanSearch size={14} />}
+              {analyzing ? 'Analyzing…' : 'Auto Analyze'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={clearTextureDirection}
+              disabled={lockedRotation === null}
+            >
+              <RotateCcw size={14} /> Clear
+            </button>
           </div>
+          <p className="orientation-help" role="status">
+            {noMatch
+              ? 'No clear match found. Compare the textures manually.'
+              : lockedRotation !== null
+                ? `Selected: ${searchDirectionLabel(lockedRotation)}. Choose another tile to change it.`
+                : 'Choose the matching direction below, or use Auto Analyze to select a confident match.'}
+          </p>
+          {analysisError && <p className="calibration-error" role="alert">{analysisError}</p>}
           <div className="candidate-section">
-            <h3>Visible direction</h3>
+            <h5>Choose matching direction</h5>
             <div className="candidate-grid">
               {DIRECTION_ROTATIONS.map((deg) => (
                 <button
@@ -271,6 +413,7 @@ export function TextureDirectionPanel() {
                   key={deg}
                   aria-pressed={lockedRotation === deg}
                   className={lockedRotation === deg ? 'candidate active' : 'candidate'}
+                  aria-label={searchDirectionLabel(deg)}
                   title={searchDirectionLabel(deg)}
                   onClick={() => lockDirection(deg)}
                 >
@@ -283,26 +426,10 @@ export function TextureDirectionPanel() {
                     />
                   </div>
                   <span>
-                    Variant {deg / 90} · Manual ·{' '}
-                    {deg === 0 ? 'N' : deg === 90 ? 'E' : deg === 180 ? 'S' : 'W'}
+                    {searchDirectionLabel(deg)}
                   </span>
                 </button>
               ))}
-            </div>
-          </div>
-          <div className="face-selection-actions">
-            <div className="face-selection-action-row">
-              <button type="button" className="secondary-button" onClick={flipSelectedFaces}>
-                <FlipHorizontal2 size={15} /> Flip visible side
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={clearTextureDirection}
-                disabled={lockedRotation === null}
-              >
-                <RotateCcw size={15} /> Clear direction
-              </button>
             </div>
           </div>
         </>

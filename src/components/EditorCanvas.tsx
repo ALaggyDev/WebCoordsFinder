@@ -84,8 +84,6 @@ interface VisualizationSettings {
   calibrationPoints: boolean
   calibrationResiduals: boolean
   imageSmoothing: boolean
-  /** Show Export / Run summary strip under the top bar. */
-  exportLiveStats: boolean
 }
 
 const defaultVisualizationSettings: VisualizationSettings = {
@@ -97,7 +95,6 @@ const defaultVisualizationSettings: VisualizationSettings = {
   calibrationResiduals: true,
   faceNormals: false,
   imageSmoothing: false,
-  exportLiveStats: true,
 }
 
 function loadVisualizationSettings(): VisualizationSettings {
@@ -279,11 +276,6 @@ const visualizationOptions: Array<{
     key: 'imageSmoothing',
     label: 'Image Smoothing',
     description: 'Smooth the image when zoomed in.',
-  },
-  {
-    key: 'exportLiveStats',
-    label: 'Export live stats',
-    description: 'Show the Export / Run summary (constraints, precision, search progress) under the top bar.',
   },
 ]
 
@@ -658,7 +650,6 @@ export function EditorCanvas() {
     } catch {
       // Settings are optional; a storage failure should not disrupt editing.
     }
-    window.dispatchEvent(new Event('wcf-visualization-settings'))
   }, [visualizations])
 
   useEffect(() => {

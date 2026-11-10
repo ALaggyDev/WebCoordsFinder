@@ -1,4 +1,3 @@
-import { ExportLiveStats } from './ExportLiveStats'
 import {
   ArrowLeft,
   BoxSelect,
@@ -65,22 +64,6 @@ interface TopBarProps {
   onOpenProjects: () => void
 }
 
-
-const VISUALIZATION_SETTINGS_STORAGE_KEY = 'web-coords-finder:visualization-settings'
-
-function loadExportLiveStatsVisible(): boolean {
-  try {
-    const stored = localStorage.getItem(VISUALIZATION_SETTINGS_STORAGE_KEY)
-    if (!stored) return true
-    const parsed: unknown = JSON.parse(stored)
-    if (!parsed || typeof parsed !== 'object') return true
-    const value = (parsed as Record<string, unknown>).exportLiveStats
-    return typeof value === 'boolean' ? value : true
-  } catch {
-    return true
-  }
-}
-
 export function TopBar({
   activeProjectId,
   currentPath = '/',
@@ -94,18 +77,6 @@ export function TopBar({
   const [theme, setTheme] = useState<ColorTheme>(getInitialTheme)
   const step = useEditorStore((state) => state.step)
   const setStep = useEditorStore((state) => state.setStep)
-  const [exportLiveStatsVisible, setExportLiveStatsVisible] = useState(
-    loadExportLiveStatsVisible,
-  )
-  useEffect(() => {
-    const sync = () => setExportLiveStatsVisible(loadExportLiveStatsVisible())
-    window.addEventListener('wcf-visualization-settings', sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener('wcf-visualization-settings', sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [])
 
   const activeProject = projects.find((project) => project.id === activeProjectId)
 
@@ -308,9 +279,6 @@ export function TopBar({
         </button>
       </div>}
       </div>
-    {currentPath === '/' && activeProjectId && exportLiveStatsVisible && (
-        <ExportLiveStats />
-      )}
     </header>
   )
 }

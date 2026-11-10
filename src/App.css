@@ -5646,194 +5646,118 @@ button:disabled {
   .workflow-step { min-width: 0; flex: 1; padding-inline: 10px; font-size: 13px; }
 }
 
-/* Texture direction (Geometry → World Orientation step 3) */
+/* Alternative methods share one compass step; the inset keeps their controls together. */
 .orientation-help {
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
-.texture-direction-panel .block-profile-heading {
+.orientation-methods {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.texture-direction-link {
-  color: var(--accent);
-  font-size: 11px;
-  text-decoration: none;
-}
-
-.texture-direction-link:hover {
-  text-decoration: underline;
-}
-
-.texture-direction-panel .block-profile-field input[type='search'] {
-  margin-top: 7px;
-  width: 100%;
-  height: 34px;
-  box-sizing: border-box;
-  padding: 0 9px;
-  color: var(--text);
-  background: #0d1418;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font-size: 12px;
-}
-
-.texture-direction-panel .candidate-section {
-  margin-top: 12px;
-}
-
-.texture-direction-panel .face-selection-actions {
-  margin-top: 12px;
-}
-
-/* Live export summary under the top bar (Visualization → Export live stats).
-   Stats live inside <header class="topbar">, so grow the first app row and
-   stack the strip below topbar-content instead of treating it as a grid cell. */
-.app:has(.topbar-live-stats) {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.topbar:has(.topbar-live-stats) {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  height: auto;
-  min-height: 0;
-}
-
-.topbar:has(.topbar-live-stats) .topbar-content {
-  flex: none;
-  width: 100%;
-  min-height: 60px;
-  height: 60px;
-}
-
-.topbar-live-stats {
-  flex: none;
-  width: 100%;
-  min-width: 0;
-  container-type: inline-size;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 0 28px;
-  min-height: 40px;
-  overflow: hidden;
-  background: #0d141b;
-  border-top: 1px solid var(--border-soft);
-  border-bottom: 0;
-  z-index: 19;
-}
-
-.live-stats-status {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 18px;
-  color: var(--success);
-  border-right: 1px solid var(--border-soft);
-}
-
-.topbar-live-stats[data-ready='false'] .live-stats-status {
-  color: var(--amber);
-}
-
-.live-stats-status > span:first-of-type {
-  display: grid;
-  line-height: 1.15;
-}
-
-.live-stats-status strong {
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.live-stats-status small {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.live-stats-warnings {
-  padding: 2px 7px;
-  color: var(--amber);
-  font-size: 10px;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  white-space: nowrap;
-}
-
-.live-stats-list {
-  min-width: 0;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 22px;
-}
-
-.live-stat {
-  flex: none;
-  display: grid;
-  line-height: 1.2;
-}
-
-.live-stat dt {
-  margin: 0;
-  display: flex;
-  align-items: center;
   gap: 4px;
+  margin-bottom: 10px;
+  padding: 3px;
+  background: var(--panel-deep);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.orientation-methods button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
   color: var(--muted);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.live-stat dd {
-  margin: 0;
-  color: var(--text);
-  font: 600 13px var(--mono);
-  white-space: nowrap;
-}
-
-.live-stat dd small {
-  color: var(--muted);
-  font: 500 11px var(--mono);
-}
-
-.live-stat-search progress {
-  width: 100%;
-  height: 3px;
-  margin-top: 2px;
-  accent-color: var(--accent);
-}
-
-.live-stats-error {
-  min-width: 0;
-  margin: 0 0 0 auto;
-  overflow: hidden;
-  color: var(--amber);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-@container (max-width: 1100px) {
-  .live-stat[data-priority='3'] { display: none; }
+.orientation-methods button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
 }
 
-@container (max-width: 820px) {
-  .live-stat[data-priority='2'] { display: none; }
-  .live-stats-error { display: none; }
+.orientation-methods button:hover { color: var(--text); }
+
+.orientation-method-panel {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
 }
 
-@container (max-width: 560px) {
-  .live-stats-warnings,
-  .live-stats-status small { display: none; }
+.orientation-method-panel h5 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
 }
+
+.texture-direction-panel .block-profile-field { margin-bottom: 12px; }
+.texture-direction-panel .block-profile-heading { display: flex; justify-content: space-between; gap: 8px; }
+.texture-direction-panel .field-label { font-size: 10px; }
+.texture-direction-link { color: var(--muted); font-size: 10px; text-decoration: none; }
+.texture-direction-link:hover { color: var(--accent); text-decoration: underline; }
+
+.direction-texture-picker { position: relative; min-width: 0; }
+.direction-texture-picker summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-deep);
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+}
+.direction-texture-picker summary::-webkit-details-marker { display: none; }
+.direction-texture-picker summary img { width: 24px; height: 24px; image-rendering: pixelated; }
+.direction-texture-picker summary span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.direction-texture-picker summary > svg { flex-shrink: 0; color: var(--muted); }
+.direction-texture-picker[open] summary { border-color: var(--accent); }
+
+.direction-texture-popup {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-deep);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .35);
+}
+.direction-texture-search { display: flex; align-items: center; gap: 6px; padding: 0 7px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; }
+.direction-texture-search input[type='search'] { width: 100%; min-width: 0; height: 32px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 11px; }
+.direction-texture-search:focus-within { border-color: var(--accent); }
+.direction-texture-search input:focus-visible { outline: none; }
+.direction-texture-options { display: grid; gap: 2px; max-height: 216px; overflow-y: auto; margin-top: 6px; }
+.direction-texture-options button { padding: 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.direction-texture-options button:hover,
+.direction-texture-options button[aria-pressed='true'] { background: var(--surface-2); color: var(--accent); }
+.direction-texture-options p { margin: 8px; color: var(--muted); font-size: 11px; }
+
+.texture-direction-actions { display: flex; gap: 7px; margin: 12px 0 8px; }
+.texture-direction-actions > button:first-child { flex: 1; }
+.texture-direction-actions > button:last-child { flex: 0 0 34%; }
+.texture-direction-actions .secondary-button { justify-content: center; padding: 8px; font-size: 11px; }
+.texture-direction-panel .candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.texture-direction-panel .candidate > span { font-size: 9px; white-space: normal; line-height: 1.5; }
+.orientation-methods button:focus-visible,
+.orientation-method-panel button:focus-visible,
+.direction-texture-picker summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
