@@ -77,6 +77,7 @@ export function TopBar({
   const [theme, setTheme] = useState<ColorTheme>(getInitialTheme)
   const step = useEditorStore((state) => state.step)
   const setStep = useEditorStore((state) => state.setStep)
+
   const activeProject = projects.find((project) => project.id === activeProjectId)
 
   useEffect(() => {
@@ -281,3 +282,4 @@ export function TopBar({
     </header>
   )
 }
+

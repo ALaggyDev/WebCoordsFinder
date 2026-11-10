@@ -401,7 +401,7 @@ describe('geometry deletion', () => {
     ])
     expect(screen.getByLabelText('World UP established')).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Change horizontal orientation' }),
+      screen.getByRole('button', { name: 'Select horizontal arrow' }),
     ).toBeInTheDocument()
   })
 

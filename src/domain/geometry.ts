@@ -2171,6 +2171,107 @@ export function faceHasWorldOrientation(
   return worldAlignedFaceCorners(scene, face) !== undefined
 }
 
+export function worldUpOnlyAxisMapping(mapping: AxisMapping): AxisMapping {
+  const result: AxisMapping = { a: 'unknown', b: 'unknown', c: 'unknown' }
+  ;(['a', 'b', 'c'] as const).forEach((axis) => {
+    const label = mapping[axis]
+    if (label === 'y+' || label === 'y-') result[axis] = label
+  })
+  return result
+}
+
+/**
+ * Stable full axis mapping derived only from world UP (and lattice parity).
+ * Ignores any previously chosen horizontal / compass lock so a later texture
+ * match is not biased by that earlier choice.
+ */
+export function canonicalMappingFromWorldUp(
+  mapping: AxisMapping,
+  parity?: LatticeParity,
+): AxisMapping | undefined {
+  if (!isWorldUpResolved(mapping)) return undefined
+  const completions = validAxisMappingCompletions(
+    worldUpOnlyAxisMapping(mapping),
+    parity,
+  )
+  if (completions.length === 0) return undefined
+  return [...completions].sort((left, right) =>
+    `${left.a}|${left.b}|${left.c}`.localeCompare(`${right.a}|${right.b}|${right.c}`),
+  )[0]
+}
+
+/**
+ * Top/bottom face corners for texture-direction matching: aligned with a
+ * canonical UP-only mapping so a prior horizontal orientation does not rotate
+ * the crop the user is comparing to the reference texture.
+ */
+export function directionMatchFaceCorners(
+  scene: SceneGeometry,
+  meshFace: MeshFace,
+): [Point3, Point3, Point3, Point3] | undefined {
+  const mapping = canonicalMappingFromWorldUp(
+    scene.axisMapping,
+    sceneLatticeParity(scene),
+  )
+  if (!mapping) return undefined
+  const face = faceForLocalNormal(mapping, meshFace.normal)
+  if (face !== 'up' && face !== 'down') return undefined
+  // Same UV frame as Faces (down uses v = −Z). Bottom cardinal correction is
+  // applied when locking direction, not by changing the crop here.
+  const target = defaultAxesForFace(face)
+  const uAxis = localVectorForWorld(mapping, target.uAxis)
+  const vAxis = localVectorForWorld(mapping, target.vAxis)
+  return uAxis && vAxis
+    ? orientedFaceCorners(meshFace, uAxis, vAxis)
+    : undefined
+}
+
+export function directionMatchFaceQuad(
+  scene: SceneGeometry,
+  meshFace: MeshFace,
+): [Point2, Point2, Point2, Point2] | undefined {
+  const corners = directionMatchFaceCorners(scene, meshFace)
+  if (!corners) return undefined
+  const projected = corners.map((point) => projectScenePoint(scene, point))
+  return projected.every((point): point is Point2 => point !== undefined)
+    ? (projected as [Point2, Point2, Point2, Point2])
+    : undefined
+}
+
+/**
+ * Rotate only the horizontal (X/Z) world labels of an axis mapping by a search
+ * direction. Same convention as search XZ rotation: 90° maps (x, z) → (−z, x).
+ * Used to fold a texture-direction lock into the lattice mapping so face crops
+ * stay world-aligned and search can use direction 0°.
+ */
+export function rotateAxisMappingHorizontal(
+  mapping: AxisMapping,
+  direction: 0 | 90 | 180 | 270,
+): AxisMapping {
+  const turns = ((direction / 90) % 4 + 4) % 4
+  if (turns === 0) return { ...mapping }
+
+  const rotateLabel = (label: WorldAxisLabel | 'unknown'): WorldAxisLabel | 'unknown' => {
+    if (label === 'unknown' || label[0] === 'y') return label
+    let x = label[0] === 'x' ? (label[1] === '+' ? 1 : -1) : 0
+    let z = label[0] === 'z' ? (label[1] === '+' ? 1 : -1) : 0
+    for (let i = 0; i < turns; i += 1) {
+      const nextX = -z
+      const nextZ = x
+      x = nextX
+      z = nextZ
+    }
+    if (x !== 0) return (x > 0 ? 'x+' : 'x-')
+    return z > 0 ? 'z+' : 'z-'
+  }
+
+  return {
+    a: rotateLabel(mapping.a) as AxisMapping['a'],
+    b: rotateLabel(mapping.b) as AxisMapping['b'],
+    c: rotateLabel(mapping.c) as AxisMapping['c'],
+  }
+}
+
 export function defaultAxesForFace(face: FaceDirection): {
   uAxis: Point3
   vAxis: Point3

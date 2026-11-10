@@ -34,6 +34,8 @@ import {
   same3,
   validAxisMappingCompletions,
   worldAlignedFaceCorners,
+  canonicalMappingFromWorldUp,
+  rotateAxisMappingHorizontal,
 } from '../domain/geometry'
 import { sharedStatesForFaces } from '../domain/references'
 import {
@@ -132,6 +134,8 @@ function createDefaultScanner(): ScannerSettings {
     scanOrder: 'spiral',
     directions: [0],
     compassResolved: false,
+    compassSource: null,
+    textureDirection: null,
     bounds: {
       xStart: -2000,
       xEnd: 2000,
@@ -336,6 +340,22 @@ export function normalizeEditorDocument(input: unknown): EditorDocument {
   if (normalized.resourcePack) normalized.resourcePack = resourcePackSchema.parse(normalized.resourcePack)
   normalized.scene.worldUpIntent ??= null
   normalized.scene.horizontalOrientationIntent ??= null
+  if (
+    normalized.scanner.compassSource !== 'arrows' &&
+    normalized.scanner.compassSource !== 'texture'
+  ) {
+    normalized.scanner.compassSource = normalized.scanner.compassResolved
+      ? (normalized.scene.horizontalOrientationIntent ? 'arrows' : null)
+      : null
+  }
+  if (
+    normalized.scanner.textureDirection !== 0 &&
+    normalized.scanner.textureDirection !== 90 &&
+    normalized.scanner.textureDirection !== 180 &&
+    normalized.scanner.textureDirection !== 270
+  ) {
+    normalized.scanner.textureDirection = null
+  }
   const defaults = createDefaultScanner()
   // Convert the old exclusive mode and its X/Z bounds once, then drop them.
   const { crackMode, offsetBounds, ...migratedScanner } = normalized.scanner as ScannerSettings & {
@@ -584,6 +604,8 @@ interface EditorState {
   setOrientationSurfaceKind: (kind: OrientationSurfaceKind) => void
   setOrientationEdge: (edge: FaceEdge) => void
   setOrientationHorizontalDirection: (direction: FaceDirection) => void
+  lockTextureDirection: (rotation: SearchDirection, faceKind?: 'top' | 'bottom') => void
+  clearTextureDirection: () => void
   cancelOrientation: () => void
   setAnchorFace: (faceId: string) => void
   selectFace: (faceId: string, additive: boolean) => void
@@ -1320,6 +1342,8 @@ export const useEditorStore = create<EditorState>((set) => ({
             localDirection: arrow.direction,
             direction: horizontalDirection,
           }
+          document.scanner.compassSource = 'arrows'
+          document.scanner.textureDirection = null
           applyAxisMapping(document, mapping, true)
         }),
         orientationDraft: null,
@@ -1599,6 +1623,52 @@ export const useEditorStore = create<EditorState>((set) => ({
             entry.reviewStatus = 'unlabeled'
           }
         })
+      }),
+    ),
+
+  lockTextureDirection: (rotation, faceKind = 'top') =>
+    set((state) => {
+      if (!searchDirections.includes(rotation)) return state
+      return mutateDocument(state, (document) => {
+        document.scene.horizontalOrientationIntent = null
+        document.scanner.compassSource = 'texture'
+        document.scanner.textureDirection = rotation
+        const canonical = canonicalMappingFromWorldUp(
+          document.scene.axisMapping,
+          sceneLatticeParity(document.scene),
+        )
+        if (!canonical) {
+          document.scanner.directions = [
+            faceKind === 'bottom'
+              ? (((rotation + 180) % 360) as SearchDirection)
+              : rotation,
+          ]
+          document.scanner.compassResolved = true
+          return
+        }
+        // Bottom face UV mirrors left/right relative to top: same heading is
+        // 180° apart (E on top ↔ W on bottom). Convert, then inverse-rotate
+        // the mapping so Faces stay world-aligned and search uses 0°.
+        const topEquivalent =
+          faceKind === 'bottom'
+            ? (((rotation + 180) % 360) as 0 | 90 | 180 | 270)
+            : rotation
+        const inverse = ((360 - topEquivalent) % 360) as 0 | 90 | 180 | 270
+        applyAxisMapping(
+          document,
+          rotateAxisMappingHorizontal(canonical, inverse),
+          true,
+        )
+      })
+    }),
+  clearTextureDirection: () =>
+    set((state) =>
+      mutateDocument(state, (document) => {
+        document.scene.horizontalOrientationIntent = null
+        document.scanner.compassSource = null
+        document.scanner.textureDirection = null
+        document.scanner.directions = [...searchDirections]
+        document.scanner.compassResolved = false
       }),
     ),
   updateScanner: (patch) =>

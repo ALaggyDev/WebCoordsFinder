@@ -263,6 +263,10 @@ export interface ScannerSettings {
   scanOrder: ScanOrder
   directions: SearchDirection[]
   compassResolved: boolean
+  /** Last workflow that locked compass: arrows or texture match. */
+  compassSource: 'arrows' | 'texture' | null
+  /** Texture-match rotation for UI; search uses remapped axes at 0°. */
+  textureDirection: SearchDirection | null
   bounds: SearchBounds
   cpuTileSize: { x: number; z: number }
   gpuTileSize: { x: number; z: number }

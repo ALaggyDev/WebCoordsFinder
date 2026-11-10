@@ -5645,3 +5645,119 @@ button:disabled {
   .topbar-content .workflow { position: static; transform: none; min-width: 0; }
   .workflow-step { min-width: 0; flex: 1; padding-inline: 10px; font-size: 13px; }
 }
+
+/* Alternative methods share one compass step; the inset keeps their controls together. */
+.orientation-help {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.orientation-methods {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 3px;
+  background: var(--panel-deep);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.orientation-methods button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.orientation-methods button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.orientation-methods button:hover { color: var(--text); }
+
+.orientation-method-panel {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.orientation-method-panel h5 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.texture-direction-panel .block-profile-field { margin-bottom: 12px; }
+.texture-direction-panel .block-profile-heading { display: flex; justify-content: space-between; gap: 8px; }
+.texture-direction-panel .field-label { font-size: 10px; }
+.texture-direction-link { color: var(--muted); font-size: 10px; text-decoration: none; }
+.texture-direction-link:hover { color: var(--accent); text-decoration: underline; }
+
+.direction-texture-picker { position: relative; min-width: 0; }
+.direction-texture-picker summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-deep);
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+}
+.direction-texture-picker summary::-webkit-details-marker { display: none; }
+.direction-texture-picker summary img { width: 24px; height: 24px; image-rendering: pixelated; }
+.direction-texture-picker summary span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.direction-texture-picker summary > svg { flex-shrink: 0; color: var(--muted); }
+.direction-texture-picker[open] summary { border-color: var(--accent); }
+
+.direction-texture-popup {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-deep);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .35);
+}
+.direction-texture-search { display: flex; align-items: center; gap: 6px; padding: 0 7px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; }
+.direction-texture-search input[type='search'] { width: 100%; min-width: 0; height: 32px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 11px; }
+.direction-texture-search:focus-within { border-color: var(--accent); }
+.direction-texture-search input:focus-visible { outline: none; }
+.direction-texture-options { display: grid; gap: 2px; max-height: 216px; overflow-y: auto; margin-top: 6px; }
+.direction-texture-options button { padding: 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.direction-texture-options button:hover,
+.direction-texture-options button[aria-pressed='true'] { background: var(--surface-2); color: var(--accent); }
+.direction-texture-options p { margin: 8px; color: var(--muted); font-size: 11px; }
+
+.texture-direction-actions { display: flex; gap: 7px; margin: 12px 0 8px; }
+.texture-direction-actions > button:first-child { flex: 1; }
+.texture-direction-actions > button:last-child { flex: 0 0 34%; }
+.texture-direction-actions .secondary-button { justify-content: center; padding: 8px; font-size: 11px; }
+.texture-direction-panel .candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.texture-direction-panel .candidate > span { font-size: 9px; white-space: normal; line-height: 1.5; }
+.orientation-methods button:focus-visible,
+.orientation-method-panel button:focus-visible,
+.direction-texture-picker summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -44,6 +44,18 @@ npm run build
 - Manage multiple local projects, import/export portable `.wcf` bundles, and start from bundled example projects.
 - Installable offline PWA with bundled reference textures and scanner assets.
 
+
+
+
+
+## Texture direction (optional)
+
+Under **Geometry → World Orientation → Horizontal Orientation → Match texture**, you can lock North/East/South/West by matching a fixed top or bottom block texture (for example a crafting table top). The top edge of the reference texture is treated as North. Choosing a match updates world orientation the same way a confirmed horizontal arrow does; the most recent of arrows or texture match wins.
+
+Use the texture picker to select and filter reference textures. **Auto Analyze** selects a matching direction locally when confidence meets the configured threshold; unclear matches leave the choice manual. **Use arrows** and **Match texture** are alternative methods for the same compass setting.
+
+This module was contributed by **PedroJuan_1610**.
+
 ## Contributing
 
 TLDR: The project creator (which is me, Laggy) is a person who **learns to code** well before the era of AIs. As such, he cares about code quality and code elegance well more than the "new-gen AI coders".
