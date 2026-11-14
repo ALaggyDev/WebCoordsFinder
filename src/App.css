@@ -1130,6 +1130,59 @@ button:disabled {
   color: var(--faint);
 }
 
+.camera-teleport {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.camera-teleport h3,
+.camera-teleport p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.camera-teleport p,
+.camera-teleport-actions [role='status'] {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.camera-teleport .field {
+  gap: 4px;
+}
+
+.camera-teleport .field input {
+  font-family: var(--mono);
+}
+
+.camera-teleport-preview {
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-deep);
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.camera-teleport-preview code {
+  color: var(--text);
+  font: 12px var(--mono);
+  user-select: text;
+}
+
+.camera-teleport-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.camera-teleport-actions button {
+  flex-shrink: 0;
+}
+
 .field {
   min-width: 0;
   display: grid;

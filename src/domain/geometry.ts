@@ -13,6 +13,7 @@ import type {
   Point3,
   SceneGeometry,
   SceneProjection,
+  SearchDirection,
   SelectedEdge,
   WorldUpIntent,
   WorldAxisLabel,
@@ -42,6 +43,28 @@ export const add3 = (a: Point3, b: Point3): Point3 => ({
   y: a.y + b.y,
   z: a.z + b.z,
 })
+
+export function rotateXzOffset(
+  x: number,
+  z: number,
+  direction: SearchDirection,
+): { x: number; z: number } {
+  switch (direction) {
+    case 90:
+      return { x: -z, z: x }
+    case 180:
+      return { x: -x, z: -z }
+    case 270:
+      return { x: z, z: -x }
+    case 0:
+      return { x, z }
+  }
+}
+
+/** Wraps an angle to Minecraft's [-180, 180) yaw range. */
+export function wrapYawDegrees(yaw: number): number {
+  return ((yaw + 180) % 360 + 360) % 360 - 180
+}
 
 export const subtract3 = (a: Point3, b: Point3): Point3 => ({
   x: a.x - b.x,
@@ -1049,7 +1072,7 @@ export function cameraInfoMetrics(
       ? { ...eyePosition, y: eyePosition.y - 1.62 }
       : undefined,
     yawDegrees: worldRay
-      ? (Math.atan2(worldRay.x, -worldRay.z) * 180) / Math.PI
+      ? wrapYawDegrees((Math.atan2(-worldRay.x, worldRay.z) * 180) / Math.PI)
       : undefined,
     pitchDegrees: worldRay
       ? (-Math.asin(Math.max(-1, Math.min(1, worldRay.y))) * 180) / Math.PI

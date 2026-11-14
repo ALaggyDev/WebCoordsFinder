@@ -14,6 +14,7 @@ import {
   faceForLocalNormal,
   isWorldUpResolved,
   mappedAnchorOffset,
+  rotateXzOffset,
   sceneLatticeParity,
 } from './geometry'
 import {
@@ -32,23 +33,6 @@ export type ExportEvidence = FaceEvidence & {
 function coordinateKey(evidence: ExportEvidence): string {
   const { x, y, z } = evidence.coordinate
   return `${x}:${y}:${z}`
-}
-
-function rotateXzOffset(
-  x: number,
-  z: number,
-  direction: SearchDirection,
-): { x: number; z: number } {
-  switch (direction) {
-    case 90:
-      return { x: -z, z: x }
-    case 180:
-      return { x: -x, z: -z }
-    case 270:
-      return { x: z, z: -x }
-    case 0:
-      return { x, z }
-  }
 }
 
 export function confirmedUniqueEvidence(document: EditorDocument): ExportEvidence[] {

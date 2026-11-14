@@ -127,7 +127,7 @@ describe('camera image metrics', () => {
 
     expect(metrics?.eyePosition).toEqual({ x: 0, y: 0, z: 0 })
     expect(metrics?.feetPosition).toEqual({ x: 0, y: -1.62, z: 0 })
-    expect(metrics?.yawDegrees).toBeCloseTo(180, 6)
+    expect(metrics?.yawDegrees).toBeCloseTo(0, 6)
     expect(metrics?.pitchDegrees).toBeCloseTo(0, 6)
   })
 

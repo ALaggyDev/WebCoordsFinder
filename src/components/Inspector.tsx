@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom'
 import {
   Check,
   Compass,
+  Copy,
   Crosshair,
   Download,
   Eye,
@@ -43,8 +44,10 @@ import {
   mappedAnchorOffset,
   possibleFacesForLocalNormal,
   projectionInfo,
+  rotateXzOffset,
   sceneLatticeParity,
   worldAlignedFaceQuad,
+  wrapYawDegrees,
 } from '../domain/geometry'
 import {
   colorizedReferenceTexture,
@@ -68,6 +71,7 @@ import {
   type CandidateTransform,
   type EditorDocument,
   type FaceEvidence,
+  type Point3,
   type SearchBounds,
   type SearchDirection,
   type ScanOrder,
@@ -321,6 +325,101 @@ function InfoTip({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+const cameraAngleDigits = 2
+const cameraPositionDigits = 4
+
+function TeleportCommand({ feetOffset, yaw, pitch }: {
+  feetOffset?: Point3
+  yaw?: number
+  pitch?: number
+}) {
+  const [fields, setFields] = useState({ X: '', Y: '', Z: '' })
+  const [direction, setDirection] = useState<SearchDirection>(0)
+  const [copyResult, setCopyResult] = useState<{ command: string; copied: boolean }>()
+  const [x, y, z] = [fields.X, fields.Y, fields.Z].map((value) => value.trim())
+  const isBlockCoordinate = (value: string) => /^-?\d+$/.test(value) && Number.isSafeInteger(Number(value))
+  const hasAnchorCoordinates = [x, y, z].every(isBlockCoordinate)
+  // Each scanner quarter turn adds 90° to the solved Minecraft yaw.
+  const scanYaw = yaw === undefined ? undefined : wrapYawDegrees(yaw + direction)
+  let command = ''
+  if (hasAnchorCoordinates && feetOffset && scanYaw !== undefined && pitch !== undefined) {
+    // Feet offsets start at the block's minimum corner. Rotate around the
+    // block center so the anchor still occupies the same world block.
+    const offset = rotateXzOffset(feetOffset.x - 0.5, feetOffset.z - 0.5, direction)
+    const feetX = Number(x) + (offset.x + 0.5)
+    const feetY = Number(y) + feetOffset.y
+    const feetZ = Number(z) + (offset.z + 0.5)
+    // Decimal X/Z keep Java Edition from snapping to the block center.
+    command = `/tp @s ${feetX.toFixed(cameraPositionDigits)} ${feetY.toFixed(cameraPositionDigits)} ${feetZ.toFixed(cameraPositionDigits)} ${scanYaw.toFixed(cameraAngleDigits)} ${pitch.toFixed(cameraAngleDigits)}`
+  }
+  const copyStatus = copyResult?.command === command ? copyResult : undefined
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopyResult({ command, copied: true })
+    } catch {
+      setCopyResult({ command, copied: false })
+    }
+  }
+
+  const field = (label: keyof typeof fields) => (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={fields[label]}
+        onChange={(event) => {
+          const value = event.target.value
+          setFields((current) => ({ ...current, [label]: value }))
+          setCopyResult(undefined)
+        }}
+      />
+    </label>
+  )
+
+  return (
+    <section className="camera-teleport" aria-label="Teleport command">
+      <h3>Teleport command</h3>
+      <p>Enter the anchor block coordinates and direction from your scan result.</p>
+      <div className="coordinate-fields" role="group" aria-label="Anchor block coordinates">
+        {field('X')}{field('Y')}{field('Z')}
+      </div>
+      <label className="field">
+        <span>Scan result direction</span>
+        <select
+          value={direction / 90}
+          onChange={(event) => {
+            setDirection(searchDirections[Number(event.currentTarget.value)])
+            setCopyResult(undefined)
+          }}
+        >
+          {searchDirections.map((degrees, turns) => (
+            <option key={degrees} value={turns}>{turns} ({degrees}°)</option>
+          ))}
+        </select>
+      </label>
+      <div className="camera-teleport-preview">
+        {command ? <code>{command}</code> : (
+          <span>{!feetOffset || yaw === undefined || pitch === undefined
+            ? 'Solve and orient the 3D camera and select an anchor block.'
+            : 'Enter whole numbers for the anchor block’s X, Y, and Z.'}</span>
+        )}
+      </div>
+      <div className="camera-teleport-actions">
+        <span role="status">
+          {copyStatus && (copyStatus.copied ? 'Copied to clipboard.' : 'Copy failed. Select the command to copy it manually.')}
+        </span>
+        <button className="secondary-button" type="button" disabled={!command} onClick={copyCommand}>
+          {copyStatus?.copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          Copy command
+        </button>
+      </div>
+    </section>
+  )
+}
+
 function CameraInfo() {
   const document = useEditorStore((state) => state.document)
   const { scene } = document
@@ -328,15 +427,15 @@ function CameraInfo() {
     () => cameraInfoMetrics(scene, document.image, document.anchorFaceId),
     [document.anchorFaceId, document.image, scene],
   )
-  const formatNumber = (value: number | undefined, digits = 1) =>
+  const formatNumber = (value: number | undefined, digits: number) =>
     value !== undefined && Number.isFinite(value) ? value.toFixed(digits) : '-----'
   const formatDegrees = (value: number | undefined) =>
     value !== undefined && Number.isFinite(value)
-      ? `${formatNumber(value)}°`
+      ? `${formatNumber(value, cameraAngleDigits)}°`
       : '-----'
   const formatCoordinate = (value: { x: number; y: number; z: number } | undefined) =>
     value
-      ? `${formatNumber(value.x, 3)}, ${formatNumber(value.y, 3)}, ${formatNumber(value.z, 3)}`
+      ? [value.x, value.y, value.z].map((axis) => formatNumber(axis, cameraPositionDigits)).join(', ')
       : '-----'
   const CameraInfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="camera-info-row">
@@ -354,7 +453,7 @@ function CameraInfo() {
         <CameraInfoRow
           label="Effective focal length"
           value={metrics
-            ? `${formatNumber(metrics.focalLengthX)} × ${formatNumber(metrics.focalLengthY)} px`
+            ? `${formatNumber(metrics.focalLengthX, 2)} × ${formatNumber(metrics.focalLengthY, 2)} px`
             : '-----'}
         />
         <CameraInfoRow label="Eye position" value={formatCoordinate(metrics?.eyePosition)} />
@@ -363,8 +462,9 @@ function CameraInfo() {
           label="Yaw and pitch"
           value={metrics?.yawDegrees === undefined || metrics.pitchDegrees === undefined
             ? '-----'
-            : `(North -z) ${formatNumber(metrics.yawDegrees)}, ${formatNumber(metrics.pitchDegrees)}`}
+            : `${formatDegrees(metrics.yawDegrees)}, ${formatDegrees(metrics.pitchDegrees)}`}
         />
+        <TeleportCommand feetOffset={metrics?.feetPosition} yaw={metrics?.yawDegrees} pitch={metrics?.pitchDegrees} />
       </div>
     </details>
   )

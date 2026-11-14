@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -72,6 +73,73 @@ describe('partial perspective inspector', () => {
 })
 
 describe('camera info', () => {
+  it('copies the standing feet position and rotation for an anchor scan result', async () => {
+    const { document } = useEditorStore.getState()
+    useEditorStore.setState({
+      document: {
+        ...document,
+        image: { ...document.image, width: 1600, height: 900 },
+        scene: {
+          ...document.scene,
+          faces: [{
+            id: document.anchorFaceId!,
+            blockCoordinate: { x: 2, y: 1, z: 4 },
+            normal: { x: 0, y: 0, z: -1 },
+          }],
+          axisMapping: { a: 'x-', b: 'y+', c: 'z-' },
+          projection: {
+            kind: 'camera',
+            matrix: [800, 0, 800, -800, 0, 900, 350, -712.5, 0, 0, 1, -0.75],
+            rmsError: 0,
+            maxError: 0,
+          },
+          observations: [{ id: 'forward', lattice: { x: 0.25, y: 0.5, z: 10 }, image: { x: 800, y: 350 }, weight: 1 }],
+        },
+      },
+    })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const clipboard = vi.spyOn(window, 'navigator', 'get').mockReturnValue({ clipboard: { writeText } } as unknown as Navigator)
+
+    try {
+      render(<Inspector busy={false} onAutoFill={vi.fn()} />)
+      const details = screen.getByText('Camera info').closest('details')!
+      details.open = true
+      const teleport = within(details)
+      const copy = teleport.getByRole('button', { name: 'Copy command' })
+      const direction = teleport.getByLabelText('Scan result direction')
+      expect(direction).toHaveValue('0')
+      expect(teleport.getByText('-180.00°, -6.34°')).toBeInTheDocument()
+      expect(teleport.getByText('2.7500, -2.1200, 4.2500')).toBeInTheDocument()
+      expect(copy).toBeDisabled()
+
+      fireEvent.change(teleport.getByLabelText('X'), { target: { value: '-42' } })
+      fireEvent.change(teleport.getByLabelText('Z'), { target: { value: '9' } })
+      fireEvent.change(teleport.getByLabelText('Y'), { target: { value: '64.25' } })
+      expect(copy).toBeDisabled()
+      fireEvent.change(teleport.getByLabelText('Y'), { target: { value: '64' } })
+
+      const commands = [
+        '/tp @s -39.2500 61.8800 13.2500 -180.00 -6.34',
+        '/tp @s -45.2500 61.8800 11.7500 -90.00 -6.34',
+        '/tp @s -43.7500 61.8800 5.7500 0.00 -6.34',
+        '/tp @s -37.7500 61.8800 7.2500 90.00 -6.34',
+      ]
+      for (const [turns, command] of commands.entries()) {
+        fireEvent.change(direction, { target: { value: String(turns) } })
+        expect(teleport.getByText(command)).toBeInTheDocument()
+      }
+
+      fireEvent.click(copy)
+      await waitFor(() => expect(teleport.getByRole('status')).toHaveTextContent('Copied to clipboard.'))
+      expect(writeText).toHaveBeenCalledWith(commands[3])
+
+      fireEvent.change(direction, { target: { value: '1' } })
+      expect(teleport.getByRole('status')).toBeEmptyDOMElement()
+    } finally {
+      clipboard.mockRestore()
+    }
+  })
+
   it('shows derived camera data after a 3D solve', () => {
     render(
       <Inspector
@@ -84,7 +152,7 @@ describe('camera info', () => {
     expect(screen.getByText('Camera info')).toBeInTheDocument()
     expect(screen.getByText('Vertical FOV')).toBeInTheDocument()
     expect(screen.getByText('Feet position (Standing)')).toBeInTheDocument()
-    expect(screen.getByText(/^\(North -z\)/)).toBeInTheDocument()
+    expect(screen.getByText('Yaw and pitch')).toBeInTheDocument()
     expect(screen.getByText('Camera info').closest('details')).not.toHaveAttribute('open')
   })
 
@@ -103,6 +171,14 @@ describe('camera info', () => {
     )
 
     expect(screen.getAllByText('-----')).toHaveLength(3)
+    const details = screen.getByText('Camera info').closest('details')!
+    details.open = true
+    const teleport = within(details)
+    for (const coordinate of ['X', 'Y', 'Z']) {
+      fireEvent.change(teleport.getByLabelText(coordinate), { target: { value: '42' } })
+    }
+    expect(teleport.getByText('Solve and orient the 3D camera and select an anchor block.')).toBeInTheDocument()
+    expect(teleport.getByRole('button', { name: 'Copy command' })).toBeDisabled()
   })
 
   it('uses the guessed horizontal orientation when a complete mapping exists', () => {
